@@ -7,6 +7,7 @@ import { addDays, todayStr } from "../src/lib/dates";
 import { createMedicine } from "../src/modules/catalog";
 import { createPurchase } from "../src/modules/procurement";
 import { createSale } from "../src/modules/sales";
+import { serviceContext } from "../src/modules/identity";
 
 function rng(seed: number) {
   return () => {
@@ -80,9 +81,9 @@ async function main() {
   for (const [name, generic, cat, buy, sell, rx, min, qty, exp] of meds) {
     i += 1;
     const m = await createMedicine(
+      serviceContext(admin),
       { name, genericName: generic, categoryId: cats[cat], barcode: `890100${String(i).padStart(6, "0")}`, sku: `SKU-${String(i).padStart(4, "0")}`, unit: "Pack", purchasePrice: buy, salePrice: sell, minStock: min, prescriptionRequired: rx, description: null, active: true,
         opening: { batchNumber: `OP-${String(i).padStart(3, "0")}`, expiryDate: addDays(today, exp), quantity: qty } },
-      admin.id,
     );
     medRecords.push({ id: m.id, name, sale: sell, buy });
   }
@@ -99,12 +100,12 @@ async function main() {
   for (let p = 0; p < 6; p++) {
     const chosen = medRecords.slice(p * 3, p * 3 + 3);
     await createPurchase(
+      serviceContext(admin),
       {
         supplierId: suppliers[p % 3].id, supplierInvoice: `SUP-${1000 + p}`, purchaseDate: addDays(today, -(20 - p * 3)),
         items: chosen.map((m, k) => ({ medicineId: m.id, batchNumber: `PB-${p}${k}`, expiryDate: addDays(today, 600 + k * 30), quantity: 60 + k * 20, purchasePrice: m.buy, salePrice: m.sale + 2 })),
         discount: p % 2 === 0 ? 100 : 0, paid: p % 3 === 0 ? 0 : 5000 + p * 1000, paymentMethod: "CASH", note: null,
       },
-      admin.id,
     );
   }
 
@@ -130,11 +131,10 @@ async function main() {
       const useCredit = rand() < 0.2;
       const customer = useCredit || rand() < 0.4 ? pick(customers.slice(0, 4)) : null;
       try {
-        await createSale(
-          { items: lines, customerId: customer?.id ?? null, discountType: "AMOUNT", discountValue: rand() < 0.15 ? 20 : 0, paymentMethod: useCredit ? "CREDIT" : rand() < 0.3 ? "CARD" : "CASH", amountPaid: useCredit ? 0 : undefined, note: null },
-          rand() < 0.5 ? cashier : pharmacist,
-          { createdAt: at },
-        );
+        // same evaluation order as before so the seeded data stays identical
+        const sale: Parameters<typeof createSale>[1] = { items: lines, customerId: customer?.id ?? null, discountType: "AMOUNT", discountValue: rand() < 0.15 ? 20 : 0, paymentMethod: useCredit ? "CREDIT" : rand() < 0.3 ? "CARD" : "CASH", amountPaid: useCredit ? 0 : undefined, note: null };
+        const seller = rand() < 0.5 ? cashier : pharmacist;
+        await createSale(serviceContext(seller), sale, { createdAt: at });
         count++;
       } catch (e) {
         // credit limit / stock issues in random data are fine – skip

@@ -1,12 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { Prisma } from "@prisma/client";
 import { ZodError } from "zod";
-import { getSessionUser, type SessionUser, can, type Permission } from "@/modules/identity";
+import { getSessionUser, type SessionUser, can, type Permission, serviceContext, type ServiceContext } from "@/modules/identity";
 import { AppError } from "./errors";
 
 export { AppError };
 
-type Ctx = { req: NextRequest; user: SessionUser; params: Record<string, string> };
+/** `svc` is the context to pass to module services. */
+type Ctx = { req: NextRequest; user: SessionUser; params: Record<string, string>; svc: ServiceContext };
 
 /** Wraps an API handler with authentication, permission check and uniform error handling. */
 export function route(permission: Permission | null, fn: (ctx: Ctx) => Promise<unknown>) {
@@ -15,7 +16,7 @@ export function route(permission: Permission | null, fn: (ctx: Ctx) => Promise<u
       const user = await getSessionUser();
       if (!user) throw new AppError(401, "You are not signed in.");
       if (permission && !can(user.role, permission)) throw new AppError(403, "You do not have permission to do this.");
-      const data = await fn({ req, user, params: await params });
+      const data = await fn({ req, user, params: await params, svc: serviceContext(user) });
       return NextResponse.json(data ?? { ok: true });
     } catch (e) {
       return errorResponse(e);

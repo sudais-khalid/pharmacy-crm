@@ -1,12 +1,14 @@
-import { prisma } from "@/lib/prisma";
+import { runInTx } from "@/lib/db";
+import type { ServiceContext } from "@/modules/identity";
 import { AppError } from "@/lib/errors";
 import { D } from "@/lib/money";
 import type { PaymentInput } from "@/lib/validation";
 import { customerBalance } from "./queries";
 
 /** Customer pays off (part of) their udhaar balance. */
-export async function receiveCustomerPayment(customerId: string, input: PaymentInput, userId: string) {
-  return prisma.$transaction(async (tx) => {
+export async function receiveCustomerPayment(ctx: ServiceContext, customerId: string, input: PaymentInput) {
+  const userId = ctx.actor.id;
+  return runInTx(ctx, async (tx) => {
     const customer = await tx.customer.findUnique({ where: { id: customerId } });
     if (!customer) throw new AppError(404, "Customer not found.");
     const amount = D(input.amount).toDecimalPlaces(2);

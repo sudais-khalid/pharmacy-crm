@@ -1,10 +1,10 @@
 import { Prisma } from "@prisma/client";
-import { prisma } from "@/lib/prisma";
+import { runInTx } from "@/lib/db";
 import { AppError } from "@/lib/errors";
 import { todayStr } from "@/lib/dates";
 import { D, ZERO } from "@/lib/money";
 import { customerBalance } from "@/modules/customers";
-import { can, type Role } from "@/modules/identity";
+import { can, type ServiceContext } from "@/modules/identity";
 
 export type SaleInput = {
   customerId?: string | null;
@@ -23,10 +23,11 @@ type BatchRow = { id: string; batchNumber: string; quantity: number; salePrice: 
  * FEFO batch allocation (earliest expiry first, expired batches skipped), stock deduction,
  * stock movements and the customer ledger. Any failure rolls the whole sale back.
  */
-export async function createSale(input: SaleInput, user: { id: string; role: Role }, opts: { createdAt?: Date } = {}) {
+export async function createSale(ctx: ServiceContext, input: SaleInput, opts: { createdAt?: Date } = {}) {
   const today = todayStr();
+  const user = ctx.actor;
 
-  return prisma.$transaction(async (tx) => {
+  return runInTx(ctx, async (tx) => {
     // merge duplicate lines and lock in a stable order (avoids deadlocks between concurrent sales)
     const wanted = new Map<string, number>();
     for (const l of input.items) wanted.set(l.medicineId, (wanted.get(l.medicineId) ?? 0) + l.quantity);
@@ -123,8 +124,9 @@ export async function createSale(input: SaleInput, user: { id: string; role: Rol
 }
 
 /** Cancels a completed sale: stock goes back to the exact batches it came from and the ledger is reversed. */
-export async function cancelSale(saleId: string, reason: string, userId: string) {
-  return prisma.$transaction(async (tx) => {
+export async function cancelSale(ctx: ServiceContext, saleId: string, reason: string) {
+  const userId = ctx.actor.id;
+  return runInTx(ctx, async (tx) => {
     const sale = await tx.sale.findUnique({ where: { id: saleId }, include: { items: true } });
     if (!sale) throw new AppError(404, "Sale not found.");
     const res = await tx.sale.updateMany({ where: { id: saleId, status: "COMPLETED" }, data: { status: "CANCELLED", cancelledAt: new Date(), cancelReason: reason } });

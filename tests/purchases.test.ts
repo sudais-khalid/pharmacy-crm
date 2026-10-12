@@ -3,7 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { createPurchase, paySupplier, supplierBalance } from "@/modules/procurement";
 import { adjustStock } from "@/modules/inventory";
 import { can } from "@/modules/identity";
-import { resetDb, makeUser, makeMedicine, makeBatch, makeSupplier, inDays } from "./helpers";
+import { resetDb, makeUser, makeMedicine, makeBatch, makeSupplier, inDays, ctxOf } from "./helpers";
 
 beforeEach(resetDb);
 
@@ -18,27 +18,27 @@ describe("purchases", () => {
     const u = await makeUser("ADMIN");
     const s = await makeSupplier();
     const m = await makeMedicine();
-    const p = await createPurchase(input(s.id, m.id, { discount: 100, paid: 1000 }), u.id);
+    const p = await createPurchase(ctxOf(u), input(s.id, m.id, { discount: 100, paid: 1000 }));
     expect(p.subtotal.toString()).toBe("4000");
     expect(p.total.toString()).toBe("3900");
     const b = await prisma.batch.findFirstOrThrow({ where: { medicineId: m.id } });
     expect(b.quantity).toBe(100);
     expect(await prisma.stockMovement.count({ where: { type: "PURCHASE", batchId: b.id } })).toBe(1);
     expect((await supplierBalance(prisma, s.id)).toString()).toBe("2900");
-    await paySupplier(s.id, { amount: 2900, method: "CASH" }, u.id);
+    await paySupplier(ctxOf(u), s.id, { amount: 2900, method: "CASH" });
     expect((await supplierBalance(prisma, s.id)).toString()).toBe("0");
-    await expect(paySupplier(s.id, { amount: 1, method: "CASH" }, u.id)).rejects.toThrow(/more than the outstanding/);
+    await expect(paySupplier(ctxOf(u), s.id, { amount: 1, method: "CASH" })).rejects.toThrow(/more than the outstanding/);
   });
 
   it("adds to an existing batch but refuses a different expiry for the same batch number", async () => {
     const u = await makeUser("ADMIN");
     const s = await makeSupplier();
     const m = await makeMedicine();
-    await createPurchase(input(s.id, m.id), u.id);
-    await createPurchase(input(s.id, m.id), u.id);
+    await createPurchase(ctxOf(u), input(s.id, m.id));
+    await createPurchase(ctxOf(u), input(s.id, m.id));
     expect((await prisma.batch.findFirstOrThrow({ where: { medicineId: m.id } })).quantity).toBe(200);
     const bad = input(s.id, m.id, { items: [{ medicineId: m.id, batchNumber: "B1", expiryDate: inDays(10), quantity: 5, purchasePrice: 40, salePrice: 50 }] });
-    await expect(createPurchase(bad, u.id)).rejects.toThrow(/different expiry/);
+    await expect(createPurchase(ctxOf(u), bad)).rejects.toThrow(/different expiry/);
     expect(await prisma.purchase.count()).toBe(2); // failed purchase rolled back
   });
 
@@ -47,8 +47,8 @@ describe("purchases", () => {
     const s = await makeSupplier();
     const m = await makeMedicine();
     const expired = input(s.id, m.id, { items: [{ medicineId: m.id, batchNumber: "E", expiryDate: inDays(-1), quantity: 5, purchasePrice: 1, salePrice: 2 }] });
-    await expect(createPurchase(expired, u.id)).rejects.toThrow(/expired/);
-    await expect(createPurchase(input(s.id, m.id, { paid: 999999 }), u.id)).rejects.toThrow(/exceed/);
+    await expect(createPurchase(ctxOf(u), expired)).rejects.toThrow(/expired/);
+    await expect(createPurchase(ctxOf(u), input(s.id, m.id, { paid: 999999 }))).rejects.toThrow(/exceed/);
   });
 });
 
@@ -57,8 +57,8 @@ describe("stock adjustments", () => {
     const u = await makeUser("PHARMACIST");
     const m = await makeMedicine();
     const b = await makeBatch(m.id, "A", 60, 10);
-    await expect(adjustStock({ batchId: b.id, kind: "REMOVE", quantity: 11, note: "count" }, u.id)).rejects.toThrow(/Only 10/);
-    await adjustStock({ batchId: b.id, kind: "EXPIRY", quantity: 4, note: "expired stock" }, u.id);
+    await expect(adjustStock(ctxOf(u), { batchId: b.id, kind: "REMOVE", quantity: 11, note: "count" })).rejects.toThrow(/Only 10/);
+    await adjustStock(ctxOf(u), { batchId: b.id, kind: "EXPIRY", quantity: 4, note: "expired stock" });
     expect((await prisma.batch.findUniqueOrThrow({ where: { id: b.id } })).quantity).toBe(6);
     expect(await prisma.stockMovement.findFirstOrThrow({ where: { type: "EXPIRY" } })).toMatchObject({ quantity: -4, balanceAfter: 6 });
   });

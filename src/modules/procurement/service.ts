@@ -1,4 +1,5 @@
-import { prisma } from "@/lib/prisma";
+import { runInTx } from "@/lib/db";
+import type { ServiceContext } from "@/modules/identity";
 import { AppError } from "@/lib/errors";
 import { todayStr, dateOnly } from "@/lib/dates";
 import { D, ZERO } from "@/lib/money";
@@ -17,9 +18,10 @@ export type PurchaseInput = {
 };
 
 /** Records a purchase invoice: creates/updates batches, increases stock, writes movements and the supplier ledger. */
-export async function createPurchase(input: PurchaseInput, userId: string) {
+export async function createPurchase(ctx: ServiceContext, input: PurchaseInput) {
   const today = todayStr();
-  return prisma.$transaction(async (tx) => {
+  const userId = ctx.actor.id;
+  return runInTx(ctx, async (tx) => {
     const supplier = await tx.supplier.findUnique({ where: { id: input.supplierId } });
     if (!supplier) throw new AppError(404, "Supplier not found.");
     if (!supplier.active) throw new AppError(409, "This supplier is inactive.");
@@ -80,8 +82,9 @@ export async function createPurchase(input: PurchaseInput, userId: string) {
 }
 
 /** We pay a supplier. */
-export async function paySupplier(supplierId: string, input: PaymentInput, userId: string) {
-  return prisma.$transaction(async (tx) => {
+export async function paySupplier(ctx: ServiceContext, supplierId: string, input: PaymentInput) {
+  const userId = ctx.actor.id;
+  return runInTx(ctx, async (tx) => {
     const supplier = await tx.supplier.findUnique({ where: { id: supplierId } });
     if (!supplier) throw new AppError(404, "Supplier not found.");
     const amount = D(input.amount).toDecimalPlaces(2);

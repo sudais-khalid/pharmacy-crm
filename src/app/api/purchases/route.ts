@@ -16,6 +16,6 @@ export const GET = route("purchases.view", async ({ req }) => {
   return { total, page, pageSize, items };
 });
 
-export const POST = route("purchases.create", async ({ req, user }) => createPurchase(purchaseSchema.parse(await readJson(req)), user.id));
+export const POST = route("purchases.create", async ({ req, svc }) => createPurchase(svc, purchaseSchema.parse(await readJson(req))));
 
 export const dynamic = "force-dynamic";

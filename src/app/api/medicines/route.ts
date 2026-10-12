@@ -5,7 +5,7 @@ import { medicineSchema, createMedicine } from "@/modules/catalog";
 import { sellableStock } from "@/modules/inventory";
 import { todayStr, dateOnly } from "@/lib/dates";
 
-export const GET = route("medicines.view", async ({ req }) => {
+export const GET = route("medicines.view", async ({ req, svc }) => {
   const { page, pageSize, skip, take, sp } = pageParams(req);
   const q = sp.get("q")?.trim();
   const categoryId = sp.get("categoryId");
@@ -28,7 +28,7 @@ export const GET = route("medicines.view", async ({ req }) => {
 
   if (stockFilter === "low" || stockFilter === "out") {
     const candidates = await prisma.medicine.findMany({ where, select: { id: true, minStock: true } });
-    const stock = await sellableStock(candidates.map((c) => c.id));
+    const stock = await sellableStock(svc, candidates.map((c) => c.id));
     const ids = candidates
       .filter((c) => {
         const s = stock.get(c.id) ?? 0;
@@ -46,7 +46,7 @@ export const GET = route("medicines.view", async ({ req }) => {
     prisma.medicine.findMany({ where, orderBy, skip, take, include: { category: { select: { id: true, name: true } } } }),
   ]);
   const ids = rows.map((r) => r.id);
-  const stock = await sellableStock(ids);
+  const stock = await sellableStock(svc, ids);
   const expired = await prisma.batch.groupBy({
     by: ["medicineId"],
     where: { medicineId: { in: ids }, expiryDate: { lt: dateOnly(todayStr()) }, quantity: { gt: 0 } },
@@ -56,9 +56,9 @@ export const GET = route("medicines.view", async ({ req }) => {
   return { total, page, pageSize, items: rows.map((r) => ({ ...r, stock: stock.get(r.id) ?? 0, expiredStock: expMap.get(r.id) ?? 0 })) };
 });
 
-export const POST = route("medicines.manage", async ({ req, user }) => {
+export const POST = route("medicines.manage", async ({ req, svc }) => {
   const data = medicineSchema.parse(await readJson(req));
-  return createMedicine(data, user.id);
+  return createMedicine(svc, data);
 });
 
 export const dynamic = "force-dynamic";

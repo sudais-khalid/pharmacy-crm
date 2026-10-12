@@ -1,12 +1,13 @@
 import { MovementType } from "@prisma/client";
-import { prisma, type Tx } from "@/lib/prisma";
+import { runInTx, dbOf, type DbContext } from "@/lib/db";
+import type { ServiceContext } from "@/modules/identity";
 import { AppError } from "@/lib/errors";
 import { todayStr, dateOnly } from "@/lib/dates";
 
 /** Sellable stock (non-expired batches) per medicine id. */
-export async function sellableStock(medicineIds: string[], db: Tx | typeof prisma = prisma) {
+export async function sellableStock(ctx: DbContext, medicineIds: string[]) {
   if (!medicineIds.length) return new Map<string, number>();
-  const rows = await db.batch.groupBy({
+  const rows = await dbOf(ctx).batch.groupBy({
     by: ["medicineId"],
     where: { medicineId: { in: medicineIds }, expiryDate: { gte: dateOnly(todayStr()) } },
     _sum: { quantity: true },
@@ -17,8 +18,9 @@ export async function sellableStock(medicineIds: string[], db: Tx | typeof prism
 export type AdjustInput = { batchId: string; kind: "ADD" | "REMOVE" | "DAMAGE" | "EXPIRY"; quantity: number; note: string };
 
 /** Manual stock change. Always writes a stock movement and can never push a batch below zero. */
-export async function adjustStock(input: AdjustInput, userId: string) {
-  return prisma.$transaction(async (tx) => {
+export async function adjustStock(ctx: ServiceContext, input: AdjustInput) {
+  const userId = ctx.actor.id;
+  return runInTx(ctx, async (tx) => {
     const batch = await tx.batch.findUnique({ where: { id: input.batchId } });
     if (!batch) throw new AppError(404, "Batch not found.");
     const delta = input.kind === "ADD" ? input.quantity : -input.quantity;
