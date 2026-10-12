@@ -9,6 +9,7 @@ export const dynamic = "force-dynamic";
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const user = await getSessionUser();
   if (!user) redirect("/login");
+  if (user.mustChangePassword) redirect("/account/password");
   const settings = await tenantTransaction(user.pharmacyId, (tx) => getSettings(tx, user.pharmacyId));
   return <Shell ctx={{ user, permissions: [...ROLE_PERMISSIONS[user.role]], settings }}>{children}</Shell>;
 }

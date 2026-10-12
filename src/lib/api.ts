@@ -22,6 +22,8 @@ type RouteOptions = {
    * instead of running again.
    */
   idempotent?: boolean;
+  /** Reachable while the account still has to replace a temporary password (only the change itself). */
+  allowPasswordChange?: boolean;
 };
 
 /** Client address and user agent for the audit log. */
@@ -40,6 +42,9 @@ export function route(permission: Permission | null, fn: (ctx: Ctx) => Promise<u
       assertSameOrigin(req);
       const user = await getSessionUser({ refresh: true });
       if (!user) throw new AppError(401, "You are not signed in.");
+      if (user.mustChangePassword && !options.allowPasswordChange) {
+        throw new AppError(403, "Choose a new password before continuing.", { code: "PASSWORD_CHANGE_REQUIRED" });
+      }
       if (permission && !can(user.role, permission)) throw new AppError(403, "You do not have permission to do this.");
       const base = { req, user, params: await params, svc: serviceContext(user, user.pharmacyId, requestMeta(req)) };
       const run = (tx: Tx) => fn({ ...base, db: tx, svc: { ...base.svc, tx } });

@@ -4,3 +4,4 @@ export { serviceContext, type Actor, type RequestMeta, type ServiceContext } fro
 export { loginSchema, userCreateSchema, userUpdateSchema } from "./schema";
 export { createUser, updateUser, forceLogout, usernameFromEmail, type UserCreateInput, type UserUpdateInput } from "./service";
 export { ensurePlatformOwner, platformPasswordLogin, startTotpEnrolment, confirmTotpEnrolment, verifySecondFactor, recoverPlatformOwner } from "./platform-auth";
+export { issueStaffToken, inspectStaffToken, redeemStaffToken, changeOwnPassword, checkNewPassword, type TokenPurpose, type Issuer } from "./tokens";

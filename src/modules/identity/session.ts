@@ -3,7 +3,7 @@ import { platformDb } from "@/lib/platform-db";
 import { SESSION_COOKIES, SESSION_MAX_AGE_S, signSession, verifySession, needsRefresh, type SessionRealm, type VerifiedSession } from "@/lib/session-token";
 import type { Role } from "./permissions";
 
-export type SessionUser = { id: string; name: string; email: string; username: string; role: Role; pharmacyId: string };
+export type SessionUser = { id: string; name: string; email: string; username: string; role: Role; pharmacyId: string; mustChangePassword: boolean };
 export type PlatformSessionUser = { id: string; name: string; email: string; mfa: boolean; totpEnabled: boolean };
 
 const cookieOptions = (realm: SessionRealm) => ({
@@ -41,11 +41,11 @@ export async function loadStaffSession(session: VerifiedSession | null): Promise
   if (!session?.pid) return null;
   const user = await platformDb.user.findUnique({
     where: { id: session.sub },
-    select: { id: true, name: true, email: true, username: true, role: true, active: true, isSystem: true, pharmacyId: true, sessionVersion: true },
+    select: { id: true, name: true, email: true, username: true, role: true, active: true, isSystem: true, pharmacyId: true, sessionVersion: true, mustChangePassword: true },
   });
   if (!user || !user.active || user.isSystem) return null;
   if (user.pharmacyId !== session.pid || user.sessionVersion !== session.sv) return null;
-  return { id: user.id, name: user.name, email: user.email, username: user.username, role: user.role, pharmacyId: user.pharmacyId, sessionVersion: user.sessionVersion };
+  return { id: user.id, name: user.name, email: user.email, username: user.username, role: user.role, pharmacyId: user.pharmacyId, mustChangePassword: user.mustChangePassword, sessionVersion: user.sessionVersion };
 }
 
 /** Logged-in staff member, or null. With `refresh`, re-issues an ageing token (only allowed in route handlers). */
