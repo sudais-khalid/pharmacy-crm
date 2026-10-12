@@ -14,10 +14,11 @@ This folder is the plan for taking the current Pharmacy CRM from a working first
 
 ## Summary
 
-- **Style**: modular monolith (Next.js app plus a worker process) on PostgreSQL, which also serves as the job queue and search engine. No extra infrastructure.
-- **Roles**: Developer Admin, Super Admin, Pharmacist, Cashier, with roles stored in the database and permissions defined in code.
-- **Headline features**: 30-day expiry alerts, stock in and out card, OCR bill entry from a phone photo with mandatory review, supplier purchase orders with reorder suggestions, thermal retail bills with customer name and phone, cash sessions, returns, expenses and net profit, daily and monthly sales and purchase reports.
-- **Delivery**: eight phases over about ten to eleven weeks for one developer. Each phase ends in a tested, tagged release.
+- **Product**: a multi-pharmacy platform. The Developer (platform owner) creates and controls pharmacies; each pharmacy runs its own staff, roles, branding and customers, fully isolated from the others.
+- **Style**: modular monolith (Next.js app plus a worker process) on PostgreSQL, which also serves as job queue and search engine. Tenant isolation through a `pharmacyId` column and Row-Level Security.
+- **Roles**: Developer (permanent, platform level), Pharmacy Admin (all access in their pharmacy, branding, roles, passwords), Pharmacist (stock, supplier catalogs, orders, OCR review), Cashier (cash and print), custom roles, and Customers with their own portal login.
+- **Headline features**: 30-day expiry alerts, stock in and out card, OCR bill entry from a phone photo with mandatory review, supplier catalogs and purchase orders with reorder suggestions, thermal retail bills with customer name and phone, cash sessions, returns, expenses and net profit, daily and monthly sales and purchase reports, customer online orders with stock reservation.
+- **Delivery**: ten phases over about fourteen weeks for one developer, with an early go-live option after Phase 5. Each phase ends in a tested, tagged release. Start with section 3 of the roadmap.
 
 ## How to use this plan
 
