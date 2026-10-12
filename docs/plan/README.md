@@ -18,7 +18,8 @@ This folder is the plan for taking the current Pharmacy CRM from a working first
 - **Style**: modular monolith (Next.js app plus a worker process) on PostgreSQL, which also serves as job queue and search engine. Tenant isolation through a `pharmacyId` column and Row-Level Security.
 - **Roles**: Developer (permanent, platform level), Pharmacy Admin (all access in their pharmacy, branding, roles, passwords), Pharmacist (stock entry and review, supplier catalogs, orders), Cashier (cash and print), and custom roles.
 - **Headline features**: stock entry both manually and by OCR of a photo (supplier bills and stock lists) on one review grid, 30-day expiry alerts, stock in and out card, supplier catalogs and purchase orders with reorder suggestions, thermal retail bills with customer name and phone, cash sessions, returns, expenses and net profit, daily and monthly sales and purchase reports.
-- **Delivery**: nine phases over about twelve to thirteen weeks for one developer, with stock entry and OCR in Phase 3 and an early go-live option after Phase 4. Each phase ends in a tested, tagged release. Start with section 3 of the roadmap.
+- **Deployment**: a Windows `.exe` installer (Electron with embedded PostgreSQL) for a pharmacy PC that works offline, and Docker for hosting many pharmacies on a server. Same code in both. After installing, the Developer logs in and creates the pharmacy.
+- **Delivery**: ten phases over about thirteen to fourteen weeks for one developer, with the desktop installer in Phase 2, stock entry and OCR in Phase 4, and an early go-live option after Phase 5. Each phase ends in a tested, tagged release. Start with section 3 of the roadmap.
 
 ## How to use this plan
 
