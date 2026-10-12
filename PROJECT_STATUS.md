@@ -1,6 +1,22 @@
 # Project status
 
-## Completed (built, tested, working end-to-end)
+## Current phase
+Phase 0 (foundation) is complete and tagged `v1.0.0`. Next: Phase 1, tenancy and the platform console (see `docs/plan/05-roadmap.md`).
+
+## Phase 0 delivered
+- Next.js 15.5 and React 19 (14.x is end of life and affected by a critical Windows remote code execution advisory); production dependency audit clean
+- CI workflow: audit, typecheck, lint, module boundaries, migration drift check, integration tests on PostgreSQL 16, build, HTTP smoke test
+- Business logic in `src/modules/*` behind `index.ts`, boundaries enforced by dependency-cruiser; every service takes a context (actor, pharmacy, transaction)
+- Append-only audit log and transactional outbox on every write path; idempotent money and stock writes (`Idempotency-Key`)
+- Cross-site write protection, PostgreSQL-backed login rate limit, proxy-aware client IP
+- Trigram search indexes; database time zone pinned to UTC
+- Background worker (pg-boss and outbox dispatcher) in its own process and Docker service
+- Design tokens, self-hosted Fira fonts, UI kit split per component
+- Structured JSON logging and a public `/api/health`
+- Desktop proof of concept: Electron with embedded PostgreSQL works on Windows (`docs/plan/06-desktop-poc.md`)
+- 47 integration tests and 59 smoke checks
+
+## Original features (built, tested, working end to end)
 - Auth: login/logout, bcrypt hashing, signed httpOnly session cookie, login rate limiting, route protection (middleware + server-side checks)
 - Roles & permissions: Admin / Pharmacist / Cashier, 20 granular permissions enforced in every API route
 - Dashboard (live DB): today's sales/profit, customers, medicines, low stock, expiring, expired, receivables/payables, 14-day sales chart, top sellers, tables
