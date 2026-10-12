@@ -4,7 +4,7 @@ import { serviceContext } from "@/modules/identity";
 
 export async function resetDb() {
   await prisma.$executeRawUnsafe(
-    `TRUNCATE "StockMovement","SaleItem","PurchaseItem","CustomerLedger","SupplierLedger","Sale","Purchase","Batch","Medicine","Category","Customer","Supplier","User" RESTART IDENTITY CASCADE`,
+    `TRUNCATE "AuditLog","OutboxEvent","IdempotencyKey","RateLimitHit","StockMovement","SaleItem","PurchaseItem","CustomerLedger","SupplierLedger","Sale","Purchase","Batch","Medicine","Category","Customer","Supplier","User" RESTART IDENTITY CASCADE`,
   );
 }
 

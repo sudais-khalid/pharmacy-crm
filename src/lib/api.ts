@@ -1,22 +1,48 @@
 import { NextRequest, NextResponse } from "next/server";
 import { Prisma } from "@prisma/client";
 import { ZodError } from "zod";
-import { getSessionUser, type SessionUser, can, type Permission, serviceContext, type ServiceContext } from "@/modules/identity";
+import { getSessionUser, type SessionUser, can, type Permission, serviceContext, type ServiceContext, type RequestMeta } from "@/modules/identity";
 import { AppError } from "./errors";
+import { IDEMPOTENCY_HEADER, withIdempotency } from "./idempotency";
 
 export { AppError };
 
 /** `svc` is the context to pass to module services. */
 type Ctx = { req: NextRequest; user: SessionUser; params: Record<string, string>; svc: ServiceContext };
 
+type RouteOptions = {
+  /**
+   * Honour an `Idempotency-Key` header: a retried request with the same key gets the stored response
+   * instead of running again. The handler then runs inside the transaction given in `svc.tx`.
+   */
+  idempotent?: boolean;
+};
+
+/** Client address and user agent for the audit log. */
+export function requestMeta(req: NextRequest): RequestMeta {
+  const forwarded = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim();
+  return { ip: forwarded || req.headers.get("x-real-ip") || null, userAgent: req.headers.get("user-agent") };
+}
+
 /** Wraps an API handler with authentication, permission check and uniform error handling. */
-export function route(permission: Permission | null, fn: (ctx: Ctx) => Promise<unknown>) {
+export function route(permission: Permission | null, fn: (ctx: Ctx) => Promise<unknown>, options: RouteOptions = {}) {
   return async (req: NextRequest, { params }: { params: Promise<Record<string, string>> }) => {
     try {
       const user = await getSessionUser();
       if (!user) throw new AppError(401, "You are not signed in.");
       if (permission && !can(user.role, permission)) throw new AppError(403, "You do not have permission to do this.");
-      const data = await fn({ req, user, params: await params, svc: serviceContext(user) });
+      const ctx: Ctx = { req, user, params: await params, svc: serviceContext(user, null, requestMeta(req)) };
+
+      const key = options.idempotent ? req.headers.get(IDEMPOTENCY_HEADER) : null;
+      if (key) {
+        const result = await withIdempotency(
+          { key, actorId: user.id, route: `${req.method} ${req.nextUrl.pathname}`, rawBody: await req.clone().text() },
+          (tx) => fn({ ...ctx, svc: { ...ctx.svc, tx } }),
+        );
+        return NextResponse.json(result.body ?? { ok: true }, result.replayed ? { headers: { "Idempotent-Replayed": "true" } } : undefined);
+      }
+
+      const data = await fn(ctx);
       return NextResponse.json(data ?? { ok: true });
     } catch (e) {
       return errorResponse(e);
