@@ -67,6 +67,14 @@ jobs:
           printf 'DATABASE_URL="%s"\nJWT_SECRET="%s"\nAPP_TIMEZONE="%s"\n' "$TEST_DATABASE_URL" "$JWT_SECRET" "$APP_TIMEZONE" > .env.test
           DATABASE_URL="$TEST_DATABASE_URL" npx prisma migrate deploy
 
+      - name: Migrations match the Prisma schema
+        env:
+          PGPASSWORD: ci_password
+          SHADOW_DATABASE_URL: postgresql://pharmacy:ci_password@localhost:5432/pharmacy_crm_shadow
+        run: |
+          psql -h localhost -U pharmacy -d pharmacy_crm_test -c "CREATE DATABASE pharmacy_crm_shadow"
+          npm run db:check
+
       - name: Integration tests
         run: npm test
 

@@ -92,6 +92,10 @@ model Medicine {
   @@index([name])
   @@index([genericName])
   @@index([categoryId])
+  @@index([name(ops: raw("gin_trgm_ops"))], type: Gin, map: "Medicine_name_trgm_idx")
+  @@index([genericName(ops: raw("gin_trgm_ops"))], type: Gin, map: "Medicine_genericName_trgm_idx")
+  @@index([barcode(ops: raw("gin_trgm_ops"))], type: Gin, map: "Medicine_barcode_trgm_idx")
+  @@index([sku(ops: raw("gin_trgm_ops"))], type: Gin, map: "Medicine_sku_trgm_idx")
 }
 
 // Stock is held per batch. A medicine's stock is the sum of its non-expired batches.
@@ -114,6 +118,7 @@ model Batch {
   @@unique([medicineId, batchNumber])
   @@index([medicineId, expiryDate])
   @@index([expiryDate])
+  @@index([batchNumber(ops: raw("gin_trgm_ops"))], type: Gin, map: "Batch_batchNumber_trgm_idx")
 }
 
 // Every change to a batch quantity writes one row here. quantity is signed.
@@ -155,6 +160,8 @@ model Customer {
 
   @@index([name])
   @@index([phone])
+  @@index([name(ops: raw("gin_trgm_ops"))], type: Gin, map: "Customer_name_trgm_idx")
+  @@index([phone(ops: raw("gin_trgm_ops"))], type: Gin, map: "Customer_phone_trgm_idx")
 }
 
 // balance owed by customer = SUM(debit) - SUM(credit)
@@ -194,6 +201,7 @@ model Supplier {
   ledger    SupplierLedger[]
 
   @@index([name])
+  @@index([name(ops: raw("gin_trgm_ops"))], type: Gin, map: "Supplier_name_trgm_idx")
 }
 
 // payable to supplier = SUM(debit) - SUM(credit)   (debit = purchase invoice, credit = payment)
@@ -284,6 +292,7 @@ model Sale {
   @@index([createdAt])
   @@index([customerId])
   @@index([userId])
+  @@index([invoiceNo(ops: raw("gin_trgm_ops"))], type: Gin, map: "Sale_invoiceNo_trgm_idx")
 }
 
 model SaleItem {
