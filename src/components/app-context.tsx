@@ -2,7 +2,7 @@
 import { createContext, useContext } from "react";
 
 export type Settings = { pharmacyName: string; address: string; phone: string; email: string; invoiceFooter: string; expiryWarningDays: number; currency: string };
-export type AppCtx = { user: { id: string; name: string; email: string; role: string }; permissions: string[]; settings: Settings; pharmacyStatus?: string };
+export type AppCtx = { user: { id: string; name: string; email: string; role: string }; permissions: string[]; settings: Settings; pharmacyStatus?: string; support?: { devName: string; reason: string } };
 
 export const AppContext = createContext<AppCtx | null>(null);
 export const useApp = () => {

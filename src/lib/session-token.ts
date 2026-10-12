@@ -5,15 +5,18 @@ import { SignJWT, jwtVerify } from "jose";
  * The realm is the JWT audience, so a token from one realm is rejected by the others.
  * Dependency free (jose only) so the Edge middleware can verify tokens too.
  */
-export type SessionRealm = "staff" | "platform";
+export type SessionRealm = "staff" | "platform" | "support";
 
-export const SESSION_COOKIES: Record<SessionRealm, string> = { staff: "pcrm_staff", platform: "pcrm_platform" };
-export const SESSION_MAX_AGE_S: Record<SessionRealm, number> = { staff: 8 * 3600, platform: 2 * 3600 };
+export const SESSION_COOKIES: Record<SessionRealm, string> = { staff: "pcrm_staff", platform: "pcrm_platform", support: "pcrm_support" };
+export const SESSION_MAX_AGE_S: Record<SessionRealm, number> = { staff: 8 * 3600, platform: 2 * 3600, support: 2 * 3600 };
 
 const ISSUER = "pharmacy-crm";
 
-/** Claims: sub = account id, sv = session version (bumped to revoke), pid = pharmacy, mfa = second factor done. */
-export type SessionClaims = { sub: string; sv: number; pid?: string; mfa?: boolean };
+/**
+ * Claims: sub = account id, sv = session version (bumped to revoke), pid = pharmacy, mfa = second factor done,
+ * ssid = support session (support realm: the Developer working inside a pharmacy).
+ */
+export type SessionClaims = { sub: string; sv: number; pid?: string; mfa?: boolean; ssid?: string };
 export type VerifiedSession = SessionClaims & { iat: number; exp: number };
 
 function key() {
@@ -39,8 +42,9 @@ export async function verifySession(realm: SessionRealm, token: string | undefin
   try {
     const { payload } = await jwtVerify(token, key(), { audience: realm, issuer: ISSUER, algorithms: ["HS256"] });
     if (typeof payload.sub !== "string" || typeof payload.sv !== "number" || !payload.iat || !payload.exp) return null;
-    if (realm === "staff" && typeof payload.pid !== "string") return null;
-    return { sub: payload.sub, sv: payload.sv, pid: payload.pid as string | undefined, mfa: payload.mfa === true, iat: payload.iat, exp: payload.exp };
+    if ((realm === "staff" || realm === "support") && typeof payload.pid !== "string") return null;
+    if (realm === "support" && typeof payload.ssid !== "string") return null;
+    return { sub: payload.sub, sv: payload.sv, pid: payload.pid as string | undefined, mfa: payload.mfa === true, ssid: payload.ssid as string | undefined, iat: payload.iat, exp: payload.exp };
   } catch {
     return null;
   }

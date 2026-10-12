@@ -2,8 +2,8 @@
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft } from "lucide-react";
-import { Badge, Button, Card, EmptyState, ErrorBox, Field, Input, PageHeader, Select, Spinner, TableWrap, Tabs, useToast } from "@/components/ui";
+import { ArrowLeft, LifeBuoy } from "lucide-react";
+import { Badge, Button, Card, EmptyState, ErrorBox, Field, Input, Modal, PageHeader, Select, Spinner, TableWrap, Tabs, useToast } from "@/components/ui";
 import { ApiError, api, formatDate, formatDateTime, useApi } from "@/lib/client";
 import { StatusBadge, STATUS_LABEL, type PharmacyStatus } from "../../status-badge";
 
@@ -32,7 +32,11 @@ export default function PharmacyDetailPage() {
   return (
     <>
       <Link href="/platform/pharmacies" className="mb-3 inline-flex items-center gap-1 text-sm text-fg-muted hover:text-fg"><ArrowLeft className="h-4 w-4" aria-hidden /> Pharmacies</Link>
-      <PageHeader title={p.name} subtitle={`/p/${p.slug} · created ${formatDate(p.createdAt)}`} actions={<StatusBadge status={p.status} />} />
+      <PageHeader
+        title={p.name}
+        subtitle={`/p/${p.slug} · created ${formatDate(p.createdAt)}`}
+        actions={<><StatusBadge status={p.status} /><SupportButton pharmacyId={p.id} pharmacyName={p.name} /></>}
+      />
       <Tabs<Tab> value={tab} onChange={setTab} tabs={[{ id: "profile", label: "Profile" }, { id: "status", label: "Status" }, { id: "staff", label: `Staff (${data.staff.length})` }, { id: "features", label: "Features" }, { id: "activity", label: "Activity" }]} />
       {tab === "profile" && <ProfileTab detail={data} onSaved={reload} />}
       {tab === "status" && <StatusTab detail={data} onSaved={reload} />}
@@ -209,5 +213,36 @@ function StatusTab({ detail, onSaved }: { detail: Detail; onSaved: () => void })
         </form>
       </Card>
     </div>
+  );
+}
+
+/** Opens the pharmacy app as platform support (Pharmacy Admin rights, every action logged). */
+function SupportButton({ pharmacyId, pharmacyName }: { pharmacyId: string; pharmacyName: string }) {
+  const toast = useToast();
+  const [open, setOpen] = useState(false);
+  const [reason, setReason] = useState("");
+  const [busy, setBusy] = useState(false);
+  async function start(e: React.FormEvent) {
+    e.preventDefault();
+    setBusy(true);
+    try {
+      const r = await api<{ redirect: string }>(`/api/platform/pharmacies/${pharmacyId}/support`, { body: { reason } });
+      window.location.href = r.redirect;
+    } catch (err) {
+      toast.error((err as Error).message);
+      setBusy(false);
+    }
+  }
+  return (
+    <>
+      <Button variant="secondary" onClick={() => setOpen(true)}><LifeBuoy className="h-4 w-4" aria-hidden /> Open as support</Button>
+      <Modal open={open} onClose={() => setOpen(false)} title={`Open ${pharmacyName} as support`}
+        footer={<><Button variant="secondary" onClick={() => setOpen(false)}>Cancel</Button><Button type="submit" form="support-form" loading={busy}>Open pharmacy</Button></>}>
+        <form id="support-form" onSubmit={start} className="space-y-3 text-sm">
+          <p>You will use the pharmacy app with Pharmacy Admin rights for up to two hours. Every action is recorded as platform support and is visible to the pharmacy.</p>
+          <Field label="Reason *"><Input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="e.g. Owner asked for help importing stock" required data-autofocus /></Field>
+        </form>
+      </Modal>
+    </>
   );
 }

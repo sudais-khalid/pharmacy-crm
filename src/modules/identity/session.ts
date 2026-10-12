@@ -2,9 +2,14 @@ import { cookies } from "next/headers";
 import { platformDb } from "@/lib/platform-db";
 import { SESSION_COOKIES, SESSION_MAX_AGE_S, signSession, verifySession, needsRefresh, type SessionRealm, type VerifiedSession } from "@/lib/session-token";
 import type { Role } from "./permissions";
+import { loadSupportSession, type SupportInfo } from "./support";
 
-export type SessionUser = { id: string; name: string; email: string; username: string; role: Role; pharmacyId: string; mustChangePassword: boolean };
-export type PlatformSessionUser = { id: string; name: string; email: string; mfa: boolean; totpEnabled: boolean };
+export type SessionUser = {
+  id: string; name: string; email: string; username: string; role: Role; pharmacyId: string; mustChangePassword: boolean;
+  /** Set when the Developer is working inside the pharmacy (platform support). */
+  support?: SupportInfo;
+};
+export type PlatformSessionUser = { id: string; name: string; email: string; mfa: boolean; totpEnabled: boolean; sessionVersion: number };
 
 /** Pharmacies in these states cannot be used by their staff (the Developer can still open them). */
 export const BLOCKED_STATUSES: string[] = ["SUSPENDED", "DEACTIVATED"];
@@ -52,8 +57,17 @@ export async function loadStaffSession(session: VerifiedSession | null): Promise
   return { id: user.id, name: user.name, email: user.email, username: user.username, role: user.role, pharmacyId: user.pharmacyId, mustChangePassword: user.mustChangePassword, sessionVersion: user.sessionVersion };
 }
 
-/** Logged-in staff member, or null. With `refresh`, re-issues an ageing token (only allowed in route handlers). */
+/**
+ * Logged-in staff member, or null. A platform support session, when present, takes precedence: the
+ * Developer chose to work inside this pharmacy. With `refresh`, re-issues an ageing staff token
+ * (only allowed in route handlers).
+ */
 export async function getSessionUser(opts: { refresh?: boolean } = {}): Promise<SessionUser | null> {
+  const supportToken = await readToken("support");
+  if (supportToken) {
+    const support = await loadSupportSession(await verifySession("support", supportToken));
+    if (support) return support;
+  }
   const session = await verifySession("staff", await readToken("staff"));
   const user = await loadStaffSession(session);
   if (!user) return null;
@@ -85,6 +99,15 @@ export async function getPlatformUser(opts: { requireMfa?: boolean; refresh?: bo
   if (!dev) return null;
   if ((opts.requireMfa ?? true) && !dev.mfa) return null;
   if (opts.refresh && session && needsRefresh(session)) await setPlatformSession(dev, dev.mfa);
-  const { sessionVersion: _sv, ...rest } = dev;
-  return rest;
+  return dev;
+}
+
+// ---------------------------------------------------------------- support realm
+
+export async function setSupportSession(dev: { id: string; sessionVersion: number }, pharmacyId: string, supportSessionId: string) {
+  await writeToken("support", await signSession("support", { sub: dev.id, sv: dev.sessionVersion, pid: pharmacyId, ssid: supportSessionId }));
+}
+
+export async function readSupportToken() {
+  return verifySession("support", await readToken("support"));
 }

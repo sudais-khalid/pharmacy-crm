@@ -4,7 +4,7 @@ import type { PharmacyStatus, Prisma } from "@prisma/client";
 import { platformDb } from "@/lib/platform-db";
 import { AppError } from "@/lib/errors";
 import { audit, FEATURE_KEYS, FEATURE_FLAGS, getFeatureFlags, type FeatureKey } from "@/modules/platform";
-import { issueStaffToken } from "@/modules/identity";
+import { ensureSupportAccount, issueStaffToken } from "@/modules/identity";
 import type { CreatePharmacyInput } from "./schema";
 
 /**
@@ -26,7 +26,6 @@ export function temporaryPassword() {
   return raw.match(/.{4}/g)!.join("-");
 }
 
-const SUPPORT_USERNAME = "platform-support";
 
 export async function createPharmacy(c: DevContext, input: CreatePharmacyInput) {
   const exists = await platformDb.pharmacy.findUnique({ where: { slug: input.pharmacy.slug } });
@@ -35,7 +34,7 @@ export async function createPharmacy(c: DevContext, input: CreatePharmacyInput) 
   if (emailTaken) throw new AppError(409, "This email is already used by another account.", { fields: { "admin.email": "Already used" } });
 
   const password = input.credentials === "password" ? temporaryPassword() : null;
-  const [adminHash, supportHash] = await Promise.all([password ? bcrypt.hash(password, 10) : unusableHash(), unusableHash()]);
+  const adminHash = password ? await bcrypt.hash(password, 10) : await unusableHash();
 
   const created = await platformDb.$transaction(async (tx) => {
     const { slug, ...profile } = input.pharmacy;
@@ -48,9 +47,7 @@ export async function createPharmacy(c: DevContext, input: CreatePharmacyInput) 
       },
     });
     // hidden account that platform support sessions act as (sales and stock rows need a staff user)
-    await tx.user.create({
-      data: { pharmacyId: pharmacy.id, name: "Platform support", username: SUPPORT_USERNAME, email: `support-${pharmacy.id}@system.invalid`, passwordHash: supportHash, role: "ADMIN", isSystem: true },
-    });
+    await ensureSupportAccount(tx, pharmacy.id);
     const admin = await tx.user.create({
       data: { pharmacyId: pharmacy.id, name: input.admin.name, username: input.admin.username, email: input.admin.email, passwordHash: adminHash, role: "ADMIN", mustChangePassword: !!password },
       select: { id: true, username: true, name: true },

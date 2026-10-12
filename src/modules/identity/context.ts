@@ -8,7 +8,14 @@ export type Actor = { id: string; role: Role };
 export type RequestMeta = { ip?: string | null; userAgent?: string | null };
 
 /** Context every business service receives as its first argument. */
-export type ServiceContext = DbContext & { actor: Actor; meta?: RequestMeta };
+export type ServiceContext = DbContext & {
+  actor: Actor;
+  meta?: RequestMeta;
+  /** Platform support: audit rows name the Developer and the support session instead of the support account. */
+  realm?: "STAFF" | "PLATFORM";
+  supportSessionId?: string | null;
+  auditActorId?: string;
+};
 
 export function serviceContext(actor: Actor, pharmacyId: string, meta?: RequestMeta): ServiceContext {
   return { actor: { id: actor.id, role: actor.role }, pharmacyId, meta };

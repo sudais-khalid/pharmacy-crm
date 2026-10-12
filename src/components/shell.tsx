@@ -39,6 +39,11 @@ export function Shell({ ctx, children }: { ctx: AppCtx; children: React.ReactNod
     router.refresh();
   }
 
+  async function endSupport() {
+    const r = await api<{ redirect: string }>("/api/platform/support/end", { body: {} }).catch(() => ({ redirect: "/platform/pharmacies" }));
+    window.location.href = r.redirect;
+  }
+
   const nav = (
     <nav aria-label="Main" className="flex-1 space-y-0.5 overflow-y-auto px-3 py-3">
       {items.map((n) => {
@@ -89,11 +94,17 @@ export function Shell({ ctx, children }: { ctx: AppCtx; children: React.ReactNod
               <p className="text-sm font-medium">{ctx.user.name}</p>
               <p className="text-xs capitalize text-slate-500">{ctx.user.role.toLowerCase()}</p>
             </div>
-            <button onClick={logout} className="inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800">
-              <LogOut className="h-4 w-4" aria-hidden /> <span className="hidden sm:inline">Logout</span>
+            <button onClick={ctx.support ? endSupport : logout} className="inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800">
+              <LogOut className="h-4 w-4" aria-hidden /> <span className="hidden sm:inline">{ctx.support ? "End support" : "Logout"}</span>
             </button>
           </div>
         </header>
+        {ctx.support && (
+          <div role="status" className="no-print sticky top-0 z-40 flex flex-wrap items-center justify-center gap-3 border-b border-amber-400 bg-amber-300 px-4 py-2 text-sm font-medium text-amber-950">
+            <span>Platform support session for {ctx.settings.pharmacyName} by {ctx.support.devName}. All actions are logged.</span>
+            <button onClick={endSupport} className="rounded-md bg-amber-950 px-2.5 py-1 text-xs font-semibold text-amber-50 hover:bg-amber-900">End session</button>
+          </div>
+        )}
         {ctx.pharmacyStatus === "GRACE" && (
           <div role="status" className="no-print border-b border-amber-300 bg-amber-50 px-4 py-2 text-center text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-200">
             The subscription for this pharmacy has ended. Everything keeps working for now; please contact your software provider to renew.

@@ -17,7 +17,9 @@ export async function middleware(req: NextRequest) {
     return ok ? NextResponse.next() : NextResponse.redirect(new URL("/platform/login", req.url));
   }
 
-  const staff = await verifySession("staff", req.cookies.get(SESSION_COOKIES.staff)?.value);
+  const staff =
+    (await verifySession("support", req.cookies.get(SESSION_COOKIES.support)?.value)) ??
+    (await verifySession("staff", req.cookies.get(SESSION_COOKIES.staff)?.value));
   if (pathname === "/login") return staff ? NextResponse.redirect(new URL("/dashboard", req.url)) : NextResponse.next();
   if (PUBLIC_PREFIXES.some((p) => pathname.startsWith(p))) return NextResponse.next();
   if (!staff) {

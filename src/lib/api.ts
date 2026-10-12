@@ -46,7 +46,9 @@ export function route(permission: Permission | null, fn: (ctx: Ctx) => Promise<u
         throw new AppError(403, "Choose a new password before continuing.", { code: "PASSWORD_CHANGE_REQUIRED" });
       }
       if (permission && !can(user.role, permission)) throw new AppError(403, "You do not have permission to do this.");
-      const base = { req, user, params: await params, svc: serviceContext(user, user.pharmacyId, requestMeta(req)) };
+      const svc = serviceContext(user, user.pharmacyId, requestMeta(req));
+      if (user.support) Object.assign(svc, { realm: "PLATFORM", supportSessionId: user.support.sessionId, auditActorId: user.support.devId });
+      const base = { req, user, params: await params, svc };
       const run = (tx: Tx) => fn({ ...base, db: tx, svc: { ...base.svc, tx } });
 
       const key = options.idempotent ? req.headers.get(IDEMPOTENCY_HEADER) : null;

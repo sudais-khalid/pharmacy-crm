@@ -18,6 +18,8 @@ export type AuditContext = {
   meta?: { ip?: string | null; userAgent?: string | null };
   realm?: "STAFF" | "PLATFORM";
   supportSessionId?: string | null;
+  /** Overrides actor.id in the audit row (platform support acts through the hidden support account). */
+  auditActorId?: string;
 };
 
 /** Appends one audit row inside the caller's transaction, so it can never disagree with the data. */
@@ -25,7 +27,7 @@ export async function audit(tx: Tx | PrismaClient, ctx: AuditContext, entry: Aud
   await tx.auditLog.create({
     data: {
       realm: ctx.realm ?? "STAFF",
-      actorId: ctx.actor.id,
+      actorId: ctx.auditActorId ?? ctx.actor.id,
       supportSessionId: ctx.supportSessionId ?? null,
       ...(entry.pharmacyId !== undefined ? { pharmacyId: entry.pharmacyId } : {}),
       action: entry.action,

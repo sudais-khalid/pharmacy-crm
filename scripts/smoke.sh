@@ -109,6 +109,13 @@ if [ -n "$PLATFORM_OWNER_EMAIL" ] && [ -n "$PLATFORM_OWNER_PASSWORD" ]; then
   ok "Developer forces a sign-out" "$(code -b /tmp/smoke_dev.jar -X POST $B/api/platform/accounts/$CASHIER_ID/logout -H 'content-type: application/json' -d '{}')" 200
   ok "Forced sign-out ends the live session" "$(code -b /tmp/smoke_cashier.jar $B/api/medicines)" 401
   ok "Accounts page renders" "$(code -b /tmp/smoke_dev.jar $B/platform/accounts)" 200
+  ok "Support session needs a reason" "$(code -b /tmp/smoke_dev.jar -c /tmp/smoke_dev.jar -X POST $B/api/platform/pharmacies/$DEMO/support -H 'content-type: application/json' -d '{"reason":""}')" 400
+  ok "Developer opens a pharmacy as support" "$(code -b /tmp/smoke_dev.jar -c /tmp/smoke_dev.jar -X POST $B/api/platform/pharmacies/$DEMO/support -H 'content-type: application/json' -d '{"reason":"smoke test support"}')" 200
+  ok "Support session acts as the hidden support account" "$(curl -s -b /tmp/smoke_dev.jar $B/api/auth/me | js "d['user']['name']")" "Platform support"
+  ok "Support session reads pharmacy data" "$(code -b /tmp/smoke_dev.jar $B/api/medicines)" 200
+  ok "Support session opens pharmacy pages" "$(code -b /tmp/smoke_dev.jar $B/dashboard)" 200
+  ok "Developer ends the support session" "$(curl -s -b /tmp/smoke_dev.jar -c /tmp/smoke_dev.jar -X POST $B/api/platform/support/end -H 'content-type: application/json' -d '{}' | js "d['redirect'].startswith('/platform/pharmacies/')")" True
+  ok "Ended support session has no pharmacy access" "$(code -b /tmp/smoke_dev.jar $B/api/medicines)" 401
 fi
 for p in /dashboard /pos /medicines /inventory /customers /suppliers /purchases /purchases/new /sales /reports /users /settings; do ok "Page $p renders" "$(code -b /tmp/smoke_admin.jar $B$p)" 200; done
 exit $fail
