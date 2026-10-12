@@ -6,6 +6,9 @@ import type { Role } from "./permissions";
 export type SessionUser = { id: string; name: string; email: string; username: string; role: Role; pharmacyId: string; mustChangePassword: boolean };
 export type PlatformSessionUser = { id: string; name: string; email: string; mfa: boolean; totpEnabled: boolean };
 
+/** Pharmacies in these states cannot be used by their staff (the Developer can still open them). */
+export const BLOCKED_STATUSES: string[] = ["SUSPENDED", "DEACTIVATED"];
+
 const cookieOptions = (realm: SessionRealm) => ({
   httpOnly: true,
   sameSite: "lax" as const,
@@ -41,10 +44,11 @@ export async function loadStaffSession(session: VerifiedSession | null): Promise
   if (!session?.pid) return null;
   const user = await platformDb.user.findUnique({
     where: { id: session.sub },
-    select: { id: true, name: true, email: true, username: true, role: true, active: true, isSystem: true, pharmacyId: true, sessionVersion: true, mustChangePassword: true },
+    select: { id: true, name: true, email: true, username: true, role: true, active: true, isSystem: true, pharmacyId: true, sessionVersion: true, mustChangePassword: true, pharmacy: { select: { status: true } } },
   });
   if (!user || !user.active || user.isSystem) return null;
   if (user.pharmacyId !== session.pid || user.sessionVersion !== session.sv) return null;
+  if (BLOCKED_STATUSES.includes(user.pharmacy.status)) return null;
   return { id: user.id, name: user.name, email: user.email, username: user.username, role: user.role, pharmacyId: user.pharmacyId, mustChangePassword: user.mustChangePassword, sessionVersion: user.sessionVersion };
 }
 

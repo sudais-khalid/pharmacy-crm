@@ -150,3 +150,21 @@ export async function recoverPlatformOwner(email: string, newPassword?: string) 
   await audit(platformDb, platformCtx(dev.id), { action: "platform.owner.recover", entity: "PlatformUser", entityId: dev.id, pharmacyId: null });
   return { email: dev.email, password };
 }
+
+/**
+ * Re-authentication for dangerous console actions (status changes, and later role or restore actions):
+ * a fresh authenticator code, each code usable once. The action itself is audited by its caller.
+ */
+export async function reauthenticateDeveloper(devId: string, code: string | undefined) {
+  if (!code) throw new AppError(400, "Enter a code from your authenticator app to confirm.", { fields: { code: "Required" } });
+  const bucket = `platform-reauth:${devId}`;
+  if (await isLimited(bucket, 6, WINDOW_MS)) throw new AppError(429, "Too many attempts. Try again in a few minutes.");
+  const dev = await platformDb.platformUser.findUniqueOrThrow({ where: { id: devId } });
+  if (!dev.totpSecret || !dev.totpEnabledAt) throw new AppError(409, "Two-factor sign-in is not set up.");
+  const step = verifyTotp(open(dev.totpSecret), code, { notAfterStep: dev.totpLastStep === null ? null : Number(dev.totpLastStep) });
+  if (step === null) {
+    await recordHit(bucket);
+    throw new AppError(401, "That code is not valid.", { fields: { code: "Not valid" } });
+  }
+  await platformDb.platformUser.update({ where: { id: devId }, data: { totpLastStep: BigInt(step) } });
+}

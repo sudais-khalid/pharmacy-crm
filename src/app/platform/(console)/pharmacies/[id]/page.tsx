@@ -3,9 +3,9 @@ import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
-import { Badge, Button, Card, EmptyState, ErrorBox, Field, Input, PageHeader, Spinner, TableWrap, Tabs, useToast } from "@/components/ui";
+import { Badge, Button, Card, EmptyState, ErrorBox, Field, Input, PageHeader, Select, Spinner, TableWrap, Tabs, useToast } from "@/components/ui";
 import { ApiError, api, formatDate, formatDateTime, useApi } from "@/lib/client";
-import { StatusBadge, type PharmacyStatus } from "../../status-badge";
+import { StatusBadge, STATUS_LABEL, type PharmacyStatus } from "../../status-badge";
 
 type Detail = {
   pharmacy: {
@@ -19,7 +19,7 @@ type Detail = {
   supportSessions: { id: string; reason: string; startedAt: string; endedAt: string | null }[];
 };
 
-type Tab = "profile" | "staff" | "features" | "activity";
+type Tab = "profile" | "status" | "staff" | "features" | "activity";
 
 export default function PharmacyDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -33,8 +33,9 @@ export default function PharmacyDetailPage() {
     <>
       <Link href="/platform/pharmacies" className="mb-3 inline-flex items-center gap-1 text-sm text-fg-muted hover:text-fg"><ArrowLeft className="h-4 w-4" aria-hidden /> Pharmacies</Link>
       <PageHeader title={p.name} subtitle={`/p/${p.slug} · created ${formatDate(p.createdAt)}`} actions={<StatusBadge status={p.status} />} />
-      <Tabs<Tab> value={tab} onChange={setTab} tabs={[{ id: "profile", label: "Profile" }, { id: "staff", label: `Staff (${data.staff.length})` }, { id: "features", label: "Features" }, { id: "activity", label: "Activity" }]} />
+      <Tabs<Tab> value={tab} onChange={setTab} tabs={[{ id: "profile", label: "Profile" }, { id: "status", label: "Status" }, { id: "staff", label: `Staff (${data.staff.length})` }, { id: "features", label: "Features" }, { id: "activity", label: "Activity" }]} />
       {tab === "profile" && <ProfileTab detail={data} onSaved={reload} />}
+      {tab === "status" && <StatusTab detail={data} onSaved={reload} />}
       {tab === "staff" && <StaffTab detail={data} />}
       {tab === "features" && <FeaturesTab detail={data} />}
       {tab === "activity" && <ActivityTab detail={data} />}
@@ -141,5 +142,69 @@ function ActivityTab({ detail }: { detail: Detail }) {
         </tbody>
       </TableWrap>
     </Card>
+  );
+}
+
+const STATUS_HELP: Record<PharmacyStatus, string> = {
+  ACTIVE: "Staff can sign in and work normally.",
+  GRACE: "Staff can work, with a banner asking to renew the subscription.",
+  SUSPENDED: "Staff are signed out and cannot sign in. Data is kept. You can still open the pharmacy.",
+  DEACTIVATED: "The pharmacy has left the platform. Staff cannot sign in. Data is kept and can be reactivated.",
+};
+
+function StatusTab({ detail, onSaved }: { detail: Detail; onSaved: () => void }) {
+  const toast = useToast();
+  const p = detail.pharmacy;
+  const [status, setStatus] = useState<PharmacyStatus>(p.status === "ACTIVE" ? "SUSPENDED" : "ACTIVE");
+  const [reason, setReason] = useState("");
+  const [code, setCode] = useState("");
+  const [errors, setErrors] = useState<Record<string, string>>({});
+  const [saving, setSaving] = useState(false);
+
+  async function save(e: React.FormEvent) {
+    e.preventDefault();
+    setSaving(true);
+    setErrors({});
+    try {
+      await api(`/api/platform/pharmacies/${p.id}/status`, { body: { status, reason, code } });
+      toast.success(`Status changed to ${STATUS_LABEL[status]}`);
+      setReason("");
+      setCode("");
+      onSaved();
+    } catch (err) {
+      if (err instanceof ApiError && err.fields) setErrors(err.fields);
+      toast.error((err as Error).message);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="grid gap-6 lg:grid-cols-2">
+      <Card className="space-y-3 p-5">
+        <h2 className="font-semibold">Current status</h2>
+        <div className="flex items-center gap-3"><StatusBadge status={p.status} /><span className="text-sm text-fg-muted">{STATUS_HELP[p.status]}</span></div>
+        {p.statusReason && <p className="text-sm"><span className="text-fg-muted">Reason: </span>{p.statusReason}</p>}
+        <dl className="grid grid-cols-[10rem_1fr] gap-2 pt-2 text-sm">
+          <dt className="text-fg-muted">Plan</dt><dd>{p.plan}</dd>
+          <dt className="text-fg-muted">Subscription ends</dt><dd>{p.subscriptionEndsAt ? formatDate(p.subscriptionEndsAt) : "Not set"}</dd>
+          <dt className="text-fg-muted">Max staff</dt><dd>{p.maxUsers}</dd>
+          <dt className="text-fg-muted">OCR pages per month</dt><dd>{p.ocrMonthlyLimit}</dd>
+        </dl>
+      </Card>
+      <Card className="p-5">
+        <h2 className="mb-4 font-semibold">Change status</h2>
+        <form onSubmit={save} className="space-y-4" noValidate>
+          <Field label="New status" hint={STATUS_HELP[status]}>
+            <Select value={status} onChange={(e) => setStatus(e.target.value as PharmacyStatus)}>
+              {(Object.keys(STATUS_LABEL) as PharmacyStatus[]).filter((k) => k !== p.status).map((k) => <option key={k} value={k}>{STATUS_LABEL[k]}</option>)}
+            </Select>
+          </Field>
+          <Field label="Reason *" error={errors.reason}><Input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="e.g. Subscription unpaid since 1 October" required /></Field>
+          <Field label="Authenticator code *" hint="Confirms it is you" error={errors.code}><Input inputMode="numeric" autoComplete="one-time-code" maxLength={6} value={code} onChange={(e) => setCode(e.target.value)} required className="w-40" /></Field>
+          <Button type="submit" variant={status === "ACTIVE" || status === "GRACE" ? "primary" : "danger"} loading={saving}>Change to {STATUS_LABEL[status]}</Button>
+        </form>
+      </Card>
+    </div>
   );
 }

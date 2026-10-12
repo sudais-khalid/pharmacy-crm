@@ -141,3 +141,15 @@ export async function platformOverview() {
     recent: recent.map((r) => ({ ...r, id: r.id.toString() })),
   };
 }
+
+/** Changes a pharmacy's status. Staff sessions of a suspended or deactivated pharmacy end on their next request. */
+export async function setPharmacyStatus(c: DevContext, id: string, input: { status: PharmacyStatus; reason: string }) {
+  return platformDb.$transaction(async (tx) => {
+    const before = await tx.pharmacy.findUnique({ where: { id }, select: { status: true, statusReason: true } });
+    if (!before) throw new AppError(404, "Pharmacy not found.");
+    if (before.status === input.status) throw new AppError(409, "The pharmacy already has this status.");
+    const after = await tx.pharmacy.update({ where: { id }, data: { status: input.status, statusReason: input.reason }, select: { status: true, statusReason: true } });
+    await audit(tx, actorOf(c), { action: `pharmacy.status.${input.status.toLowerCase()}`, entity: "Pharmacy", entityId: id, pharmacyId: id, before, after });
+    return after;
+  });
+}

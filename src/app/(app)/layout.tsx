@@ -10,6 +10,9 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const user = await getSessionUser();
   if (!user) redirect("/login");
   if (user.mustChangePassword) redirect("/account/password");
-  const settings = await tenantTransaction(user.pharmacyId, (tx) => getSettings(tx, user.pharmacyId));
-  return <Shell ctx={{ user, permissions: [...ROLE_PERMISSIONS[user.role]], settings }}>{children}</Shell>;
+  const { settings, status } = await tenantTransaction(user.pharmacyId, async (tx) => ({
+    settings: await getSettings(tx, user.pharmacyId),
+    status: (await tx.pharmacy.findUniqueOrThrow({ where: { id: user.pharmacyId }, select: { status: true } })).status,
+  }));
+  return <Shell ctx={{ user, permissions: [...ROLE_PERMISSIONS[user.role]], settings, pharmacyStatus: status }}>{children}</Shell>;
 }

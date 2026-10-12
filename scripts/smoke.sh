@@ -64,7 +64,10 @@ for i in $(seq 1 8); do code -X POST $B/api/auth/login -H 'content-type: applica
 ok "Login locked after repeated failures" "$(code -X POST $B/api/auth/login -H 'content-type: application/json' -d '{"email":"nobody@example.com","password":"wrong"}')" 429
 # Developer console (needs PLATFORM_OWNER_EMAIL and PLATFORM_OWNER_PASSWORD set for the server and this script)
 if [ -n "$PLATFORM_OWNER_EMAIL" ] && [ -n "$PLATFORM_OWNER_PASSWORD" ]; then
-  totp(){ python3 -c "import base64,hmac,hashlib,struct,sys,time;k=base64.b32decode(sys.argv[1].replace(' ','')+'='*((8-len(sys.argv[1].replace(' ',''))%8)%8));m=hmac.new(k,struct.pack('>Q',int(time.time())//30),hashlib.sha1).digest();o=m[-1]&15;print('%06d'%((struct.unpack('>I',m[o:o+4])[0]&0x7fffffff)%1000000))" "$1"; }
+  # totp SECRET [STEP_OFFSET]: authenticator code for the current 30 s step plus an offset
+  totp(){ python3 -c "import base64,hmac,hashlib,struct,sys,time;k=base64.b32decode(sys.argv[1].replace(' ','')+'='*((8-len(sys.argv[1].replace(' ',''))%8)%8));m=hmac.new(k,struct.pack('>Q',int(time.time())//30+int(sys.argv[2])),hashlib.sha1).digest();o=m[-1]&15;print('%06d'%((struct.unpack('>I',m[o:o+4])[0]&0x7fffffff)%1000000))" "$1" "${2:-0}"; }
+  # codes are single use: wait until a new 30 s step starts
+  next_step(){ S=$(python3 -c "import time;print(int(time.time())//30)"); while [ "$(python3 -c "import time;print(int(time.time())//30)")" = "$S" ]; do sleep 1; done; }
   ok "Console API needs a Developer session" "$(code $B/api/platform/auth/me)" 401
   ok "Staff session is not a Developer session" "$(code -b /tmp/smoke_admin.jar $B/api/platform/auth/me)" 401
   ok "Console page redirects without a Developer session" "$(code -b /tmp/smoke_admin.jar $B/platform)" 307
@@ -89,6 +92,15 @@ if [ -n "$PLATFORM_OWNER_EMAIL" ] && [ -n "$PLATFORM_OWNER_PASSWORD" ]; then
   ok "Other pharmacy staff invisible to this pharmacy" "$(curl -s -b /tmp/smoke_admin.jar $B/api/users | js "str(any(u['username']=='smokeadmin' for u in d))")" False
   ok "Invite link page opens" "$(code $B$(echo "$NEWP" | js "d['credentials']['path']"))" 200
   for p in /platform/pharmacies /platform/pharmacies/new /platform/pharmacies/$PID; do ok "Console page $p renders" "$(code -b /tmp/smoke_dev.jar $B$p)" 200; done
+  DEMO=$(curl -s -b /tmp/smoke_dev.jar "$B/api/platform/pharmacies?q=demo" | js "d['items'][0]['id']")
+  ok "Status change needs an authenticator code" "$(code -b /tmp/smoke_dev.jar -X POST $B/api/platform/pharmacies/$DEMO/status -H 'content-type: application/json' -d '{"status":"SUSPENDED","reason":"smoke test"}')" 400
+  next_step
+  ok "Developer suspends a pharmacy" "$(code -b /tmp/smoke_dev.jar -X POST $B/api/platform/pharmacies/$DEMO/status -H 'content-type: application/json' -d "{\"status\":\"SUSPENDED\",\"reason\":\"smoke test\",\"code\":\"$(totp "$SECRET")\"}")" 200
+  ok "Suspended pharmacy: open staff session ends" "$(code -b /tmp/smoke_admin.jar $B/api/medicines)" 401
+  ok "Suspended pharmacy: sign-in refused with a reason" "$(curl -s -X POST $B/api/auth/login -H 'content-type: application/json' -d '{"email":"admin@example.com","password":"Admin@12345"}' | js "'suspended' in d['error']")" True
+  next_step
+  ok "Developer reactivates the pharmacy" "$(code -b /tmp/smoke_dev.jar -X POST $B/api/platform/pharmacies/$DEMO/status -H 'content-type: application/json' -d "{\"status\":\"ACTIVE\",\"reason\":\"smoke test done\",\"code\":\"$(totp "$SECRET")\"}")" 200
+  ok "Reactivated pharmacy: staff session works again" "$(code -b /tmp/smoke_admin.jar $B/api/medicines)" 200
 fi
 for p in /dashboard /pos /medicines /inventory /customers /suppliers /purchases /purchases/new /sales /reports /users /settings; do ok "Page $p renders" "$(code -b /tmp/smoke_admin.jar $B$p)" 200; done
 exit $fail

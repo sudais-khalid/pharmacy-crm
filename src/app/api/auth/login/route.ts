@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
 import { platformDb } from "@/lib/platform-db";
-import { loginSchema, setStaffSession } from "@/modules/identity";
+import { BLOCKED_STATUSES, loginSchema, setStaffSession } from "@/modules/identity";
 import { errorResponse, readJson } from "@/lib/api";
 import { AppError } from "@/lib/errors";
 import { isLimited, recordHit, clearBucket } from "@/lib/rate-limit";
@@ -25,7 +25,7 @@ export async function POST(req: NextRequest) {
       throw new AppError(429, "Too many login attempts. Try again in a few minutes.");
     }
 
-    const user = await platformDb.user.findUnique({ where: { email } });
+    const user = await platformDb.user.findUnique({ where: { email }, include: { pharmacy: { select: { status: true, phone: true } } } });
     const ok = await bcrypt.compare(password, user?.passwordHash ?? DUMMY_HASH);
     if (!user || !ok) {
       await recordHit(accountBucket);
@@ -35,6 +35,9 @@ export async function POST(req: NextRequest) {
     if (!user.active) throw new AppError(403, "This account has been disabled. Contact your administrator.");
 
     if (user.isSystem) throw new AppError(401, "Incorrect email or password.");
+    if (BLOCKED_STATUSES.includes(user.pharmacy.status)) {
+      throw new AppError(403, user.pharmacy.status === "SUSPENDED" ? "This pharmacy's account is suspended. Contact your software provider." : "This pharmacy's account is closed. Contact your software provider.");
+    }
 
     await clearBucket(accountBucket);
     await platformDb.user.update({ where: { id: user.id }, data: { lastLoginAt: new Date() } });

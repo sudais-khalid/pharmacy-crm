@@ -94,6 +94,11 @@ export function Shell({ ctx, children }: { ctx: AppCtx; children: React.ReactNod
             </button>
           </div>
         </header>
+        {ctx.pharmacyStatus === "GRACE" && (
+          <div role="status" className="no-print border-b border-amber-300 bg-amber-50 px-4 py-2 text-center text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-200">
+            The subscription for this pharmacy has ended. Everything keeps working for now; please contact your software provider to renew.
+          </div>
+        )}
         <main id="main" className="mx-auto max-w-[1400px] p-4 sm:p-6">{children}</main>
       </div>
     </AppContext.Provider>

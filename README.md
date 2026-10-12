@@ -161,7 +161,7 @@ npm run typecheck
 npm run lint
 ```
 
-With the app running and seeded: `npm run test:smoke` (79 HTTP checks: login, permissions, validation, sale → cancel flow, reports, page loads).
+With the app running and seeded: `npm run test:smoke` (85 HTTP checks: login, permissions, validation, sale → cancel flow, reports, page loads).
 
 > `npm test` truncates the tables of the database in `.env.test`. Never point it at real data.
 
