@@ -35,7 +35,7 @@ Status key: **Done** (exists and works), **Partial** (exists but needs changes),
 | R1 | Expiry alert 30 days before | Expiry screen with 7/30/60/90 filters, warning window setting defaults to 90 days | Partial | Default to 30 days, add proactive alerts (notification centre, dashboard banner, daily digest), alert per batch, not only a filter |
 | R2 | Stock in and stock out | Every change writes a `StockMovement` row; movement log screen exists | Partial | Add an "In / Out" summary report per medicine and per period (opening, in, out, closing), plus a medicine stock card |
 | R3 | Profit | Gross profit report (net sales minus cost of exact batches sold) | Done | Show profit per invoice and per medicine; margin percentage |
-| R4 | Bill entry manually and by OCR | Manual multi-line purchase entry exists | Partial | New OCR pipeline: phone camera upload, text extraction, line parsing, medicine matching, review screen, then post as a purchase |
+| R4 | Stock entry manually and by OCR of an uploaded picture (**must have**) | Manual multi-line purchase entry exists | Partial | One stock entry workflow with three sources: fast manual grid, OCR of a supplier bill photo, OCR of a stock list photo (opening stock or a handwritten register). All sources land on the same review screen and post through the existing tested stock-in code. OCR never posts without human review |
 | R5 | Batch number | Stock is per batch, FEFO selling, batch on purchase lines | Done | Show batch and expiry on the retail bill; batch search; batch recall view (which customers bought batch X) |
 | R6 | Retail bill | A4 printable invoice | Partial | Add 80 mm and 58 mm thermal receipt layouts, choice in settings, auto print after sale, reprint |
 | R7 | Net profit | Not built | New | Expenses module (rent, salaries, utilities), returns, and a Profit and Loss report: gross profit minus expenses minus write-offs |
@@ -51,7 +51,7 @@ Status key: **Done** (exists and works), **Partial** (exists but needs changes),
 
 ## 2b. Second round requirements (platform and customers)
 
-Added after the first review. These turn the product from a single-shop app into a **platform that hosts many pharmacies**, owned and operated by the Developer.
+Added after the first review. These turn the product from a single-shop app into a **platform that hosts many small retail pharmacies**, owned and operated by the Developer. Wholesale features (customer accounts, customer ordering) were considered and dropped: the pharmacies sell to walk-in customers at the counter.
 
 | ID | Requirement | Status | Design response |
 |---|---|---|---|
@@ -61,9 +61,10 @@ Added after the first review. These turn the product from a single-shop app into
 | R20 | Pharmacy Admin has all access inside their pharmacy | Partial | System role with every tenant permission; cannot see other pharmacies or the platform console |
 | R21 | Pharmacy Admin edits the account profile: name, logo, contact details | New | Pharmacy profile and branding screen: display name, logo, address, phones, email, licence and tax numbers, receipt header and footer, brand colour; logo shown in the app, receipts and the customer portal |
 | R22 | Pharmacy Admin defines roles and manages staff passwords | Partial | Custom roles built from the permission catalog; create staff, deactivate, set temporary password or send reset link; force logout |
-| R23 | Pharmacy Admin creates customer accounts | New | Customer portal login (phone number plus password, or invite link) linked to the existing customer record and its credit ledger |
-| R24 | Customers can place orders | New | Mobile-first customer portal: browse in-stock medicines, cart, prescription upload for Rx items, pickup or delivery, order tracking, own invoices and balance; staff confirm and fulfil, and fulfilment becomes a normal sale |
+| R23 | ~~Pharmacy Admin creates customer accounts~~ | Dropped | Not needed: the platform serves small retail pharmacies with walk-in customers, not wholesale buyers. Customers stay simple records (name, phone, optional credit) managed by staff; there are no customer logins |
+| R24 | ~~Customers can place orders~~ | Dropped | Same reason. No customer portal and no online orders |
 | R25 | Pharmacist adds medicines for suppliers | Partial | Supplier catalog: from a supplier's page the pharmacist adds the medicines that supplier provides (supplier code, price, pack, lead time, preferred flag), creating a new medicine on the spot if needed; drives purchase orders |
+| R26 | OCR for existing stock, not only supplier bills | New | A pharmacy joining the platform photographs its stock list or register; OCR reads medicine, batch, expiry, quantity and prices into the same review screen; posting creates opening batches without touching any supplier ledger |
 
 ## 3. Additional requirements (senior review)
 
@@ -91,8 +92,8 @@ These are not in the notes but a working pharmacy will hit them within weeks of 
 ## 4. Out of scope for this plan
 
 - Multiple branches inside one pharmacy with stock transfer. Each pharmacy is one tenant with one stock location; a chain can run each branch as its own pharmacy until branches are built (see architecture, section 9).
-- Online payment collection in the customer portal. Orders are paid at pickup or on delivery, or added to the customer's credit. A payment gateway can be added later as an adapter.
-- Home delivery routing and rider apps. Delivery is a status on the order, not a logistics system.
+- Customer logins, a customer portal, online ordering and delivery. The pharmacies are small retail shops serving walk-in customers; customers exist only as records kept by staff.
+- Wholesale features: price tiers per buyer, trade invoices to other pharmacies.
 - Integration with government drug registries. Can be added later as an adapter.
 
 ## 5. Definition of done (applies to every requirement)
