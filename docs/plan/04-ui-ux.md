@@ -5,8 +5,8 @@ Design direction comes from the `ui-ux-pro-max` style and guideline database (qu
 ## 1. Design principles
 
 1. **Speed at the counter beats decoration.** A sale must be possible without touching the mouse.
-2. **Each role sees its own app.** The Developer gets a platform console, Pharmacy Admins a business dashboard, pharmacists an operational dashboard, cashiers a full-screen POS, and customers a simple mobile shop.
-3. **Every pharmacy feels like its own product.** Its logo, name and brand colour appear on login, header, receipts and the customer portal.
+2. **Each role sees its own app.** The Developer gets a platform console, Pharmacy Admins a business dashboard, pharmacists an operational dashboard, and cashiers a full-screen POS.
+3. **Every pharmacy feels like its own product.** Its logo, name and brand colour appear on login, header, receipts and purchase orders.
 4. **Status is always visible.** Expiry, low stock, open cash session, pending OCR reviews and sync errors are shown where the user works, not hidden in a report.
 5. **Nothing irreversible without a clear confirmation**, and nothing that touches money without a printed or on-screen record.
 6. **Dense but scannable.** Tables are the main surface; numbers are right-aligned in tabular figures.
@@ -64,13 +64,12 @@ Subtle only (motion 2): 150 ms for hover and press, 200 ms for dialogs and drawe
 
 ### 3.1 Navigation per role
 
-There are three separate apps, one per identity realm, each with its own layout:
+There are two separate apps, one per identity realm, each with its own layout:
 
 | App | Path | Users | Layout |
 |---|---|---|---|
 | Platform console | `/platform` | Developer | Dark-accented header so it is never confused with a pharmacy, sidebar: Overview, Pharmacies, Accounts, Support sessions, Feature flags, System, Audit |
 | Pharmacy app | `/p/<slug>/...` after login (short paths inside) | Pharmacy Admin, Pharmacist, Cashier, custom roles | Pharmacy logo and name in the header, sidebar groups below, Cashier gets full-screen POS |
-| Customer portal | `/shop/<slug>` | Customers | Mobile-first, bottom navigation: Shop, Cart, Orders, Account |
 
 Pharmacy app sections by role (custom roles see whatever their permissions allow):
 
@@ -79,14 +78,14 @@ Pharmacy app sections by role (custom roles see whatever their permissions allow
 | Owner dashboard (net profit, trends) | yes | | |
 | Pharmacist dashboard (expiry, low stock, orders, reviews) | yes | yes | |
 | POS | yes | yes | yes |
-| Online orders (confirm, prepare, hand over) | yes | yes | hand over only |
 | Invoices and returns | yes | yes | own only |
 | Cash sessions | all | own | own |
 | Medicines and batches | yes | yes | lookup in POS |
 | Inventory, stock card, expiry | yes | yes | |
 | Suppliers and supplier catalogs | yes | yes | |
-| Purchase orders, purchases, bill intake (OCR) | yes | yes | |
-| Customers and portal accounts | yes | yes | quick add in POS |
+| Stock entry (manual grid, OCR photos, drafts) | yes | yes | upload photo only |
+| Purchase orders and purchases | yes | yes | |
+| Customers (name, phone, credit) | yes | yes | quick add in POS |
 | Expenses | yes | | |
 | Reports | yes | operational | |
 | Staff, roles, audit log | yes | | |
@@ -94,7 +93,7 @@ Pharmacy app sections by role (custom roles see whatever their permissions allow
 
 When the Developer opens a pharmacy through support access, they see the Pharmacy Admin view with a fixed amber banner: "Platform support session for <pharmacy>. All actions are logged. End session".
 
-Sidebar groups for the pharmacy app: **Sell** (POS, Online orders, Invoices, Returns, Cash), **Stock** (Medicines, Inventory, Expiry), **Buy** (Orders, Bill intake, Purchases, Suppliers), **People** (Customers, Staff), **Money** (Expenses, Reports), **Admin** (Roles, Profile and branding, Settings, Audit). Groups collapse; badge counts show pending work (for example "Online orders 2", "Bill intake 3").
+Sidebar groups for the pharmacy app: **Sell** (POS, Invoices, Returns, Cash), **Stock** (Stock entry, Medicines, Inventory, Expiry), **Buy** (Orders, Purchases, Suppliers), **People** (Customers, Staff), **Money** (Expenses, Reports), **Admin** (Roles, Profile and branding, Settings, Audit). Groups collapse; badge counts show pending work (for example "Stock entry 3 to review").
 
 ### 3.2 Global elements
 
@@ -132,36 +131,63 @@ Sidebar groups for the pharmacy app: **Sell** (POS, Online orders, Invoices, Ret
 - After completion: receipt prints automatically (setting), the cart clears, and a toast offers "Reprint" and "New sale". Focus returns to search.
 - Without an open cash session the POS shows a single "Open session" card with the opening float field.
 
-### 4.2 Bill intake (OCR review)
+### 4.2 Stock entry (manual grid and OCR review)
 
-Mobile upload flow (pharmacist phone):
+Stock entry is one screen family under **Stock > Stock entry**, with a list of drafts and posted entries, and a "New stock entry" button offering four choices: **Type it in**, **Photo of supplier bill**, **Photo of stock list**, **Import file**. Whatever the choice, the user finishes on the same grid.
 
-1. "Upload bill" opens the camera directly (`capture="environment"`), with a guide frame and tips (flat surface, good light).
-2. Preview with crop and rotate; "Add page" for multi-page bills.
-3. Upload with a progress bar; the screen says processing usually takes under 30 seconds and the user may leave.
-4. Notification when ready.
-
-Review screen (desktop, also usable on tablet):
+**Manual grid** (desktop and tablet):
 
 ```
-+-------------------------------+------------------------------------------------+
-|  [ bill image, zoom, rotate ] | Supplier [ Muller & Phipps   v ]  Inv [ 45812 ]|
-|                               | Date [ 2026-10-10 ]  Link to PO [ PO-00031 v ] |
-|   highlighted region of the   |------------------------------------------------|
-|   line currently selected     | # Medicine          Batch  Exp    Qty Bon Rate |
-|                               | 1 Panadol 500 (OK)  B771   04/28  100  10 2.80 |
-|                               | 2 [ map medicine ]  C22    01/27   50   0 9.10 |  amber
-|                               | 3 Brufen 400 (alias) ...                        |
-|                               |------------------------------------------------|
-|                               | Lines total 1,245.00  Bill total 1,245.00  OK  |
-|                               | 1 line needs attention   [ Discard ] [ Post ]  |
-+-------------------------------+------------------------------------------------+
++----------------------------------------------------------------------------------+
+| New stock entry: Supplier bill                       Draft saved 10:42  [Discard]|
+| Supplier [ Muller & Phipps   v ]  Invoice no [ 45812 ]  Date [ 12/10/26 ]        |
+| Bill total [ 12,450.00 ]   Link to order [ PO-00031 v ]                          |
+|----------------------------------------------------------------------------------|
+| # | Medicine (F2)        | Batch | Exp   | Qty | Bonus | Rate | Disc% | Tax | Amt |
+| 1 | Panadol 500mg Tab    | B771  | 04/28 | 100 |  10   | 2.80 |  0    | 0   | 280 |
+| 2 | Brufen 400mg Tab     | K19   | 11/27 |  50 |   0   | 4.10 |  2    | 0   | 201 |
+| 3 | [ type to search...] |       |       |     |       |      |       |     |     |
+|----------------------------------------------------------------------------------|
+| Lines total 12,450.00   Bill total 12,450.00   Matches                            |
+| ! Line 2: rate 4.10 is 12% above last purchase (3.66)                             |
+|                                         [ Save draft ]  [ Post stock  Ctrl+Enter ]|
++----------------------------------------------------------------------------------+
 ```
 
-- Selecting a row highlights its region on the image (bounding boxes from OCR).
-- Low confidence cells are amber with the original OCR text in a tooltip.
-- Totals check is live; "Post" is disabled until all lines are matched and totals agree (or a reason is entered).
-- Step indicator at top: Uploaded, Read, Review, Posted.
+- Enter or Tab moves cell to cell, a new row appears automatically, Ctrl+D copies the cell above, Delete on an empty row removes it, F2 focuses the medicine cell, barcode scan fills it.
+- Expiry is typed as `MM/YY`. Amounts update as you type. Warnings sit under the grid and never block typing; blocking errors are shown on the cell and disable Post.
+- "New medicine" in the medicine dropdown opens an inline form without leaving the bill.
+- "Draft saved" indicator; drafts survive refresh, logout and power cuts.
+
+**Photo upload** (phone first, also works on desktop):
+
+1. Choose "Photo of supplier bill" or "Photo of stock list". The camera opens directly (`capture="environment"`) with a guide frame and tips (flat surface, good light, whole page in view). On desktop a file picker accepts JPEG, PNG and PDF.
+2. Preview with crop and rotate; "Add page" for multi-page bills or lists.
+3. Upload with a progress bar. The screen says reading usually takes under 30 seconds and the user may leave; a notification arrives when it is ready.
+4. If the monthly OCR limit is reached or OCR fails, the same draft opens as an empty manual grid with the photo shown beside it, so the work is never blocked.
+
+**OCR review** (desktop and tablet):
+
+```
++-------------------------------+--------------------------------------------------+
+|  [ photo, zoom, rotate, page ]| Supplier [ Muller & Phipps v ]  Inv [ 45812 ]    |
+|                               | Date [ 12/10/26 ]   Link to PO [ PO-00031 v ]    |
+|   highlighted region of the   |--------------------------------------------------|
+|   row currently selected      | # Medicine             Batch  Exp   Qty Bon Rate |
+|                               | 1 Panadol 500 (alias)  B771   04/28 100  10 2.80 |
+|                               | 2 [ map medicine ]     C22    01/27  50   0 9.10 | amber
+|                               | 3 Brufen 400 (catalog) K19    11/27  50   0 4.10 |
+|                               |--------------------------------------------------|
+|                               | Lines total 12,450.00  Bill total 12,450.00  OK  |
+|                               | 1 line needs attention     [ Discard ] [ Post ] |
++-------------------------------+--------------------------------------------------+
+```
+
+- The right side **is the manual grid**, pre-filled; every keyboard shortcut works the same.
+- Selecting a row highlights its region on the photo; low confidence cells are amber with the original OCR text in a tooltip; the match method is shown as a small tag (barcode, catalog, alias, similar name, manual).
+- Post is disabled until every line is matched and totals agree, or a reason for a difference is entered.
+- Step indicator at the top: Uploaded, Read, Review, Posted.
+- For a stock list the header shows no supplier fields and the Post button reads "Add to stock as opening balance".
 
 ### 4.3 Purchase orders
 
@@ -174,10 +200,9 @@ Review screen (desktop, also usable on tablet):
 | Dashboard | Top row KPIs | Main panels |
 |---|---|---|
 | Pharmacy Admin | Today's sales, gross profit, net profit (month to date), receivables, payables | Sales vs last period (line), profit by category (bar), cash sessions with differences, top medicines, expense breakdown |
-| Pharmacist | Expiring in 30 days, expired with stock, low stock, OCR bills to review, orders due today | Expiry list with actions, low stock with "add to order", purchase orders by status, recent stock adjustments |
+| Pharmacist | Expiring in 30 days, expired with stock, low stock, stock entries to review, orders due today | Expiry list with actions, low stock with "add to order", purchase orders by status, recent stock adjustments |
 | Cashier (inside POS) | Session sales, cash in drawer, invoices today | Recent own invoices with reprint |
 | Platform console (Developer) | Active pharmacies, suspended, subscriptions ending soon, failed jobs, last backup | Pharmacies table, reset requests, support sessions, job list with retry, error log, backups (section 4.7) |
-| Customer portal | Open orders, account balance | Order again list, recent invoices |
 
 Charts follow the chart guidelines: legends and tooltips, accessible colours, numbers available as a table toggle, no colour-only meaning.
 
@@ -208,7 +233,7 @@ One report shell: filter bar (date range presets: Today, Yesterday, This week, T
 | Pharmacy     Name [ City Care Pharmacy ]   URL slug [ citycare  ]  |
 |              City [ Rawalpindi ]  Phone [ ... ]  Licence [ ... ]   |
 | Plan         Plan [ Standard v ]  Subscription ends [ 2027-10-12 ]|
-|              Max staff [ 10 ]  Features [x] POS [x] OCR [ ] Portal |
+|              Max staff [ 10 ]  Features [x] OCR limit [ 300 ]/month |
 | First admin  Name [ ... ]  Username [ admin ]  Phone [ ... ]       |
 |              Credentials ( ) Invite link  ( ) Temporary password   |
 |--------------------------------------------------------------------|
@@ -218,7 +243,7 @@ One report shell: filter bar (date range presets: Today, Yesterday, This week, T
 
 After creation a result panel shows the login URL and the invite link (or temporary password) **once**, with "Copy", "Share on WhatsApp" and "Send email" buttons and a warning that it will not be shown again.
 
-**Pharmacy detail** tabs: Profile (read and edit), Status and subscription (status change needs a reason and re-auth), Staff accounts, Customer accounts, Feature flags, Usage, Audit, Danger zone (export data, permanently delete with typed confirmation).
+**Pharmacy detail** tabs: Profile (read and edit), Status and subscription (status change needs a reason and re-auth), Staff accounts, Feature flags, OCR usage, Usage, Audit, Danger zone (export data, permanently delete with typed confirmation).
 
 **Accounts** (search across all pharmacies by name, username, phone): status toggle, "Generate reset link", "Force logout", "Unlock". Each action shows a confirmation naming the person and pharmacy.
 
@@ -233,46 +258,15 @@ Two-column page: form on the left, live preview on the right showing the app hea
 - Receipt header and footer text.
 - Brand colour picker. The chosen colour replaces `--primary` for this pharmacy only. The picker rejects colours that fail 4.5:1 contrast with white text and suggests the nearest passing shade.
 
-### 4.9 Staff, roles and customer accounts (Pharmacy Admin)
+### 4.9 Staff and roles (Pharmacy Admin)
 
 **Staff list**: name, username, role, status, last login, 2FA. Actions: Edit, Change role, Deactivate or Activate, Set temporary password, Generate reset link, Force logout. "Add staff" uses the same invite-or-temporary-password choice as the platform form. A seat counter shows "6 of 10 staff" from the plan limit.
 
 **Roles**: list of templates (locked icon) and custom roles. Role editor groups permissions by area (Sell, Stock, Buy, People, Money, Admin) with a plain-language line under each checkbox ("Can see purchase cost and profit"). Sensitive permissions are marked. A "Compare with template" toggle shows differences. Saving a role that is in use asks for confirmation and logs out affected users.
 
-**Customer portal accounts** (from the customer page): "Create portal login" with the customer's phone pre-filled, then invite link or temporary password; status toggle; reset link. The customer list shows a "Portal" badge for customers with a login.
-
 **Forgot password requests** appear in the notification drawer for Pharmacy Admins with a one-click "Generate reset link".
 
-### 4.10 Customer portal
-
-Mobile first, branded with the pharmacy logo, name and colour. Large touch targets, bottom navigation with four items.
-
-```
-+-----------------------------+     +-----------------------------+
-| [logo] City Care Pharmacy   |     | Order ORD-...0042           |
-| [ Search medicines       ]  |     | Status: Ready for pickup    |
-| Categories: Pain  Cold  ... |     | o Placed        10:02       |
-|-----------------------------|     | o Confirmed     10:15       |
-| Panadol 500mg   Rs 3.50     |     | o Ready         10:40       |
-| In stock        [ Add ]     |     |-----------------------------|
-| Augmentin 625   Rx          |     | Panadol 500 x 20     70.00  |
-| Prescription needed [ Add ] |     | Total                70.00  |
-|-----------------------------|     | Pay at pickup               |
-| Shop | Cart(2) | Orders | Me|     | Shop | Cart | Orders | Me   |
-+-----------------------------+     +-----------------------------+
-```
-
-- **Shop**: search, categories, "Order again" from past purchases (most useful for chronic medicines).
-- **Cart**: quantities, Rx items ask for a prescription photo (camera or file), pickup or delivery, payment choice (pay at pickup, cash on delivery, add to my account if allowed), note to pharmacist.
-- **Orders**: list and status timeline; cancel while not yet ready.
-- **Me**: profile, invoices (view and download), account balance and ledger, change password, log out.
-- Empty, loading and error states for every step; the order button shows a progress state and cannot be pressed twice (idempotency key).
-
-### 4.11 Online orders (staff)
-
-Kanban-style board with columns Placed, Needs prescription, Confirmed, Ready, Out for delivery, and a list view toggle. New orders play a short sound and show a badge in POS. Opening an order shows lines with live availability, prescription images with Approve and Reject, and buttons for the next status. "Hand over" opens the POS with the order loaded and the locked prices, so payment and receipt work exactly like a normal sale.
-
-### 4.12 Supplier catalog (Pharmacist)
+### 4.10 Supplier catalog (Pharmacist)
 
 On the supplier page, tab "Catalog": table of linked medicines with supplier code, pack, last price, bonus rule, lead time, preferred star. "Add medicines" opens a searchable picker with multi-select; "New medicine" opens an inline form and links the new medicine on save. "Import price list" accepts CSV or Excel, shows a preview with matched, new and error rows, and imports only after confirmation.
 
