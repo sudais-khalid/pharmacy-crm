@@ -1,6 +1,5 @@
 import { route, readJson } from "@/lib/api";
-import { adjustSchema } from "@/lib/schemas";
-import { adjustStock } from "@/services/inventory";
+import { adjustSchema, adjustStock } from "@/modules/inventory";
 
 export const POST = route("inventory.adjust", async ({ req, user }) => adjustStock(adjustSchema.parse(await readJson(req)), user.id));
 

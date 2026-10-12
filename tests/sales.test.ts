@@ -1,8 +1,7 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { prisma } from "@/lib/prisma";
-import { createSale, cancelSale } from "@/services/sales";
-import { receiveCustomerPayment } from "@/services/ledger";
-import { customerBalance } from "@/services/common";
+import { createSale, cancelSale } from "@/modules/sales";
+import { receiveCustomerPayment, customerBalance } from "@/modules/customers";
 import { resetDb, makeUser, makeMedicine, makeBatch, makeCustomer } from "./helpers";
 
 const line = (medicineId: string, quantity: number) => ({ medicineId, quantity });
@@ -154,7 +153,7 @@ describe("invariants", () => {
     const m = await makeMedicine();
     const a = await makeBatch(m.id, "A", 60, 0);
     await prisma.stockMovement.create({ data: { medicineId: m.id, batchId: a.id, type: "OPENING", quantity: 0, balanceAfter: 0 } });
-    const { adjustStock } = await import("@/services/inventory");
+    const { adjustStock } = await import("@/modules/inventory");
     await adjustStock({ batchId: a.id, kind: "ADD", quantity: 40, note: "opening count" }, u.id);
     await createSale({ ...base, items: [line(m.id, 7)] }, u);
     await adjustStock({ batchId: a.id, kind: "DAMAGE", quantity: 3, note: "broken" }, u.id);

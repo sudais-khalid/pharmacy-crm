@@ -1,7 +1,9 @@
 import { prisma } from "@/lib/prisma";
 import { AppError } from "@/lib/errors";
 import { todayStr, dateOnly } from "@/lib/dates";
-import { D, ZERO } from "./common";
+import { D, ZERO } from "@/lib/money";
+import type { PaymentInput } from "@/lib/validation";
+import { supplierBalance } from "./queries";
 
 export type PurchaseInput = {
   supplierId: string;
@@ -74,5 +76,20 @@ export async function createPurchase(input: PurchaseInput, userId: string) {
       await tx.supplierLedger.create({ data: { supplierId: supplier.id, kind: "PAYMENT", credit: paid, description: `Payment on ${number}`, purchaseId: purchase.id, method: input.paymentMethod, userId } });
     }
     return purchase;
+  });
+}
+
+/** We pay a supplier. */
+export async function paySupplier(supplierId: string, input: PaymentInput, userId: string) {
+  return prisma.$transaction(async (tx) => {
+    const supplier = await tx.supplier.findUnique({ where: { id: supplierId } });
+    if (!supplier) throw new AppError(404, "Supplier not found.");
+    const amount = D(input.amount).toDecimalPlaces(2);
+    const balance = await supplierBalance(tx, supplierId);
+    if (amount.gt(balance)) throw new AppError(409, `Payment (${amount.toFixed(2)}) is more than the outstanding payable (${balance.toFixed(2)}).`);
+    await tx.supplierLedger.create({
+      data: { supplierId, kind: "PAYMENT", credit: amount, description: input.note ? `Payment made – ${input.note}` : "Payment made", method: input.method, userId },
+    });
+    return { balance: balance.minus(amount) };
   });
 }

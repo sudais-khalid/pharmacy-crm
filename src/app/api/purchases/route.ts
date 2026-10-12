@@ -1,8 +1,7 @@
 import { Prisma } from "@prisma/client";
 import { route, readJson, pageParams } from "@/lib/api";
 import { prisma } from "@/lib/prisma";
-import { purchaseSchema } from "@/lib/schemas";
-import { createPurchase } from "@/services/purchases";
+import { purchaseSchema, createPurchase } from "@/modules/procurement";
 
 export const GET = route("purchases.view", async ({ req }) => {
   const { page, pageSize, skip, take, sp } = pageParams(req);

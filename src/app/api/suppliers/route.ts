@@ -1,7 +1,7 @@
 import { Prisma } from "@prisma/client";
 import { route, readJson, pageParams } from "@/lib/api";
 import { prisma } from "@/lib/prisma";
-import { supplierSchema } from "@/lib/schemas";
+import { supplierSchema } from "@/modules/procurement";
 
 export const GET = route("suppliers.view", async ({ req }) => {
   const { page, pageSize, skip, take, sp } = pageParams(req);

@@ -1,6 +1,6 @@
 import { cookies } from "next/headers";
 import { SignJWT, jwtVerify } from "jose";
-import { prisma } from "./prisma";
+import { prisma } from "@/lib/prisma";
 import type { Role } from "./permissions";
 
 export const SESSION_COOKIE = "pharmacy_session";

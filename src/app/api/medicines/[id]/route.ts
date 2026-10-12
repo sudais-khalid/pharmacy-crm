@@ -1,8 +1,7 @@
 import { route, readJson, AppError } from "@/lib/api";
 import { prisma } from "@/lib/prisma";
-import { medicineSchema } from "@/lib/schemas";
-import { deleteOrArchiveMedicine } from "@/services/medicines";
-import { sellableStock } from "@/services/inventory";
+import { medicineSchema, deleteOrArchiveMedicine } from "@/modules/catalog";
+import { sellableStock } from "@/modules/inventory";
 
 export const GET = route("medicines.view", async ({ params }) => {
   const med = await prisma.medicine.findUnique({

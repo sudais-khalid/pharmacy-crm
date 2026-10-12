@@ -1,7 +1,6 @@
 import { redirect } from "next/navigation";
-import { getSessionUser } from "@/lib/auth";
+import { getSessionUser, ROLE_PERMISSIONS } from "@/modules/identity";
 import { prisma } from "@/lib/prisma";
-import { ROLE_PERMISSIONS } from "@/lib/permissions";
 import { Shell } from "@/components/shell";
 
 export const dynamic = "force-dynamic";

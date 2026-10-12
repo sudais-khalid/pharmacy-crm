@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { Prisma } from "@prisma/client";
 import { ZodError } from "zod";
-import { getSessionUser, type SessionUser } from "./auth";
-import { can, type Permission } from "./permissions";
+import { getSessionUser, type SessionUser, can, type Permission } from "@/modules/identity";
 import { AppError } from "./errors";
 
 export { AppError };

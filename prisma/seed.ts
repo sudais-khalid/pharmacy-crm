@@ -4,9 +4,9 @@ import { loadEnvConfig } from "@next/env";
 loadEnvConfig(process.cwd());
 import { prisma } from "../src/lib/prisma";
 import { addDays, todayStr } from "../src/lib/dates";
-import { createMedicine } from "../src/services/medicines";
-import { createPurchase } from "../src/services/purchases";
-import { createSale } from "../src/services/sales";
+import { createMedicine } from "../src/modules/catalog";
+import { createPurchase } from "../src/modules/procurement";
+import { createSale } from "../src/modules/sales";
 
 function rng(seed: number) {
   return () => {

@@ -169,7 +169,7 @@ modules/sales/
 3. Cross-module side effects that do not have to be in the same transaction go through **domain events**, not direct calls. Example: `sales` emits `SaleCompleted`; `notifications` reacts if stock fell below minimum.
 4. Cross-module writes that **must** be atomic (sale plus stock plus ledger) call the other module's service function and pass the transaction client `tx`. Every service function accepts an optional `tx` for this reason.
 
-The existing `src/services/*.ts` files migrate into modules one at a time in Phase 0. The public behaviour and tests stay the same.
+The original `src/services/*.ts` files were moved into modules in Phase 0 (task 0.3) with no change in behaviour. Route handlers that still query Prisma directly move into their module as each feature is touched.
 
 ## 4. Request lifecycle
 

@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/prisma";
-import { loginSchema } from "@/lib/schemas";
-import { setSessionCookie } from "@/lib/auth";
+import { loginSchema, setSessionCookie } from "@/modules/identity";
 import { errorResponse, readJson } from "@/lib/api";
 import { AppError } from "@/lib/errors";
 import { allow, clearLimit } from "@/lib/rate-limit";

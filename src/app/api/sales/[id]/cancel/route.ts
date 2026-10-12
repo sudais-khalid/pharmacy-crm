@@ -1,6 +1,5 @@
 import { route, readJson } from "@/lib/api";
-import { cancelSchema } from "@/lib/schemas";
-import { cancelSale } from "@/services/sales";
+import { cancelSchema, cancelSale } from "@/modules/sales";
 
 export const POST = route("sales.cancel", async ({ req, params, user }) => {
   const { reason } = cancelSchema.parse(await readJson(req));

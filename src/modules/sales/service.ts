@@ -2,8 +2,9 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { AppError } from "@/lib/errors";
 import { todayStr } from "@/lib/dates";
-import { can, type Role } from "@/lib/permissions";
-import { D, ZERO, customerBalance } from "./common";
+import { D, ZERO } from "@/lib/money";
+import { customerBalance } from "@/modules/customers";
+import { can, type Role } from "@/modules/identity";
 
 export type SaleInput = {
   customerId?: string | null;

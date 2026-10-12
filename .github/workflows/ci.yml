@@ -59,6 +59,9 @@ jobs:
       - name: Lint
         run: npm run lint
 
+      - name: Module boundaries
+        run: npm run lint:deps
+
       - name: Prepare test database
         run: |
           printf 'DATABASE_URL="%s"\nJWT_SECRET="%s"\nAPP_TIMEZONE="%s"\n' "$TEST_DATABASE_URL" "$JWT_SECRET" "$APP_TIMEZONE" > .env.test

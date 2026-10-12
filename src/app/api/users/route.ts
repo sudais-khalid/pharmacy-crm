@@ -1,7 +1,7 @@
 import bcrypt from "bcryptjs";
 import { route, readJson } from "@/lib/api";
 import { prisma } from "@/lib/prisma";
-import { userCreateSchema } from "@/lib/schemas";
+import { userCreateSchema } from "@/modules/identity";
 
 const select = { id: true, name: true, email: true, role: true, active: true, createdAt: true } as const;
 

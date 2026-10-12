@@ -1,6 +1,6 @@
 import { route, readJson } from "@/lib/api";
 import { prisma } from "@/lib/prisma";
-import { categorySchema } from "@/lib/schemas";
+import { categorySchema } from "@/modules/catalog";
 
 export const GET = route("medicines.view", async () => prisma.category.findMany({ orderBy: { name: "asc" } }));
 

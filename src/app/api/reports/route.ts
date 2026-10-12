@@ -2,7 +2,7 @@ import { Prisma } from "@prisma/client";
 import { route, AppError } from "@/lib/api";
 import { prisma } from "@/lib/prisma";
 import { TZ, todayStr } from "@/lib/dates";
-import { D } from "@/services/common";
+import { D } from "@/lib/money";
 
 type Col = { key: string; label: string; format?: "money" | "int" | "date" | "text" | "percent" };
 type Report = { title: string; description: string; columns: Col[]; rows: Record<string, unknown>[]; sumKeys?: string[] };

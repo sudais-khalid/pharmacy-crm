@@ -1,10 +1,8 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { prisma } from "@/lib/prisma";
-import { createPurchase } from "@/services/purchases";
-import { paySupplier } from "@/services/ledger";
-import { adjustStock } from "@/services/inventory";
-import { supplierBalance } from "@/services/common";
-import { can } from "@/lib/permissions";
+import { createPurchase, paySupplier, supplierBalance } from "@/modules/procurement";
+import { adjustStock } from "@/modules/inventory";
+import { can } from "@/modules/identity";
 import { resetDb, makeUser, makeMedicine, makeBatch, makeSupplier, inDays } from "./helpers";
 
 beforeEach(resetDb);

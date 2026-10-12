@@ -1,9 +1,8 @@
 import { Prisma } from "@prisma/client";
 import { route, readJson, pageParams } from "@/lib/api";
 import { prisma } from "@/lib/prisma";
-import { medicineSchema } from "@/lib/schemas";
-import { createMedicine } from "@/services/medicines";
-import { sellableStock } from "@/services/inventory";
+import { medicineSchema, createMedicine } from "@/modules/catalog";
+import { sellableStock } from "@/modules/inventory";
 import { todayStr, dateOnly } from "@/lib/dates";
 
 export const GET = route("medicines.view", async ({ req }) => {

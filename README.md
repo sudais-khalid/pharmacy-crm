@@ -80,7 +80,7 @@ Currency label and the expiry-warning period are configured in *Settings* (defau
 
 ## Roles and permissions
 
-Every API route checks a named permission (`src/lib/permissions.ts`); the UI hides what a role cannot use, but the server is the authority.
+Every API route checks a named permission (`src/modules/identity/permissions.ts`); the UI hides what a role cannot use, but the server is the authority.
 
 | | Admin | Pharmacist | Cashier |
 |---|:-:|:-:|:-:|
@@ -116,8 +116,9 @@ prisma/            schema.prisma, migrations/, seed.ts
 src/app/api/       REST endpoints (route handlers)
 src/app/(app)/     authenticated pages (dashboard, pos, medicines, ...)
 src/app/invoice/   printable invoice
-src/services/      business logic (sales/FEFO, purchases, ledger, inventory) – the part covered by tests
-src/lib/           auth, permissions, schemas (Zod), API wrapper, helpers
+src/modules/       business modules: identity, catalog, inventory, sales, customers, procurement, platform
+                   (each exposes only index.ts; service.ts, schema.ts, queries.ts inside)
+src/lib/           shared infrastructure: Prisma client, API route wrapper, dates, money, validation rules
 src/components/    UI kit and shell
 tests/             integration tests (real PostgreSQL)
 scripts/smoke.sh   HTTP smoke test for a running app

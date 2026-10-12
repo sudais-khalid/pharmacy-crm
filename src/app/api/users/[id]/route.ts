@@ -1,7 +1,7 @@
 import bcrypt from "bcryptjs";
 import { route, readJson, AppError } from "@/lib/api";
 import { prisma } from "@/lib/prisma";
-import { userUpdateSchema } from "@/lib/schemas";
+import { userUpdateSchema } from "@/modules/identity";
 
 export const PUT = route("users.manage", async ({ req, params, user }) => {
   const { password, ...data } = userUpdateSchema.parse(await readJson(req));

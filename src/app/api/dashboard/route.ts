@@ -2,8 +2,8 @@ import { Prisma } from "@prisma/client";
 import { route } from "@/lib/api";
 import { prisma } from "@/lib/prisma";
 import { TZ, todayStr, addDays, dateOnly } from "@/lib/dates";
-import { can } from "@/lib/permissions";
-import { D } from "@/services/common";
+import { can } from "@/modules/identity";
+import { D } from "@/lib/money";
 
 export const GET = route("dashboard.view", async ({ user }) => {
   const setting = await prisma.setting.upsert({ where: { id: 1 }, update: {}, create: { id: 1 } });

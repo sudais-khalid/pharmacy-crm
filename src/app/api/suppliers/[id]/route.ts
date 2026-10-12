@@ -1,7 +1,7 @@
 import { route, readJson, AppError } from "@/lib/api";
 import { prisma } from "@/lib/prisma";
-import { supplierSchema } from "@/lib/schemas";
-import { D, ZERO } from "@/services/common";
+import { supplierSchema } from "@/modules/procurement";
+import { D, ZERO } from "@/lib/money";
 
 export const GET = route("suppliers.view", async ({ params }) => {
   const supplier = await prisma.supplier.findUnique({ where: { id: params.id } });
