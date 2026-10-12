@@ -94,6 +94,7 @@ These are not in the notes but a working pharmacy will hit them within weeks of 
 - Multiple branches inside one pharmacy with stock transfer. Each pharmacy is one tenant with one stock location; a chain can run each branch as its own pharmacy until branches are built (see architecture, section 9).
 - Customer logins, a customer portal, online ordering and delivery. The pharmacies are small retail shops serving walk-in customers; customers exist only as records kept by staff.
 - Wholesale features: price tiers per buyer, trade invoices to other pharmacies.
+- Remote management of installations from the Developer's own PC (cloud control plane). Each desktop installation has its own local Developer console, and the Developer manages it on site.
 - Integration with government drug registries. Can be added later as an adapter.
 
 ## 5. Definition of done (applies to every requirement)
