@@ -70,7 +70,7 @@ Tasks:
 - [x] 0.7 Origin header check for non-GET API calls; move login rate limit to PostgreSQL
 - [x] 0.8 `pg_trgm` extension and trigram indexes
 - [x] 0.9 Worker entry point with pg-boss and the outbox dispatcher; `worker` service in `docker-compose.yml`
-- [ ] 0.10 Design tokens as CSS variables, Fira Sans and Fira Code through `next/font`, split `components/ui.tsx` into one file per component
+- [x] 0.10 Design tokens as CSS variables, Fira Sans and Fira Code through `next/font`, split `components/ui.tsx` into one file per component
 - [ ] 0.11 Structured logging (pino) and `/api/health` (database, queue, disk)
 - [ ] 0.12 Desktop proof of concept: Next.js standalone build and embedded PostgreSQL started from an Electron main process on Windows; record start time, installed size and native module issues (Prisma engines, `pg`, OCR)
 

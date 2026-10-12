@@ -1,0 +1,23 @@
+/** UI kit: one component per file. Import from "@/components/ui". */
+export { cn } from "./cn";
+export { Button } from "./button";
+export { Field } from "./field";
+export { Input } from "./input";
+export { Select } from "./select";
+export { Textarea } from "./textarea";
+export { Checkbox } from "./checkbox";
+export { SearchInput } from "./search-input";
+export { Card } from "./card";
+export { PageHeader } from "./page-header";
+export { Badge, type Tone } from "./badge";
+export { StatCard } from "./stat-card";
+export { Spinner } from "./spinner";
+export { Skeleton, TableSkeleton } from "./skeleton";
+export { EmptyState } from "./empty-state";
+export { ErrorBox } from "./error-box";
+export { TableWrap } from "./table-wrap";
+export { Pagination } from "./pagination";
+export { Tabs } from "./tabs";
+export { Modal } from "./modal";
+export { ConfirmDialog } from "./confirm-dialog";
+export { ToastProvider, useToast } from "./toast";
