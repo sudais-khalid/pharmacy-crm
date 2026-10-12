@@ -50,5 +50,13 @@
     "tsx": "^4.19.2",
     "typescript": "^5.6.3",
     "vitest": "^2.1.4"
+  },
+  "allowScripts": {
+    "@prisma/client@6.19.0": true,
+    "@prisma/engines@6.19.0": true,
+    "esbuild@0.28.2": true,
+    "esbuild@0.21.5": true,
+    "prisma@6.19.0": true,
+    "unrs-resolver@1.12.2": true
   }
 }
