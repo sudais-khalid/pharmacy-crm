@@ -26,7 +26,6 @@ flowchart LR
   pharmacist[Pharmacist<br/>PC or phone]
   owner[Pharmacy Admin<br/>PC or phone]
   dev[Developer<br/>platform owner]
-  customer[Customer<br/>phone browser]
   app((Pharmacy CRM))
   printer[Thermal / A4 printer]
   ocr[OCR provider<br/>cloud or local]
@@ -37,7 +36,6 @@ flowchart LR
   pharmacist --> app
   owner --> app
   dev --> app
-  customer --> app
   app --> printer
   app --> ocr
   app --> backup
@@ -68,7 +66,7 @@ flowchart TB
 | `web` | UI, REST API, auth, synchronous business transactions | Stateless; can run 2 replicas behind Caddy if ever needed |
 | `worker` | OCR processing, scheduled scans (expiry, low stock), notifications, report rollups, backups | One instance; pg-boss guarantees each job runs once |
 | `db` | System of record, job queue (pg-boss schema), trigram search (`pg_trgm`) | Daily `pg_dump`, WAL archiving optional |
-| `files` | Bill photos, prescription scans, generated PDFs | Adapter: local disk by default, S3/MinIO when offsite is wanted |
+| `files` | Bill and stock list photos, pharmacy logos, generated PDFs | Adapter: local disk by default, S3/MinIO when offsite is wanted |
 | `proxy` | TLS, compression, upload size limit | Automatic certificates with a domain, internal CA on LAN |
 
 The worker is the same codebase started with a different entry point (`node dist/worker.js`), so domain services are shared and never duplicated.
@@ -83,17 +81,16 @@ src/
     (platform)/             Developer console: pharmacies, accounts, system
     (pos)/                  cashier layout: full-screen POS, no sidebar
     (app)/                  back-office layout with sidebar
-    (portal)/shop/[slug]/   customer portal, mobile first, pharmacy branded
     api/                    route handlers: parse, authorise, call module, respond
   modules/
     tenancy/                pharmacies, status, subscription, branding, onboarding, counters
-    identity/               platform users, staff, customer accounts, roles, permissions, sessions, tokens, 2FA
+    identity/               platform users, staff, roles, permissions, sessions, tokens, 2FA
     catalog/                medicines, categories, supplier price list
     inventory/              batches, movements, adjustments, expiry
     sales/                  POS sale, invoices, returns, cash sessions, receipts
     customers/              customers, ledger, payments
-    procurement/            suppliers, supplier catalog, purchase orders, purchases, supplier returns, bill intake (OCR)
-    orders/                 customer orders, reservations, prescriptions
+    procurement/            suppliers, supplier catalog, purchase orders, purchases, supplier returns
+    stockentry/             stock entry drafts: manual grid, OCR pipeline, file import, review and posting
     finance/                expenses, profit and loss
     reporting/              report registry, exports, rollups
     notifications/          rules, notification store, delivery channels
@@ -152,7 +149,7 @@ sequenceDiagram
 
 Rules:
 
-- **Tenant context first.** The route wrapper takes `pharmacyId` from the session (staff and customer realms) or from the support session (Developer), checks the pharmacy status, and the use case runs inside `withTenant(pharmacyId, ...)`. There is no code path that reaches tenant tables without it.
+- **Tenant context first.** The route wrapper takes `pharmacyId` from the session (staff realm) or from the support session (Developer), checks the pharmacy status, and the use case runs inside `withTenant(pharmacyId, ...)`. There is no code path that reaches tenant tables without it.
 - **One use case, one transaction.** Audit row and outbox row are written inside the same transaction, so they can never disagree with the data.
 - **Idempotency** for retry-prone writes (complete sale, post purchase, receive order): the client sends an `Idempotency-Key` header; the server stores `(key, user, response)` for 24 hours and replays the stored response on a duplicate. Protects against double-clicks and flaky Wi-Fi.
 - **Typed errors**: `AppError(status, code, message, fields)`. The UI maps `code` to friendly text and highlights `fields`.
@@ -161,7 +158,7 @@ Rules:
 
 ### 5.1 Platform model
 
-The product is a **platform that hosts many pharmacies**. There are three levels of account, and each level can only see what is below it.
+The product is a **platform that hosts many pharmacies**. There are two levels of account, and the upper level can see everything below it. Customers are records kept by staff, not accounts.
 
 ```mermaid
 flowchart TB
@@ -171,27 +168,23 @@ flowchart TB
     p1[Pharmacist]
     c1[Cashier]
     r1[Custom roles]
-    cu1[Customers]
   end
   subgraph ph2[Pharmacy B tenant]
     a2[Pharmacy Admin]
     p2[Pharmacist]
     c2[Cashier]
-    cu2[Customers]
   end
   dev -->|creates, activates, deactivates, supports| ph1
   dev --> ph2
-  a1 -->|creates staff, roles, customer accounts| p1
+  a1 -->|creates staff and roles| p1
   a1 --> c1
   a1 --> r1
-  a1 --> cu1
 ```
 
 | Level | Who | Sees |
 |---|---|---|
 | Platform | Developer (the product owner) | Every pharmacy, every account, system health |
 | Pharmacy (tenant) | Pharmacy Admin, Pharmacist, Cashier, custom roles | Only their own pharmacy's data |
-| Customer | Customer accounts created by the pharmacy | Only their own orders, invoices and balance at that pharmacy |
 
 ### 5.2 Tenant isolation
 
@@ -213,15 +206,14 @@ How it is enforced, in layers, so one mistake is not enough to leak data:
 
 ### 5.3 Identity realms
 
-Three kinds of account live in three separate tables, log in on separate pages and receive separate cookies. A bug in the customer portal therefore cannot produce a staff or Developer session.
+Two kinds of account live in two separate tables, log in on separate pages and receive separate cookies. A bug in the pharmacy app therefore cannot produce a Developer session.
 
 | Realm | Table | Login page | Credentials | Cookie | Session |
 |---|---|---|---|---|---|
 | Platform | `PlatformUser` | `/platform/login` | Email, password, **TOTP code (mandatory)** | `pcrm_platform` | 2 h, sliding |
 | Staff | `User` (has `pharmacyId`) | `/p/<pharmacy-slug>/login` (shows the pharmacy logo) or `/login` with a pharmacy code remembered on the device | Username, password, optional TOTP | `pcrm_staff` | 8 h, sliding while active |
-| Customer | `CustomerAccount` (has `pharmacyId`, linked to `Customer`) | `/shop/<pharmacy-slug>/login` | Phone number, password | `pcrm_customer` | 30 days |
 
-Each realm has its own route wrapper (`platformRoute`, `staffRoute`, `customerRoute`) built on the existing `route()` helper. The JWT carries `realm`, `sub`, `pharmacyId` (staff and customer) and `sessionVersion`; a token from one realm is rejected by the others.
+Each realm has its own route wrapper (`platformRoute`, `staffRoute`) built on the existing `route()` helper. The JWT carries `realm`, `sub`, `pharmacyId` (staff) and `sessionVersion`; a token from one realm is rejected by the others.
 
 Usernames are unique inside a pharmacy, so two pharmacies can both have a user called `ali`.
 
@@ -229,12 +221,11 @@ Usernames are unique inside a pharmacy, so two pharmacies can both have a user c
 
 | Role | Level | Created by | Can do | Cannot do |
 |---|---|---|---|---|
-| **Developer** | Platform | Server environment on first boot only | Everything. Create pharmacies and their admin credentials; activate, suspend, deactivate pharmacies; activate and deactivate any user or customer account; issue reset and invite links for anyone; force logout; support access into any pharmacy with full permissions; feature flags and limits per pharmacy; subscription dates; data export; system console (health, jobs, logs, backups, maintenance) | Nothing is restricted. The account itself cannot be removed or demoted by anyone |
-| **Pharmacy Admin** | Pharmacy | Developer (first admin), then other Pharmacy Admins | All access inside the pharmacy: profile and branding (name, logo, contacts, receipt text), custom roles, staff accounts and passwords, customer accounts, prices, reports, net profit, settings, audit log | See other pharmacies or the platform console; remove the last active Pharmacy Admin |
-| **Pharmacist** | Pharmacy | Pharmacy Admin | Dashboard, medicines and batches, **supplier catalogs (add medicines for each supplier)**, purchase orders and receiving, OCR bill review, expiry and stock adjustments, approve returns, confirm and prepare customer orders, review prescriptions, POS | Staff, roles, branding, expenses and net profit (unless granted) |
-| **Cashier** | Pharmacy | Pharmacy Admin | POS, cash and card payments, print and reprint own receipts, quick add customer, hand over ready customer orders and collect payment, own cash session | Cost price and profit, cancellations, stock changes, other cashiers' sessions |
+| **Developer** | Platform | Server environment on first boot only | Everything. Create pharmacies and their admin credentials; activate, suspend, deactivate pharmacies; activate and deactivate any user; issue reset and invite links for anyone; force logout; support access into any pharmacy with full permissions; feature flags and limits per pharmacy; subscription dates; data export; system console (health, jobs, logs, backups, maintenance) | Nothing is restricted. The account itself cannot be removed or demoted by anyone |
+| **Pharmacy Admin** | Pharmacy | Developer (first admin), then other Pharmacy Admins | All access inside the pharmacy: profile and branding (name, logo, contacts, receipt text), custom roles, staff accounts and passwords, customers, prices, reports, net profit, settings, audit log | See other pharmacies or the platform console; remove the last active Pharmacy Admin |
+| **Pharmacist** | Pharmacy | Pharmacy Admin | Dashboard, medicines and batches, **supplier catalogs (add medicines for each supplier)**, **stock entry (manual and OCR) and review**, purchase orders and receiving, expiry and stock adjustments, approve returns, POS | Staff, roles, branding, expenses and net profit (unless granted) |
+| **Cashier** | Pharmacy | Pharmacy Admin | POS, cash and card payments, print and reprint own receipts, quick add customer, own cash session; optionally upload stock entry photos for a pharmacist to review | Cost price and profit, cancellations, stock changes, other cashiers' sessions |
 | **Custom role** | Pharmacy | Pharmacy Admin | Any subset of tenant permissions, for example "Senior Cashier" with cancellations | Platform permissions (they are not in the tenant catalog) |
-| **Customer** | Customer | Pharmacy Admin or staff with `customers.accounts` | Browse in-stock medicines, place and track orders, upload prescriptions, view own invoices and credit balance, reorder | Anything outside their own records |
 
 **Why the Developer role is permanent ("always with me")**:
 
@@ -245,11 +236,11 @@ Usernames are unique inside a pharmacy, so two pharmacies can both have a user c
 
 ### 5.5 Permission model
 
-- **Two catalogs in code**: tenant permissions (`pos.sell`, `sales.cancel`, `cost.view`, `supplierCatalog.manage`, `orders.fulfil`, `customers.accounts`, `roles.manage`, `branding.manage`, ...) and platform permissions (`platform.pharmacies.manage`, `platform.users.manage`, `platform.support`, `platform.system`). Tenant roles can only contain tenant permissions.
+- **Two catalogs in code**: tenant permissions (`pos.sell`, `sales.cancel`, `cost.view`, `supplierCatalog.manage`, `stockEntry.create`, `stockEntry.post`, `roles.manage`, `branding.manage`, ...) and platform permissions (`platform.pharmacies.manage`, `platform.users.manage`, `platform.support`, `platform.system`). Tenant roles can only contain tenant permissions.
 - **Role templates**: Pharmacy Admin, Pharmacist and Cashier are global system templates (`pharmacyId` null, read-only). Custom roles belong to one pharmacy. "Duplicate role" copies a template into an editable custom role.
 - **No privilege escalation**: a user can only grant permissions they hold themselves, and only Pharmacy Admins can edit roles.
 - **Sensitive data permissions** such as `cost.view` are applied in queries and DTO mappers, so cost price and profit never reach a cashier's browser.
-- **Session invalidation**: `sessionVersion` on every account. Role change, deactivation, password reset or "force logout" increments it and all existing sessions die on their next request. Suspending a pharmacy blocks all its staff and customer sessions the same way.
+- **Session invalidation**: `sessionVersion` on every account. Role change, deactivation, password reset or "force logout" increments it and all existing sessions die on their next request. Suspending a pharmacy blocks all its staff sessions the same way.
 - **Re-authentication** for dangerous actions: changing roles, issuing a reset link for a Pharmacy Admin, deactivating a pharmacy, restoring a backup.
 
 ### 5.6 Credential lifecycle
@@ -272,17 +263,17 @@ sequenceDiagram
 
 | Mechanism | Rule |
 |---|---|
-| Invite link | 32 random bytes, only the SHA-256 hash is stored, valid 72 h, single use. Used for new pharmacies, new staff and new customer accounts |
+| Invite link | 32 random bytes, only the SHA-256 hash is stored, valid 72 h, single use. Used for new pharmacies and new staff |
 | Temporary password | Alternative to an invite: a strong generated password shown once, `mustChangePassword` forces a change at first login |
 | Reset link | Same token mechanism with purpose `RESET`, valid 1 h. Issuing a new link revokes older unused ones. Using it bumps `sessionVersion` so every old session ends |
-| Who can issue | Developer: anyone. Pharmacy Admin: staff and customers of their pharmacy. Staff with `customers.accounts`: customers only |
-| Forgot password (self-service) | Staff: request appears as a notification to the Pharmacy Admin, who issues a link (many staff have no email). Customers: same, to the pharmacy. Email self-service works automatically when an email adapter is configured |
+| Who can issue | Developer: anyone. Pharmacy Admin: staff of their pharmacy |
+| Forgot password (self-service) | Staff: request appears as a notification to the Pharmacy Admin, who issues a link (many staff have no email). Email self-service works automatically when an email adapter is configured |
 | Delivery | Link is always copyable; WhatsApp share uses a `wa.me` URL with prefilled text; email through an adapter (SMTP or a transactional email service). SMS later through an adapter |
 | Lockout | Rate limit per account and per IP; Developer and Pharmacy Admin can unlock |
 
 Pharmacy status and its effects:
 
-| Status | Staff and customer login | Data | Developer access | Typical cause |
+| Status | Staff login | Data | Developer access | Typical cause |
 |---|---|---|---|---|
 | `ACTIVE` | Allowed | Read and write | Yes | Normal |
 | `GRACE` | Allowed with a payment banner | Read and write | Yes | Subscription ended less than N days ago |
@@ -293,13 +284,53 @@ Data is never hard-deleted by status changes. Permanent deletion is a separate D
 
 ## 6. Key flows
 
-### 6.1 Bill entry with OCR (R4)
+### 6.1 Stock entry: manual and OCR (R4, R26)
 
-The most complex new feature. It is designed as an **intake pipeline that always ends in human review**. OCR never posts stock or money on its own.
+Stock entry is a **must-have core workflow**. Every way of bringing stock in (typing it, photographing a supplier bill, photographing a stock list, importing a file) produces the same thing: a **stock entry draft** with lines. Every draft goes through the same review screen and posts through the existing, tested stock-in code. That gives one set of validation rules, one review experience, and one place to fix bugs.
+
+```mermaid
+flowchart LR
+  m[Manual grid<br/>keyboard and barcode]
+  b[Photo of supplier bill<br/>OCR]
+  l[Photo of stock list or register<br/>OCR]
+  x[Excel or CSV file<br/>import]
+  d[(Stock entry draft<br/>header + lines)]
+  r[Review screen<br/>match, fix, validate]
+  p1[Post as supplier purchase<br/>batches + PURCHASE movements + supplier ledger]
+  p2[Post as opening stock<br/>batches + OPENING movements, no ledger]
+  m --> d
+  b --> d
+  l --> d
+  x --> d
+  d --> r
+  r -->|kind = PURCHASE_BILL| p1
+  r -->|kind = STOCK_LIST| p2
+```
+
+| Kind | Typical use | Supplier | Posts as |
+|---|---|---|---|
+| `PURCHASE_BILL` | Daily: goods arrive with a distributor bill | Required | `createPurchase`: batches created or topped up, `PURCHASE` movements, supplier ledger debit, optional payment, optional purchase order receipt |
+| `STOCK_LIST` | Onboarding a pharmacy, or a stock count from a register | None | Opening batches with `OPENING` movements; no ledger; cost taken from the line rate |
+
+#### 6.1.1 Manual entry (fast grid)
+
+Manual entry stays first class, because OCR will not read every bill and some staff will prefer typing.
+
+- Spreadsheet-like grid, fully keyboard driven: medicine (type-ahead search on name, generic and barcode; a barcode scan fills the cell), batch, expiry (`MM/YY` typed, stored as month end), quantity, bonus, rate, discount percent, tax, line amount (calculated, editable for rounding).
+- Enter or Tab moves to the next cell; a new row appears automatically; Ctrl+D copies the cell above (handy for the same expiry on many lines).
+- Header: supplier (remembers the last one), supplier invoice number, bill date, bill total. The grid shows lines total against bill total live.
+- **Drafts save to the server every few seconds**, so a phone call or a power cut does not lose a half-typed bill. Drafts are listed under "Stock entry > Drafts" and can be finished by another user with the same permission.
+- Warnings, not blocks, for: rate more than 10 percent different from the last purchase price, expiry within 90 days, batch number already received from a different supplier, sale price below cost.
+- Blocks for: expiry in the past, missing batch number, duplicate supplier invoice number for the same supplier, quantity not positive.
+- "New medicine" from inside the grid opens a small inline form, so an unknown item never forces the user to leave the bill.
+
+#### 6.1.2 OCR from a photo
+
+The OCR pipeline fills the same draft automatically. It **always ends in human review**; OCR never posts stock or money on its own.
 
 ```mermaid
 sequenceDiagram
-  participant P as Pharmacist (phone)
+  participant P as Pharmacist (phone or PC)
   participant W as web
   participant F as File storage
   participant Q as pg-boss queue
@@ -307,41 +338,44 @@ sequenceDiagram
   participant O as OCR provider
   participant DB as PostgreSQL
 
-  P->>P: camera capture, client resize to 2000px, strip EXIF
-  P->>W: POST /api/intake (image, supplier optional)
-  W->>W: validate type by magic bytes, max 10 MB, sha256 hash
-  W->>DB: duplicate hash? return existing intake
-  W->>F: store original
-  W->>DB: BillIntake status=UPLOADED
+  P->>P: choose kind (supplier bill or stock list), camera capture or file pick, crop, add pages
+  P->>P: client resize to 2000px, strip EXIF
+  P->>W: POST /api/stock-entry/intake (images, kind, supplier optional)
+  W->>W: validate type by magic bytes, max 10 MB per page, sha256 hash
+  W->>DB: duplicate hash? return existing draft
+  W->>F: store originals under pharmacies/<id>/
+  W->>DB: StockIntake status=UPLOADED, kind, source=OCR
   W->>Q: enqueue ocr.process(intakeId)
-  W-->>P: 202 Accepted, intake id
+  W-->>P: 202 Accepted, draft id
   K->>Q: fetch job
-  K->>O: extract text and table structure
+  K->>O: extract text, table structure, word boxes
   O-->>K: words, lines, tables, confidence
-  K->>K: parse header (supplier, invoice no, date, totals)
+  K->>K: parse header (supplier, invoice no, date, totals) when kind is a bill
   K->>K: parse lines (name, batch, expiry, qty, bonus, rate, amount)
-  K->>DB: match lines to medicines (alias table, then trigram)
-  K->>DB: BillIntake status=NEEDS_REVIEW, lines with confidence
-  K->>DB: notification "Bill ready for review"
-  P->>W: open review screen (image left, editable lines right)
+  K->>DB: match lines to medicines (barcode, supplier code, alias, trigram)
+  K->>DB: StockIntake status=NEEDS_REVIEW, lines with confidence and boxes
+  K->>DB: notification "Stock entry ready for review"
+  P->>W: open review screen (image left, editable grid right)
   P->>W: fix, confirm
-  W->>DB: one transaction: createPurchase + mark intake POSTED + learn aliases
+  W->>DB: one transaction: post (purchase or opening stock), mark POSTED, learn aliases
 ```
 
 Design decisions:
 
 | Concern | Decision |
 |---|---|
-| OCR provider | `OcrProvider` interface with two adapters. **Cloud adapter** (a document AI service with table extraction or a vision-capable LLM returning structured JSON) for accuracy on dense pharma invoices. **Local adapter** (Tesseract) as offline fallback. Chosen per installation in settings |
-| Parsing | Provider output is normalised to a common `ExtractedDocument` shape, then a parser maps columns by header keywords (Qty, Batch, Exp, Rate, Amount, Bonus/Free). Supplier-specific templates can be added when one supplier's layout is consistently misread |
-| Medicine matching | 1) exact barcode, 2) `SupplierItemAlias` (text the supplier prints mapped to our medicine, learned from every confirmed review), 3) `pg_trgm` similarity on name and generic name above a threshold, 4) unmatched lines must be mapped or created by the reviewer |
-| Validation before posting | Line amount equals qty times rate within tolerance; sum of lines equals invoice total; expiry in the future; batch number present; supplier invoice number unique per supplier |
-| Confidence UI | Fields under the confidence threshold are highlighted amber; the confirm button stays disabled until every unmatched line is resolved |
-| Idempotency | Image hash stops duplicate uploads; unique `(supplierId, supplierInvoice)` stops posting the same bill twice |
-| Link to orders | If the supplier has an open purchase order, the review screen offers "receive against PO-xxxx" and pre-fills ordered quantities |
-| Privacy | Images stay in our storage. The cloud adapter sends only the bill image, never customer data |
+| OCR provider | `OcrProvider` interface with two adapters. **Cloud adapter** (a document recognition service with table extraction, or a vision-capable model returning structured JSON) for accuracy on dense printed bills and on handwriting. **Local adapter** (Tesseract) as offline fallback for clean printed bills. The Developer decides which adapters a pharmacy may use |
+| Handwritten stock lists | Much harder than printed bills. The cloud adapter is required for them; the review screen expects more corrections; the parser accepts loose formats ("Panadol 20 exp 3/27") |
+| Parsing | Provider output is normalised to one `ExtractedDocument` shape, then a parser maps columns by header keywords (Qty, Batch, Exp, Rate, Amount, Bonus/Free, Disc, GST). Supplier-specific templates can be added when one supplier's layout is consistently misread |
+| Medicine matching | 1) exact barcode, 2) supplier code from the supplier catalog, 3) `SupplierItemAlias` (text the supplier prints, learned from every confirmed review), 4) `pg_trgm` similarity on name and generic name above a threshold, 5) unmatched lines are mapped or created by the reviewer in the grid |
+| Validation before posting | Same rules as manual entry (6.1.1), plus: line amount equals qty times rate less discount within tolerance; lines total equals bill total |
+| Confidence UI | Cells under the confidence threshold are amber; selecting a row highlights its region on the photo; Post stays disabled until every line is matched |
+| Idempotency | Image hash stops duplicate uploads; unique `(pharmacyId, supplierId, supplierInvoice)` stops posting the same bill twice |
+| Link to orders | For a supplier bill with an open purchase order, the review screen offers "receive against PO-xxxx" and compares quantities |
+| Privacy | Photos stay in the platform's storage. The cloud adapter receives only the photo, never customer data |
+| Cost control | OCR calls are counted per pharmacy; the Developer can set a monthly limit per plan |
 
-Intake states: `UPLOADED -> PROCESSING -> NEEDS_REVIEW -> POSTED`, with `FAILED` (retry or enter manually) and `DISCARDED`.
+Draft states: `DRAFT` (manual, being typed) or `UPLOADED -> PROCESSING -> NEEDS_REVIEW`, then `POSTED`, with `FAILED` (retry, or continue manually in the same grid) and `DISCARDED`.
 
 ### 6.2 Supplier orders (R12)
 
@@ -363,7 +397,7 @@ stateDiagram-v2
 - **Reorder suggestions** (worker job, nightly and on demand): for each active medicine, `suggested = max(0, (avgDailySales over 30 days * (leadTimeDays + coverDays)) + minStock - currentStock - openOrderQty)`. Lines are grouped by preferred supplier from `SupplierProduct`, creating one draft PO per supplier.
 - **"List of available orders" per supplier**: the supplier page shows open POs with ordered, received and pending quantities, and the expected date.
 - **Sending**: printable PO and a WhatsApp share link (text summary). Email optional.
-- **Receiving** creates a normal `Purchase` (the existing, tested code path) linked to the PO, with batch and expiry captured at receipt. `PurchaseOrderItem.receivedQty` is updated in the same transaction.
+- **Receiving** opens a stock entry draft pre-filled from the PO (section 6.1) and posts a normal `Purchase` (the existing, tested code path) linked to the PO, with batch and expiry captured at receipt. `PurchaseOrderItem.receivedQty` is updated in the same transaction.
 - A PO never changes stock or the supplier ledger. Only receiving does. This keeps one source of truth for stock.
 
 ### 6.3 Sale, retail bill and cash session (R6, R8, R15, A2)
@@ -394,57 +428,20 @@ Net profit         = Gross profit - Stock losses - Operating expenses
 
 Expenses are recorded with a category, amount, date, payment method and optional receipt photo (same file storage). Supplier payments are not expenses; they settle a payable.
 
-### 6.6 Customer accounts and online orders (R23, R24)
-
-Customers use a mobile-first portal at `/shop/<pharmacy-slug>`, branded with the pharmacy's name, logo and colour. Accounts are created by the pharmacy (from the customer page: "Create portal login"), which keeps the portal private to known customers and avoids spam orders. Self-registration with staff approval can be switched on later per pharmacy.
-
-```mermaid
-stateDiagram-v2
-  [*] --> PLACED: customer submits
-  PLACED --> NEEDS_PRESCRIPTION: Rx item without valid prescription
-  NEEDS_PRESCRIPTION --> PLACED: prescription uploaded
-  PLACED --> CONFIRMED: pharmacist confirms (stock reserved, prices locked)
-  PLACED --> REJECTED: pharmacist rejects with reason
-  CONFIRMED --> READY: items picked
-  READY --> OUT_FOR_DELIVERY: delivery chosen
-  READY --> COMPLETED: handed over at counter (sale created)
-  OUT_FOR_DELIVERY --> COMPLETED: delivered (sale created)
-  PLACED --> CANCELLED: customer or staff cancels
-  CONFIRMED --> CANCELLED: reservation released
-  READY --> CANCELLED
-  COMPLETED --> [*]
-  REJECTED --> [*]
-  CANCELLED --> [*]
-```
-
-Rules:
-
-| Concern | Decision |
-|---|---|
-| What customers see | Only medicines flagged `onlineVisible` with sellable stock. Availability is shown as "In stock" or "Few left", never exact counts. Cost price is never exposed |
-| Stock | Placing an order checks availability but holds nothing. **Confirming** creates `StockReservation` rows (per medicine, with an expiry, default 24 h). POS and portal availability = sellable stock minus active reservations, so the counter cannot sell what an order is waiting for |
-| Price | Prices are locked at confirmation and shown to the customer. Fulfilment creates the sale through the normal `createSale` path (FEFO, stock movements, ledger) with the order's locked prices, so there is one code path for stock out |
-| Payment | Pay at pickup, cash on delivery, or "add to my account" when the customer's credit limit allows. Online payment is a later adapter |
-| Prescriptions | Rx items require a prescription image (same file storage as OCR). The pharmacist approves or rejects it; approval is recorded on the order and kept with the sale |
-| Staff alerts | New order notification for permission `orders.fulfil`, with a sound and a badge in POS and the sidebar |
-| Customer updates | Status timeline in the portal; WhatsApp or SMS updates later through the messaging adapter |
-| Abuse limits | Max open orders per customer (default 3), rate limit on order creation, staff can disable a portal account in one click |
-| Expiry of reservations | `orders.expireReservations` job releases stale reservations and notifies staff |
-
-### 6.7 Supplier catalog (R25)
+### 6.6 Supplier catalog (R25)
 
 - `SupplierProduct` links a supplier to the medicines it supplies, with supplier code, pack size, last price, bonus rule (for example "10+1"), lead time and a preferred flag.
 - **Pharmacists maintain it** from the supplier page: search and add existing medicines, or create a new medicine inline (name, generic, category, unit, prices, barcode) and link it in one step. Bulk import from a supplier price list (CSV or Excel) with a preview and error report.
 - Posting a purchase updates `lastPrice` automatically, so the list stays current without manual work.
 - Used by reorder suggestions (which supplier to order from), by purchase order forms (only that supplier's medicines are offered first) and by OCR matching (supplier codes printed on bills).
 
-### 6.8 Pharmacy onboarding (R18, R21)
+### 6.7 Pharmacy onboarding (R18, R21)
 
 1. Developer opens the platform console, "New pharmacy": name, URL slug, owner name, phone, email, city, licence number, plan and subscription end date.
 2. One transaction creates the pharmacy, its settings with defaults, counters, default expense categories, and the first Pharmacy Admin with an invite link (or temporary password).
-3. Pharmacy Admin opens the link, sets a password, and is taken to a **first-run wizard**: profile and logo, receipt format and footer, staff accounts, import medicines and opening stock, import customers.
+3. Pharmacy Admin opens the link, sets a password, and is taken to a **first-run wizard**: profile and logo, receipt format and footer, staff accounts, opening stock (Excel import or OCR of a stock list photo, section 6.1), import customers.
 4. The pharmacy appears on the Developer's dashboard with usage (users, invoices this month, storage, last activity) and status.
-5. Branding (R21) can be changed any time by the Pharmacy Admin: display name, logo (PNG or JPG, resized server-side to 512 px and 128 px versions), address, phones, email, licence and tax numbers, receipt header and footer, brand colour. Branding appears on the staff app header, the login page, receipts, purchase orders and the customer portal.
+5. Branding (R21) can be changed any time by the Pharmacy Admin: display name, logo (PNG or JPG, resized server-side to 512 px and 128 px versions), address, phones, email, licence and tax numbers, receipt header and footer, brand colour. Branding appears on the staff app header, the login page, receipts and purchase orders.
 
 ## 7. Cross-cutting services
 
@@ -466,7 +463,6 @@ Rules:
 | `reorder.suggest` | nightly | Draft purchase orders |
 | `po.overdue` | daily | Orders past expected date |
 | `report.rollup` | hourly | Refresh `DailySummary` for dashboards |
-| `orders.expireReservations` | every 15 min | Release reservations of stale confirmed orders |
 | `subscription.check` | daily | Move pharmacies to `GRACE` or `SUSPENDED`, notify Developer and Pharmacy Admin |
 | `tokens.cleanup` | daily | Delete expired invite and reset tokens |
 | `backup.nightly` | daily 02:00 | `pg_dump`, compress, copy offsite, keep 14 daily and 12 monthly |
@@ -510,7 +506,7 @@ pg-boss is chosen because it runs on the existing PostgreSQL. No Redis to instal
 | Tenant isolation | `pharmacyId` on every tenant row, Row-Level Security, non-owner database role, isolation test suite in CI (section 5.2) |
 | Platform account | Mandatory TOTP, separate login and cookie, short session, recovery only from the server shell |
 | Tokens | Invite and reset tokens stored as SHA-256 hashes, single use, short expiry, revoked on reissue |
-| Customer portal | Separate realm, rate limits on login and orders, no cost or stock counts exposed, uploads limited to images and PDF |
+| Uploads | Stock entry photos limited to JPEG, PNG, WebP and PDF by magic bytes, size-limited, stored under random keys in the pharmacy's prefix |
 
 ## 9. Non-functional targets
 
@@ -542,6 +538,6 @@ Future proofing without building it now:
 | ADR-7 | Browser print with CSS templates for receipts | ESC/POS agent from day one | Works on any printer with no install; agent can be added later |
 | ADR-8 | Append-only audit log in the same transaction | Database triggers | Captures user intent and context, not only row diffs |
 | ADR-9 | Shared schema multi-tenancy with `pharmacyId` and Row-Level Security | Database or schema per pharmacy | One migration and one backup for all pharmacies; RLS makes isolation fail closed |
-| ADR-10 | Three identity realms (platform, staff, customer) with separate tables and cookies | One user table with a role column | A bug in one realm cannot mint a session in another; Developer can never be demoted through the app |
-| ADR-11 | Customer orders reserve stock at confirmation and become sales through `createSale` | Deduct stock when the order is placed | No phantom stock loss from abandoned orders; one code path for stock out |
+| ADR-10 | Two identity realms (platform, staff) with separate tables and cookies | One user table with a role column | A bug in the pharmacy app cannot mint a Developer session; Developer can never be demoted through the app |
+| ADR-11 | One stock entry workflow for manual, OCR and file import, posting through existing stock-in code | Separate OCR screen with its own posting | One set of rules and one review screen; manual entry is the fallback for any OCR failure inside the same grid |
 | ADR-12 | Invite and reset links instead of sending passwords | Developer or admin types passwords for others | Nobody but the account owner knows the password; links are single use and expire |
