@@ -116,6 +116,8 @@ if [ -n "$PLATFORM_OWNER_EMAIL" ] && [ -n "$PLATFORM_OWNER_PASSWORD" ]; then
   ok "Support session opens pharmacy pages" "$(code -b /tmp/smoke_dev.jar $B/dashboard)" 200
   ok "Developer ends the support session" "$(curl -s -b /tmp/smoke_dev.jar -c /tmp/smoke_dev.jar -X POST $B/api/platform/support/end -H 'content-type: application/json' -d '{}' | js "d['redirect'].startswith('/platform/pharmacies/')")" True
   ok "Ended support session has no pharmacy access" "$(code -b /tmp/smoke_dev.jar $B/api/medicines)" 401
+  ok "Developer switches a feature off" "$(curl -s -b /tmp/smoke_dev.jar -X POST $B/api/platform/pharmacies/$PID/features -H 'content-type: application/json' -d '{"key":"ocr","enabled":false}' | js "d['enabled']")" False
+  ok "Developer updates plan limits" "$(curl -s -b /tmp/smoke_dev.jar -X PUT $B/api/platform/pharmacies/$PID/plan -H 'content-type: application/json' -d '{"plan":"PREMIUM","maxUsers":4,"ocrMonthlyLimit":50}' | js "d['maxUsers']")" 4
 fi
 for p in /dashboard /pos /medicines /inventory /customers /suppliers /purchases /purchases/new /sales /reports /users /settings; do ok "Page $p renders" "$(code -b /tmp/smoke_admin.jar $B$p)" 200; done
 exit $fail

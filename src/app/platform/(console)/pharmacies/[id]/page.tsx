@@ -37,11 +37,11 @@ export default function PharmacyDetailPage() {
         subtitle={`/p/${p.slug} · created ${formatDate(p.createdAt)}`}
         actions={<><StatusBadge status={p.status} /><SupportButton pharmacyId={p.id} pharmacyName={p.name} /></>}
       />
-      <Tabs<Tab> value={tab} onChange={setTab} tabs={[{ id: "profile", label: "Profile" }, { id: "status", label: "Status" }, { id: "staff", label: `Staff (${data.staff.length})` }, { id: "features", label: "Features" }, { id: "activity", label: "Activity" }]} />
+      <Tabs<Tab> value={tab} onChange={setTab} tabs={[{ id: "profile", label: "Profile" }, { id: "status", label: "Status and plan" }, { id: "staff", label: `Staff (${data.staff.length})` }, { id: "features", label: "Features" }, { id: "activity", label: "Activity" }]} />
       {tab === "profile" && <ProfileTab detail={data} onSaved={reload} />}
       {tab === "status" && <StatusTab detail={data} onSaved={reload} />}
       {tab === "staff" && <StaffTab detail={data} />}
-      {tab === "features" && <FeaturesTab detail={data} />}
+      {tab === "features" && <FeaturesTab detail={data} onSaved={reload} />}
       {tab === "activity" && <ActivityTab detail={data} />}
     </>
   );
@@ -116,14 +116,31 @@ function StaffTab({ detail }: { detail: Detail }) {
   );
 }
 
-function FeaturesTab({ detail }: { detail: Detail }) {
+function FeaturesTab({ detail, onSaved }: { detail: Detail; onSaved: () => void }) {
+  const toast = useToast();
+  const [busy, setBusy] = useState<string | null>(null);
+  async function toggle(key: string, enabled: boolean) {
+    setBusy(key);
+    try {
+      await api(`/api/platform/pharmacies/${detail.pharmacy.id}/features`, { body: { key, enabled } });
+      toast.success(enabled ? "Feature switched on" : "Feature switched off");
+      onSaved();
+    } catch (err) {
+      toast.error((err as Error).message);
+    } finally {
+      setBusy(null);
+    }
+  }
   return (
     <Card>
       <ul className="divide-y divide-border">
         {detail.flags.map((f) => (
-          <li key={f.key} className="flex items-center justify-between px-4 py-3 text-sm">
+          <li key={f.key} className="flex items-center justify-between gap-4 px-4 py-3 text-sm">
             <span>{f.label}</span>
-            {f.enabled ? <Badge tone="green">On</Badge> : <Badge>Off</Badge>}
+            <label className="inline-flex cursor-pointer items-center gap-2">
+              {f.enabled ? <Badge tone="green">On</Badge> : <Badge>Off</Badge>}
+              <input type="checkbox" role="switch" aria-label={f.label} className="h-4 w-4" checked={f.enabled} disabled={busy === f.key} onChange={(e) => toggle(f.key, e.target.checked)} />
+            </label>
           </li>
         ))}
       </ul>
@@ -192,12 +209,7 @@ function StatusTab({ detail, onSaved }: { detail: Detail; onSaved: () => void })
         <h2 className="font-semibold">Current status</h2>
         <div className="flex items-center gap-3"><StatusBadge status={p.status} /><span className="text-sm text-fg-muted">{STATUS_HELP[p.status]}</span></div>
         {p.statusReason && <p className="text-sm"><span className="text-fg-muted">Reason: </span>{p.statusReason}</p>}
-        <dl className="grid grid-cols-[10rem_1fr] gap-2 pt-2 text-sm">
-          <dt className="text-fg-muted">Plan</dt><dd>{p.plan}</dd>
-          <dt className="text-fg-muted">Subscription ends</dt><dd>{p.subscriptionEndsAt ? formatDate(p.subscriptionEndsAt) : "Not set"}</dd>
-          <dt className="text-fg-muted">Max staff</dt><dd>{p.maxUsers}</dd>
-          <dt className="text-fg-muted">OCR pages per month</dt><dd>{p.ocrMonthlyLimit}</dd>
-        </dl>
+        <PlanForm detail={detail} onSaved={onSaved} />
       </Card>
       <Card className="p-5">
         <h2 className="mb-4 font-semibold">Change status</h2>
@@ -244,5 +256,38 @@ function SupportButton({ pharmacyId, pharmacyName }: { pharmacyId: string; pharm
         </form>
       </Modal>
     </>
+  );
+}
+
+function PlanForm({ detail, onSaved }: { detail: Detail; onSaved: () => void }) {
+  const toast = useToast();
+  const p = detail.pharmacy;
+  const [f, setF] = useState({ plan: p.plan, maxUsers: String(p.maxUsers), ocrMonthlyLimit: String(p.ocrMonthlyLimit), subscriptionEndsAt: p.subscriptionEndsAt ? p.subscriptionEndsAt.slice(0, 10) : "" });
+  const [saving, setSaving] = useState(false);
+  const activeStaff = detail.staff.filter((s) => s.active).length;
+  async function save(e: React.FormEvent) {
+    e.preventDefault();
+    setSaving(true);
+    try {
+      await api(`/api/platform/pharmacies/${p.id}/plan`, { method: "PUT", body: f });
+      toast.success("Plan saved");
+      onSaved();
+    } catch (err) {
+      toast.error((err as Error).message);
+    } finally {
+      setSaving(false);
+    }
+  }
+  return (
+    <form onSubmit={save} className="space-y-3 border-t border-border pt-4" noValidate>
+      <h3 className="text-sm font-semibold">Plan and limits</h3>
+      <div className="grid gap-3 sm:grid-cols-2">
+        <Field label="Plan"><Input value={f.plan} onChange={(e) => setF((s) => ({ ...s, plan: e.target.value }))} /></Field>
+        <Field label="Subscription ends"><Input type="date" value={f.subscriptionEndsAt} onChange={(e) => setF((s) => ({ ...s, subscriptionEndsAt: e.target.value }))} /></Field>
+        <Field label="Max active staff" hint={`${activeStaff} active now`}><Input type="number" min={1} value={f.maxUsers} onChange={(e) => setF((s) => ({ ...s, maxUsers: e.target.value }))} /></Field>
+        <Field label="OCR pages per month"><Input type="number" min={0} value={f.ocrMonthlyLimit} onChange={(e) => setF((s) => ({ ...s, ocrMonthlyLimit: e.target.value }))} /></Field>
+      </div>
+      <Button type="submit" variant="secondary" loading={saving}>Save plan</Button>
+    </form>
   );
 }

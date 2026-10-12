@@ -101,7 +101,7 @@ Tasks:
 - [x] 1.9 Pharmacy status (`ACTIVE`, `GRACE`, `SUSPENDED`, `DEACTIVATED`) enforced at login and on every request, with reason and re-auth
 - [x] 1.10 Accounts screen across pharmacies: activate, deactivate, generate reset link, force logout, unlock
 - [x] 1.11 Support sessions: enter a pharmacy with a reason, banner, audit with `supportSessionId`, end session
-- [ ] 1.12 Per-pharmacy feature flags and limits editor (staff seats, OCR pages per month)
+- [x] 1.12 Per-pharmacy feature flags and limits editor (staff seats, OCR pages per month)
 - [ ] 1.13 Per-pharmacy login page `/p/<slug>/login` and the generic `/login` with remembered pharmacy code
 - [ ] 1.14 Tenant isolation test suite: two pharmacies, every endpoint called across tenants must return 404; runs in CI
 

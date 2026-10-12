@@ -193,6 +193,11 @@ async function staffAccount(id: string) {
 export async function setAccountActive(c: DevContext, id: string, active: boolean) {
   const user = await staffAccount(id);
   if (user.active === active) return { active };
+  if (active) {
+    const pharmacy = await platformDb.pharmacy.findUniqueOrThrow({ where: { id: user.pharmacyId }, select: { maxUsers: true } });
+    const activeStaff = await platformDb.user.count({ where: { pharmacyId: user.pharmacyId, active: true, isSystem: false } });
+    if (activeStaff >= pharmacy.maxUsers) throw new AppError(409, `The plan allows ${pharmacy.maxUsers} active staff accounts. Raise the limit first.`);
+  }
   await platformDb.$transaction(async (tx) => {
     await tx.user.update({ where: { id }, data: { active, ...(active ? {} : { sessionVersion: { increment: 1 } }) } });
     await audit(tx, actorOf(c), { action: active ? "user.activate" : "user.deactivate", entity: "User", entityId: id, pharmacyId: user.pharmacyId, before: { active: user.active }, after: { active } });
@@ -222,4 +227,38 @@ export async function unlockAccount(c: DevContext, id: string) {
   const { count } = await platformDb.rateLimitHit.deleteMany({ where: loginBuckets(user.email) });
   await audit(platformDb, actorOf(c), { action: "user.unlock", entity: "User", entityId: id, pharmacyId: user.pharmacyId, after: { clearedAttempts: count } });
   return { clearedAttempts: count };
+}
+
+// ---------------------------------------------------------------- plan, limits and feature switches
+
+export async function setPharmacyPlan(c: DevContext, id: string, input: { plan: string; maxUsers: number; ocrMonthlyLimit: number; subscriptionEndsAt?: string | null }) {
+  return platformDb.$transaction(async (tx) => {
+    const before = await tx.pharmacy.findUnique({ where: { id }, select: { plan: true, maxUsers: true, ocrMonthlyLimit: true, subscriptionEndsAt: true } });
+    if (!before) throw new AppError(404, "Pharmacy not found.");
+    const after = await tx.pharmacy.update({
+      where: { id },
+      data: {
+        plan: input.plan, maxUsers: input.maxUsers, ocrMonthlyLimit: input.ocrMonthlyLimit,
+        subscriptionEndsAt: input.subscriptionEndsAt ? new Date(`${input.subscriptionEndsAt}T23:59:59Z`) : null,
+      },
+      select: { plan: true, maxUsers: true, ocrMonthlyLimit: true, subscriptionEndsAt: true },
+    });
+    await audit(tx, actorOf(c), { action: "pharmacy.plan.update", entity: "Pharmacy", entityId: id, pharmacyId: id, before, after });
+    return after;
+  });
+}
+
+export async function setFeatureFlag(c: DevContext, id: string, key: FeatureKey, enabled: boolean) {
+  if (!FEATURE_KEYS.includes(key)) throw new AppError(400, "Unknown feature.");
+  return platformDb.$transaction(async (tx) => {
+    const pharmacy = await tx.pharmacy.findUnique({ where: { id }, select: { id: true } });
+    if (!pharmacy) throw new AppError(404, "Pharmacy not found.");
+    const before = await tx.featureFlag.findUnique({ where: { pharmacyId_key: { pharmacyId: id, key } } });
+    await tx.featureFlag.upsert({ where: { pharmacyId_key: { pharmacyId: id, key } }, update: { enabled }, create: { pharmacyId: id, key, enabled } });
+    await audit(tx, actorOf(c), {
+      action: "pharmacy.feature.update", entity: "Pharmacy", entityId: id, pharmacyId: id,
+      before: { [key]: before?.enabled ?? FEATURE_FLAGS[key].defaultOn }, after: { [key]: enabled },
+    });
+    return { key, enabled };
+  });
 }
