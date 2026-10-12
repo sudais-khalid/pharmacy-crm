@@ -91,6 +91,9 @@ function StaffTab({ detail }: { detail: Detail }) {
   if (!detail.staff.length) return <Card><EmptyState title="No staff accounts" /></Card>;
   return (
     <Card>
+      <div className="flex justify-end border-b border-border px-4 py-2.5">
+        <Link href={`/platform/accounts?pharmacyId=${detail.pharmacy.id}`} className="text-sm font-medium text-primary hover:underline">Manage these accounts</Link>
+      </div>
       <TableWrap>
         <thead><tr className="border-b border-border"><th className="th">Name</th><th className="th">Username</th><th className="th">Role</th><th className="th">Status</th><th className="th">Last sign-in</th></tr></thead>
         <tbody>

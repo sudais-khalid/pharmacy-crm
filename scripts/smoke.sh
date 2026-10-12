@@ -101,6 +101,14 @@ if [ -n "$PLATFORM_OWNER_EMAIL" ] && [ -n "$PLATFORM_OWNER_PASSWORD" ]; then
   next_step
   ok "Developer reactivates the pharmacy" "$(code -b /tmp/smoke_dev.jar -X POST $B/api/platform/pharmacies/$DEMO/status -H 'content-type: application/json' -d "{\"status\":\"ACTIVE\",\"reason\":\"smoke test done\",\"code\":\"$(totp "$SECRET")\"}")" 200
   ok "Reactivated pharmacy: staff session works again" "$(code -b /tmp/smoke_admin.jar $B/api/medicines)" 200
+  CASHIER_ID=$(curl -s -b /tmp/smoke_dev.jar "$B/api/platform/accounts?q=cashier" | js "[a for a in d['items'] if a['email']=='cashier@example.com'][0]['id']")
+  ok "Accounts list spans pharmacies" "$(curl -s -b /tmp/smoke_dev.jar "$B/api/platform/accounts?q=smokeadmin" | js "d['items'][0]['pharmacy']['slug'][:6]")" smoke-
+  RESET=$(curl -s -b /tmp/smoke_dev.jar -X POST $B/api/platform/accounts/$CASHIER_ID/reset -H 'content-type: application/json' -d '{}' | js "d['path']")
+  ok "Reset link page opens" "$(code $B$RESET)" 200
+  ok "Reset link is valid for the cashier" "$(curl -s $B/api/auth/token/${RESET##*/} | js "d['username']")" cashier
+  ok "Developer forces a sign-out" "$(code -b /tmp/smoke_dev.jar -X POST $B/api/platform/accounts/$CASHIER_ID/logout -H 'content-type: application/json' -d '{}')" 200
+  ok "Forced sign-out ends the live session" "$(code -b /tmp/smoke_cashier.jar $B/api/medicines)" 401
+  ok "Accounts page renders" "$(code -b /tmp/smoke_dev.jar $B/platform/accounts)" 200
 fi
 for p in /dashboard /pos /medicines /inventory /customers /suppliers /purchases /purchases/new /sales /reports /users /settings; do ok "Page $p renders" "$(code -b /tmp/smoke_admin.jar $B$p)" 200; done
 exit $fail

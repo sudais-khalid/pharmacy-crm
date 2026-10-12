@@ -153,3 +153,76 @@ export async function setPharmacyStatus(c: DevContext, id: string, input: { stat
     return after;
   });
 }
+
+// ---------------------------------------------------------------- staff accounts across pharmacies
+
+const LOGIN_LOCK_WINDOW_MS = 15 * 60 * 1000;
+const LOGIN_LOCK_MAX = 8;
+
+/** Login rate-limit buckets of one account (see the login route). */
+const loginBuckets = (email: string) => ({ bucket: { startsWith: "login:", endsWith: `:${email}` } });
+
+export async function listAccounts(filter: { q?: string; pharmacyId?: string; page?: number; pageSize?: number } = {}) {
+  const page = Math.max(1, filter.page ?? 1);
+  const pageSize = Math.min(100, filter.pageSize ?? 25);
+  const where: Prisma.UserWhereInput = {
+    isSystem: false,
+    ...(filter.pharmacyId ? { pharmacyId: filter.pharmacyId } : {}),
+    ...(filter.q
+      ? { OR: [{ name: { contains: filter.q, mode: "insensitive" } }, { username: { contains: filter.q.toLowerCase() } }, { email: { contains: filter.q, mode: "insensitive" } }] }
+      : {}),
+  };
+  const [total, users] = await Promise.all([
+    platformDb.user.count({ where }),
+    platformDb.user.findMany({
+      where, orderBy: [{ pharmacy: { name: "asc" } }, { name: "asc" }], skip: (page - 1) * pageSize, take: pageSize,
+      select: { id: true, name: true, username: true, email: true, role: true, active: true, lastLoginAt: true, mustChangePassword: true, pharmacy: { select: { id: true, name: true, slug: true, status: true } } },
+    }),
+  ]);
+  const since = new Date(Date.now() - LOGIN_LOCK_WINDOW_MS);
+  const items = await Promise.all(
+    users.map(async (u) => ({ ...u, locked: (await platformDb.rateLimitHit.count({ where: { ...loginBuckets(u.email), at: { gt: since } } })) >= LOGIN_LOCK_MAX })),
+  );
+  return { total, page, pageSize, items };
+}
+
+async function staffAccount(id: string) {
+  const user = await platformDb.user.findUnique({ where: { id }, select: { id: true, email: true, active: true, isSystem: true, pharmacyId: true } });
+  if (!user || user.isSystem) throw new AppError(404, "Account not found.");
+  return user;
+}
+
+/** Deactivating ends every session of the account at once. */
+export async function setAccountActive(c: DevContext, id: string, active: boolean) {
+  const user = await staffAccount(id);
+  if (user.active === active) return { active };
+  await platformDb.$transaction(async (tx) => {
+    await tx.user.update({ where: { id }, data: { active, ...(active ? {} : { sessionVersion: { increment: 1 } }) } });
+    await audit(tx, actorOf(c), { action: active ? "user.activate" : "user.deactivate", entity: "User", entityId: id, pharmacyId: user.pharmacyId, before: { active: user.active }, after: { active } });
+  });
+  return { active };
+}
+
+export async function forceLogoutAccount(c: DevContext, id: string) {
+  const user = await staffAccount(id);
+  await platformDb.$transaction(async (tx) => {
+    await tx.user.update({ where: { id }, data: { sessionVersion: { increment: 1 } } });
+    await audit(tx, actorOf(c), { action: "user.logout.force", entity: "User", entityId: id, pharmacyId: user.pharmacyId });
+  });
+  return { ok: true };
+}
+
+/** A password reset link for any staff account; shown once to the Developer. */
+export async function issueAccountReset(c: DevContext, id: string) {
+  await staffAccount(id);
+  const { path, expiresAt } = await issueStaffToken(id, "RESET", { realm: "PLATFORM", id: c.devId, meta: c.meta });
+  return { path, expiresAt };
+}
+
+/** Clears failed sign-in attempts that locked the account. */
+export async function unlockAccount(c: DevContext, id: string) {
+  const user = await staffAccount(id);
+  const { count } = await platformDb.rateLimitHit.deleteMany({ where: loginBuckets(user.email) });
+  await audit(platformDb, actorOf(c), { action: "user.unlock", entity: "User", entityId: id, pharmacyId: user.pharmacyId, after: { clearedAttempts: count } });
+  return { clearedAttempts: count };
+}
