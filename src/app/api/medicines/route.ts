@@ -1,11 +1,10 @@
 import { Prisma } from "@prisma/client";
 import { route, readJson, pageParams } from "@/lib/api";
-import { prisma } from "@/lib/prisma";
 import { medicineSchema, createMedicine } from "@/modules/catalog";
 import { sellableStock } from "@/modules/inventory";
 import { todayStr, dateOnly } from "@/lib/dates";
 
-export const GET = route("medicines.view", async ({ req, svc }) => {
+export const GET = route("medicines.view", async ({ req, svc, db }) => {
   const { page, pageSize, skip, take, sp } = pageParams(req);
   const q = sp.get("q")?.trim();
   const categoryId = sp.get("categoryId");
@@ -27,7 +26,7 @@ export const GET = route("medicines.view", async ({ req, svc }) => {
   }
 
   if (stockFilter === "low" || stockFilter === "out") {
-    const candidates = await prisma.medicine.findMany({ where, select: { id: true, minStock: true } });
+    const candidates = await db.medicine.findMany({ where, select: { id: true, minStock: true } });
     const stock = await sellableStock(svc, candidates.map((c) => c.id));
     const ids = candidates
       .filter((c) => {
@@ -42,12 +41,12 @@ export const GET = route("medicines.view", async ({ req, svc }) => {
     sort === "salePrice" ? { salePrice: "desc" } : sort === "newest" ? { createdAt: "desc" } : { name: "asc" };
 
   const [total, rows] = await Promise.all([
-    prisma.medicine.count({ where }),
-    prisma.medicine.findMany({ where, orderBy, skip, take, include: { category: { select: { id: true, name: true } } } }),
+    db.medicine.count({ where }),
+    db.medicine.findMany({ where, orderBy, skip, take, include: { category: { select: { id: true, name: true } } } }),
   ]);
   const ids = rows.map((r) => r.id);
   const stock = await sellableStock(svc, ids);
-  const expired = await prisma.batch.groupBy({
+  const expired = await db.batch.groupBy({
     by: ["medicineId"],
     where: { medicineId: { in: ids }, expiryDate: { lt: dateOnly(todayStr()) }, quantity: { gt: 0 } },
     _sum: { quantity: true },

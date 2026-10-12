@@ -8,14 +8,19 @@ import type { Role } from "./permissions";
 const BCRYPT_COST = 10;
 const publicFields = { id: true, name: true, email: true, role: true, active: true, createdAt: true } as const;
 
-export type UserCreateInput = { name: string; email: string; password: string; role: Role };
+export type UserCreateInput = { name: string; email: string; password: string; role: Role; username?: string };
+
+/** Login name from an email's local part: lower case letters, digits, dot, dash and underscore. */
+export function usernameFromEmail(email: string) {
+  return email.split("@")[0].toLowerCase().replace(/[^a-z0-9._-]/g, "") || "user";
+}
 export type UserUpdateInput = { name?: string; role?: Role; active?: boolean; password?: string };
 
 export async function createUser(ctx: ServiceContext, input: UserCreateInput) {
-  const { password, ...data } = input;
+  const { password, username, ...data } = input;
   const passwordHash = await bcrypt.hash(password, BCRYPT_COST);
   return runInTx(ctx, async (tx) => {
-    const user = await tx.user.create({ data: { ...data, passwordHash }, select: publicFields });
+    const user = await tx.user.create({ data: { ...data, username: username ?? usernameFromEmail(data.email), passwordHash }, select: publicFields });
     await audit(tx, ctx, { action: "user.create", entity: "User", entityId: user.id, after: { name: user.name, email: user.email, role: user.role } });
     return user;
   });

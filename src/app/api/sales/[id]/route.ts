@@ -1,8 +1,7 @@
 import { route, AppError } from "@/lib/api";
-import { prisma } from "@/lib/prisma";
 
-export const GET = route("sales.view", async ({ params }) => {
-  const sale = await prisma.sale.findUnique({
+export const GET = route("sales.view", async ({ params, db }) => {
+  const sale = await db.sale.findUnique({
     where: { id: params.id },
     include: {
       customer: { select: { id: true, name: true, phone: true, address: true } },

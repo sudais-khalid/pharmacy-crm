@@ -27,25 +27,28 @@ async function main() {
     return;
   }
 
+  const pharmacy = await prisma.pharmacy.create({
+    data: {
+      slug: "demo", name: "Demo Pharmacy", address: "Shop 12, Main Bazaar, Mardan", phone: "0300-0000000", email: "info@demo-pharmacy.example", currency: "PKR",
+      settings: { create: { expiryWarningDays: 90 } },
+    },
+  });
+  const pharmacyId = pharmacy.id;
+
   const users = await Promise.all(
     [
       ["Admin User", "admin@example.com", "Admin@12345", "ADMIN"],
       ["Sara Pharmacist", "pharmacist@example.com", "Pharmacist@12345", "PHARMACIST"],
       ["Bilal Cashier", "cashier@example.com", "Cashier@12345", "CASHIER"],
     ].map(async ([name, email, pw, role]) =>
-      prisma.user.create({ data: { name, email, role: role as "ADMIN", passwordHash: await bcrypt.hash(pw, 10) } }),
+      prisma.user.create({ data: { pharmacyId, name, email, username: email.split("@")[0], role: role as "ADMIN", passwordHash: await bcrypt.hash(pw, 10) } }),
     ),
   );
   const [admin, pharmacist, cashier] = users;
 
-  await prisma.setting.upsert({
-    where: { id: 1 }, update: {},
-    create: { id: 1, pharmacyName: "Demo Pharmacy", address: "Shop 12, Main Bazaar, Mardan", phone: "0300-0000000", email: "info@demo-pharmacy.example", expiryWarningDays: 90, currency: "PKR" },
-  });
-
   const catNames = ["Analgesics", "Antibiotics", "Antihistamines", "Vitamins & Supplements", "Gastrointestinal", "Cardiovascular", "Dermatology", "Diabetes", "Respiratory"];
   const cats: Record<string, string> = {};
-  for (const n of catNames) cats[n] = (await prisma.category.create({ data: { name: n } })).id;
+  for (const n of catNames) cats[n] = (await prisma.category.create({ data: { pharmacyId, name: n } })).id;
 
   // name, generic, category, purchase, sale, rx, min, openingQty, batchExpiryDays
   const meds: [string, string, string, number, number, boolean, number, number, number][] = [
@@ -81,7 +84,7 @@ async function main() {
   for (const [name, generic, cat, buy, sell, rx, min, qty, exp] of meds) {
     i += 1;
     const m = await createMedicine(
-      serviceContext(admin),
+      serviceContext(admin, pharmacyId),
       { name, genericName: generic, categoryId: cats[cat], barcode: `890100${String(i).padStart(6, "0")}`, sku: `SKU-${String(i).padStart(4, "0")}`, unit: "Pack", purchasePrice: buy, salePrice: sell, minStock: min, prescriptionRequired: rx, description: null, active: true,
         opening: { batchNumber: `OP-${String(i).padStart(3, "0")}`, expiryDate: addDays(today, exp), quantity: qty } },
     );
@@ -93,14 +96,14 @@ async function main() {
       ["Alpha Pharma Distributors", "Imran Khan", "0300-1111111", "Net 30"],
       ["MediSupply Traders", "Farhan Ali", "0301-2222222", "Cash on delivery"],
       ["HealthLine Wholesale", "Nadia Rehman", "0302-3333333", "Net 15"],
-    ].map(([name, contactPerson, phone, paymentTerms]) => prisma.supplier.create({ data: { name, contactPerson, phone, paymentTerms, address: "Wholesale Market, Peshawar" } })),
+    ].map(([name, contactPerson, phone, paymentTerms]) => prisma.supplier.create({ data: { pharmacyId, name, contactPerson, phone, paymentTerms, address: "Wholesale Market, Peshawar" } })),
   );
 
   // purchases: add a second, later-expiring batch for some medicines
   for (let p = 0; p < 6; p++) {
     const chosen = medRecords.slice(p * 3, p * 3 + 3);
     await createPurchase(
-      serviceContext(admin),
+      serviceContext(admin, pharmacyId),
       {
         supplierId: suppliers[p % 3].id, supplierInvoice: `SUP-${1000 + p}`, purchaseDate: addDays(today, -(20 - p * 3)),
         items: chosen.map((m, k) => ({ medicineId: m.id, batchNumber: `PB-${p}${k}`, expiryDate: addDays(today, 600 + k * 30), quantity: 60 + k * 20, purchasePrice: m.buy, salePrice: m.sale + 2 })),
@@ -117,7 +120,7 @@ async function main() {
       ["Ayesha Siddiqui", "0311-1000004", 8000],
       ["Hamid Shah", "0311-1000005", 0],
       ["Zainab Bibi", "0311-1000006", 2000],
-    ].map(([name, phone, creditLimit]) => prisma.customer.create({ data: { name: name as string, phone: phone as string, creditLimit: creditLimit as number, address: "Mardan" } })),
+    ].map(([name, phone, creditLimit]) => prisma.customer.create({ data: { pharmacyId, name: name as string, phone: phone as string, creditLimit: creditLimit as number, address: "Mardan" } })),
   );
 
   // ~14 days of sales history (skip the demo expired and low-stock items sometimes)
@@ -134,7 +137,7 @@ async function main() {
         // same evaluation order as before so the seeded data stays identical
         const sale: Parameters<typeof createSale>[1] = { items: lines, customerId: customer?.id ?? null, discountType: "AMOUNT", discountValue: rand() < 0.15 ? 20 : 0, paymentMethod: useCredit ? "CREDIT" : rand() < 0.3 ? "CARD" : "CASH", amountPaid: useCredit ? 0 : undefined, note: null };
         const seller = rand() < 0.5 ? cashier : pharmacist;
-        await createSale(serviceContext(seller), sale, { createdAt: at });
+        await createSale(serviceContext(seller, pharmacyId), sale, { createdAt: at });
         count++;
       } catch (e) {
         // credit limit / stock issues in random data are fine – skip

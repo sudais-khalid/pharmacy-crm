@@ -22,8 +22,8 @@ describe("idempotency", () => {
     await makeBatch(m.id, "A", 90, 50);
     return { u, m };
   }
-  const sell = (u: { id: string; role: "ADMIN" | "PHARMACIST" | "CASHIER" }, body: ReturnType<typeof saleBody>, key: string) =>
-    withIdempotency({ key, actorId: u.id, route: "POST /api/sales", rawBody: JSON.stringify(body) }, async (tx) => {
+  const sell = (u: { id: string; role: "ADMIN" | "PHARMACIST" | "CASHIER"; pharmacyId: string }, body: ReturnType<typeof saleBody>, key: string) =>
+    withIdempotency({ key, actorId: u.id, pharmacyId: u.pharmacyId, route: "POST /api/sales", rawBody: JSON.stringify(body) }, async (tx) => {
       const sale = await createSale({ ...ctxOf(u), tx }, body);
       return { id: sale.id, invoiceNo: sale.invoiceNo };
     });

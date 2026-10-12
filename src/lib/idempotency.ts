@@ -1,6 +1,7 @@
 import { createHash } from "crypto";
 import { Prisma } from "@prisma/client";
 import { prisma, type Tx } from "./prisma";
+import { tenantTransaction } from "./db";
 import { AppError } from "./errors";
 import { toJson } from "./json";
 
@@ -19,7 +20,7 @@ export type IdempotentResult = { body: unknown; replayed: boolean };
  * Failed requests store nothing, so the client may retry them with the same key.
  */
 export async function withIdempotency(
-  opts: { key: string; actorId: string; route: string; rawBody: string },
+  opts: { key: string; actorId: string; pharmacyId: string; route: string; rawBody: string },
   run: (tx: Tx) => Promise<unknown>,
 ): Promise<IdempotentResult> {
   if (!KEY_FORMAT.test(opts.key)) throw new AppError(400, "Idempotency-Key must be 8 to 200 letters, digits, '-' or '_'.");
@@ -37,7 +38,7 @@ export async function withIdempotency(
   if (earlier) return earlier;
 
   try {
-    return await prisma.$transaction(async (tx) => {
+    return await tenantTransaction(opts.pharmacyId, async (tx) => {
       await tx.idempotencyKey.create({
         data: { actorId: opts.actorId, key: opts.key, route: opts.route, requestHash, status: 200, response: {} },
       });

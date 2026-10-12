@@ -152,7 +152,7 @@ describe("invariants", () => {
     const u = await makeUser();
     const m = await makeMedicine();
     const a = await makeBatch(m.id, "A", 60, 0);
-    await prisma.stockMovement.create({ data: { medicineId: m.id, batchId: a.id, type: "OPENING", quantity: 0, balanceAfter: 0 } });
+    await prisma.stockMovement.create({ data: { pharmacyId: m.pharmacyId, medicineId: m.id, batchId: a.id, type: "OPENING", quantity: 0, balanceAfter: 0 } });
     const { adjustStock } = await import("@/modules/inventory");
     await adjustStock(ctxOf(u), { batchId: a.id, kind: "ADD", quantity: 40, note: "opening count" });
     await createSale(ctxOf(u), { ...base, items: [line(m.id, 7)] });

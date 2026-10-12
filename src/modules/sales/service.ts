@@ -5,7 +5,7 @@ import { todayStr } from "@/lib/dates";
 import { D, ZERO } from "@/lib/money";
 import { customerBalance } from "@/modules/customers";
 import { can, type ServiceContext } from "@/modules/identity";
-import { audit, emit } from "@/modules/platform";
+import { audit, emit, nextNumber } from "@/modules/platform";
 
 export type SaleInput = {
   customerId?: string | null;
@@ -93,7 +93,7 @@ export async function createSale(ctx: ServiceContext, input: SaleInput, opts: { 
       }
     }
 
-    const [{ n }] = await tx.$queryRaw<{ n: bigint }[]>`SELECT nextval('invoice_seq') AS n`;
+    const n = await nextNumber(tx, "INVOICE");
     const invoiceNo = `INV-${today.replace(/-/g, "")}-${String(n).padStart(5, "0")}`;
 
     const sale = await tx.sale.create({

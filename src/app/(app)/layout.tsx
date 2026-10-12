@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { getSessionUser, ROLE_PERMISSIONS } from "@/modules/identity";
-import { prisma } from "@/lib/prisma";
+import { tenantTransaction } from "@/lib/db";
+import { getSettings } from "@/modules/platform";
 import { Shell } from "@/components/shell";
 
 export const dynamic = "force-dynamic";
@@ -8,7 +9,6 @@ export const dynamic = "force-dynamic";
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const user = await getSessionUser();
   if (!user) redirect("/login");
-  const s = await prisma.setting.upsert({ where: { id: 1 }, update: {}, create: { id: 1 } });
-  const settings = { pharmacyName: s.pharmacyName, address: s.address, phone: s.phone, email: s.email, invoiceFooter: s.invoiceFooter, expiryWarningDays: s.expiryWarningDays, currency: s.currency };
+  const settings = await tenantTransaction(user.pharmacyId, (tx) => getSettings(tx, user.pharmacyId));
   return <Shell ctx={{ user, permissions: [...ROLE_PERMISSIONS[user.role]], settings }}>{children}</Shell>;
 }

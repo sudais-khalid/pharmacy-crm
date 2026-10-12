@@ -1,10 +1,9 @@
 import { Prisma } from "@prisma/client";
 import { route, readJson, pageParams } from "@/lib/api";
-import { prisma } from "@/lib/prisma";
 import { saleSchema, createSale } from "@/modules/sales";
 import { dateOnly, addDays } from "@/lib/dates";
 
-export const GET = route("sales.view", async ({ req }) => {
+export const GET = route("sales.view", async ({ req, db }) => {
   const { page, pageSize, skip, take, sp } = pageParams(req);
   const q = sp.get("q")?.trim();
   const status = sp.get("status");
@@ -19,8 +18,8 @@ export const GET = route("sales.view", async ({ req }) => {
     if (to) where.createdAt.lt = dateOnly(addDays(to, 1));
   }
   const [total, items] = await Promise.all([
-    prisma.sale.count({ where }),
-    prisma.sale.findMany({
+    db.sale.count({ where }),
+    db.sale.findMany({
       where, skip, take, orderBy: { createdAt: "desc" },
       include: { customer: { select: { name: true } }, user: { select: { name: true } }, _count: { select: { items: true } } },
     }),

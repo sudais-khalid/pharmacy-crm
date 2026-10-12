@@ -1,6 +1,5 @@
 import { Prisma } from "@prisma/client";
 import { route, AppError } from "@/lib/api";
-import { prisma } from "@/lib/prisma";
 import { TZ, todayStr } from "@/lib/dates";
 import { D } from "@/lib/money";
 
@@ -9,7 +8,7 @@ type Report = { title: string; description: string; columns: Col[]; rows: Record
 
 const REPORTS = ["sales", "profit", "purchases", "lowStock", "expired", "customerBalances", "supplierBalances"] as const;
 
-export const GET = route("reports.view", async ({ req }) => {
+export const GET = route("reports.view", async ({ req, db }) => {
   const sp = req.nextUrl.searchParams;
   const type = sp.get("type") || "sales";
   if (!(REPORTS as readonly string[]).includes(type)) throw new AppError(400, "Unknown report type.");
@@ -25,7 +24,7 @@ export const GET = route("reports.view", async ({ req }) => {
   let r: Report;
   switch (type) {
     case "sales": {
-      const rows = await prisma.$queryRaw<Record<string, unknown>[]>`
+      const rows = await db.$queryRaw<Record<string, unknown>[]>`
         SELECT to_char(date_trunc(${unit}::text, s."createdAt" AT TIME ZONE ${TZ}), ${fmt}::text) AS period,
                COUNT(*)::int AS invoices, SUM(s.subtotal) AS subtotal, SUM(s.discount) AS discount, SUM(s.total) AS total,
                SUM(s."amountPaid") AS paid, SUM(s.total - s."amountPaid") AS credit
@@ -37,7 +36,7 @@ export const GET = route("reports.view", async ({ req }) => {
       break;
     }
     case "profit": {
-      const rows = await prisma.$queryRaw<Record<string, unknown>[]>`
+      const rows = await db.$queryRaw<Record<string, unknown>[]>`
         SELECT to_char(date_trunc(${unit}::text, s."createdAt" AT TIME ZONE ${TZ}), ${fmt}::text) AS period,
                SUM(s.total) AS revenue, COALESCE(SUM(c.cogs),0) AS cogs, SUM(s.total) - COALESCE(SUM(c.cogs),0) AS profit
         FROM "Sale" s
@@ -50,7 +49,7 @@ export const GET = route("reports.view", async ({ req }) => {
       break;
     }
     case "purchases": {
-      const rows = await prisma.$queryRaw<Record<string, unknown>[]>`
+      const rows = await db.$queryRaw<Record<string, unknown>[]>`
         SELECT to_char(date_trunc(${unit}::text, p."purchaseDate"), ${fmt}::text) AS period, COUNT(*)::int AS purchases,
                SUM(p.subtotal) AS subtotal, SUM(p.discount) AS discount, SUM(p.total) AS total, SUM(p.paid) AS paid, SUM(p.total - p.paid) AS due
         FROM "Purchase" p WHERE p."purchaseDate" BETWEEN ${fromD}::date AND ${toD}::date GROUP BY 1 ORDER BY 1`;
@@ -60,7 +59,7 @@ export const GET = route("reports.view", async ({ req }) => {
       break;
     }
     case "lowStock": {
-      const rows = await prisma.$queryRaw<Record<string, unknown>[]>`
+      const rows = await db.$queryRaw<Record<string, unknown>[]>`
         SELECT m.name AS medicine, COALESCE(c.name,'—') AS category, COALESCE(SUM(b.quantity) FILTER (WHERE b."expiryDate" >= ${today}::date),0)::int AS stock,
                m."minStock" AS "minStock", (m."minStock" - COALESCE(SUM(b.quantity) FILTER (WHERE b."expiryDate" >= ${today}::date),0))::int AS shortfall
         FROM "Medicine" m LEFT JOIN "Category" c ON c.id = m."categoryId" LEFT JOIN "Batch" b ON b."medicineId" = m.id
@@ -72,7 +71,7 @@ export const GET = route("reports.view", async ({ req }) => {
       break;
     }
     case "expired": {
-      const rows = await prisma.$queryRaw<Record<string, unknown>[]>`
+      const rows = await db.$queryRaw<Record<string, unknown>[]>`
         SELECT m.name AS medicine, b."batchNumber" AS batch, to_char(b."expiryDate",'YYYY-MM-DD') AS expiry, b.quantity::int AS quantity,
                b.quantity*b."purchasePrice" AS "costValue", b.quantity*b."salePrice" AS "retailValue"
         FROM "Batch" b JOIN "Medicine" m ON m.id = b."medicineId"
@@ -83,7 +82,7 @@ export const GET = route("reports.view", async ({ req }) => {
       break;
     }
     case "customerBalances": {
-      const rows = await prisma.$queryRaw<Record<string, unknown>[]>`
+      const rows = await db.$queryRaw<Record<string, unknown>[]>`
         SELECT c.name AS customer, COALESCE(c.phone,'') AS phone, c."creditLimit" AS "creditLimit", SUM(l.debit - l.credit) AS balance
         FROM "Customer" c JOIN "CustomerLedger" l ON l."customerId" = c.id GROUP BY c.id HAVING SUM(l.debit - l.credit) <> 0 ORDER BY balance DESC`;
       r = { title: "Customer balances (udhaar)", description: "Customers with a non-zero ledger balance. Positive = customer owes the pharmacy.", rows,
@@ -91,7 +90,7 @@ export const GET = route("reports.view", async ({ req }) => {
       break;
     }
     default: {
-      const rows = await prisma.$queryRaw<Record<string, unknown>[]>`
+      const rows = await db.$queryRaw<Record<string, unknown>[]>`
         SELECT s.name AS supplier, COALESCE(s.phone,'') AS phone, SUM(l.debit - l.credit) AS balance
         FROM "Supplier" s JOIN "SupplierLedger" l ON l."supplierId" = s.id GROUP BY s.id HAVING SUM(l.debit - l.credit) <> 0 ORDER BY balance DESC`;
       r = { title: "Supplier payables", description: "Amount the pharmacy owes each supplier.", rows,

@@ -1,9 +1,8 @@
 import { Prisma } from "@prisma/client";
 import { route } from "@/lib/api";
-import { prisma } from "@/lib/prisma";
 import { todayStr, dateOnly } from "@/lib/dates";
 
-export const GET = route("pos.use", async ({ req }) => {
+export const GET = route("pos.use", async ({ req, db }) => {
   const q = req.nextUrl.searchParams.get("q")?.trim() ?? "";
   const where: Prisma.MedicineWhereInput = { active: true };
   if (q) {
@@ -14,10 +13,10 @@ export const GET = route("pos.use", async ({ req }) => {
       { sku: { equals: q, mode: "insensitive" } },
     ];
   }
-  let meds = await prisma.medicine.findMany({ where, orderBy: { name: "asc" }, take: 15 });
+  let meds = await db.medicine.findMany({ where, orderBy: { name: "asc" }, take: 15 });
   // exact barcode match first so a scanner hit is always the top result
   meds = [...meds.filter((m) => m.barcode === q), ...meds.filter((m) => m.barcode !== q)];
-  const batches = await prisma.batch.findMany({
+  const batches = await db.batch.findMany({
     where: { medicineId: { in: meds.map((m) => m.id) }, quantity: { gt: 0 }, expiryDate: { gte: dateOnly(todayStr()) } },
     orderBy: [{ expiryDate: "asc" }, { createdAt: "asc" }],
   });

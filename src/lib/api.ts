@@ -7,17 +7,19 @@ import { AppError } from "./errors";
 import { IDEMPOTENCY_HEADER, withIdempotency } from "./idempotency";
 import { assertSameOrigin } from "./origin";
 import { clientIp } from "./request";
+import { tenantTransaction } from "./db";
+import type { Tx } from "./prisma";
 import { logger } from "./logger";
 
 export { AppError };
 
-/** `svc` is the context to pass to module services. */
-type Ctx = { req: NextRequest; user: SessionUser; params: Record<string, string>; svc: ServiceContext };
+/** `db` is the request's tenant transaction; `svc` is the context to pass to module services. */
+type Ctx = { req: NextRequest; user: SessionUser; params: Record<string, string>; svc: ServiceContext; db: Tx };
 
 type RouteOptions = {
   /**
    * Honour an `Idempotency-Key` header: a retried request with the same key gets the stored response
-   * instead of running again. The handler then runs inside the transaction given in `svc.tx`.
+   * instead of running again.
    */
   idempotent?: boolean;
 };
@@ -27,7 +29,11 @@ export function requestMeta(req: NextRequest): RequestMeta {
   return { ip: clientIp(req), userAgent: req.headers.get("user-agent") };
 }
 
-/** Wraps an API handler with authentication, permission check and uniform error handling. */
+/**
+ * Wraps an API handler with authentication, permission check, tenant scoping and uniform error handling.
+ * The whole handler runs in one transaction scoped to the user's pharmacy (`db`, also `svc.tx`), so every
+ * query it makes, raw SQL included, is tenant scoped.
+ */
 export function route(permission: Permission | null, fn: (ctx: Ctx) => Promise<unknown>, options: RouteOptions = {}) {
   return async (req: NextRequest, { params }: { params: Promise<Record<string, string>> }) => {
     try {
@@ -35,18 +41,19 @@ export function route(permission: Permission | null, fn: (ctx: Ctx) => Promise<u
       const user = await getSessionUser();
       if (!user) throw new AppError(401, "You are not signed in.");
       if (permission && !can(user.role, permission)) throw new AppError(403, "You do not have permission to do this.");
-      const ctx: Ctx = { req, user, params: await params, svc: serviceContext(user, null, requestMeta(req)) };
+      const base = { req, user, params: await params, svc: serviceContext(user, user.pharmacyId, requestMeta(req)) };
+      const run = (tx: Tx) => fn({ ...base, db: tx, svc: { ...base.svc, tx } });
 
       const key = options.idempotent ? req.headers.get(IDEMPOTENCY_HEADER) : null;
       if (key) {
         const result = await withIdempotency(
-          { key, actorId: user.id, route: `${req.method} ${req.nextUrl.pathname}`, rawBody: await req.clone().text() },
-          (tx) => fn({ ...ctx, svc: { ...ctx.svc, tx } }),
+          { key, actorId: user.id, pharmacyId: user.pharmacyId, route: `${req.method} ${req.nextUrl.pathname}`, rawBody: await req.clone().text() },
+          run,
         );
         return NextResponse.json(result.body ?? { ok: true }, result.replayed ? { headers: { "Idempotent-Replayed": "true" } } : undefined);
       }
 
-      const data = await fn(ctx);
+      const data = await tenantTransaction(user.pharmacyId, run);
       return NextResponse.json(data ?? { ok: true });
     } catch (e) {
       return errorResponse(e);

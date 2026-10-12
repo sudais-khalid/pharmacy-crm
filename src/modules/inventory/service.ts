@@ -1,5 +1,5 @@
 import { MovementType } from "@prisma/client";
-import { runInTx, dbOf, type DbContext } from "@/lib/db";
+import { runInTx, type DbContext } from "@/lib/db";
 import type { ServiceContext } from "@/modules/identity";
 import { audit, emit } from "@/modules/platform";
 import { AppError } from "@/lib/errors";
@@ -8,11 +8,11 @@ import { todayStr, dateOnly } from "@/lib/dates";
 /** Sellable stock (non-expired batches) per medicine id. */
 export async function sellableStock(ctx: DbContext, medicineIds: string[]) {
   if (!medicineIds.length) return new Map<string, number>();
-  const rows = await dbOf(ctx).batch.groupBy({
+  const rows = await runInTx(ctx, (tx) => tx.batch.groupBy({
     by: ["medicineId"],
     where: { medicineId: { in: medicineIds }, expiryDate: { gte: dateOnly(todayStr()) } },
     _sum: { quantity: true },
-  });
+  }));
   return new Map(rows.map((r) => [r.medicineId, r._sum.quantity ?? 0]));
 }
 

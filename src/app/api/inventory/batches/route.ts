@@ -1,13 +1,13 @@
 import { Prisma } from "@prisma/client";
 import { route, pageParams } from "@/lib/api";
-import { prisma } from "@/lib/prisma";
 import { todayStr, addDays, dateOnly } from "@/lib/dates";
+import { getSettings } from "@/modules/platform";
 
-export const GET = route("inventory.view", async ({ req }) => {
+export const GET = route("inventory.view", async ({ req, db, user }) => {
   const { page, pageSize, skip, take, sp } = pageParams(req);
   const q = sp.get("q")?.trim();
   const filter = sp.get("filter") || "instock"; // instock | expiring | expired | empty | all
-  const setting = await prisma.setting.upsert({ where: { id: 1 }, update: {}, create: { id: 1 } });
+  const setting = await getSettings(db, user.pharmacyId);
   const days = parseInt(sp.get("days") || "", 10) || setting.expiryWarningDays;
   const today = todayStr();
 
@@ -19,9 +19,9 @@ export const GET = route("inventory.view", async ({ req }) => {
   if (q) where.OR = [{ batchNumber: { contains: q, mode: "insensitive" } }, { medicine: { name: { contains: q, mode: "insensitive" } } }, { medicine: { genericName: { contains: q, mode: "insensitive" } } }];
 
   const [total, rows, agg] = await Promise.all([
-    prisma.batch.count({ where }),
-    prisma.batch.findMany({ where, skip, take, orderBy: [{ expiryDate: "asc" }, { createdAt: "asc" }], include: { medicine: { select: { id: true, name: true, genericName: true, unit: true } } } }),
-    prisma.$queryRaw<{ units: number; cost: Prisma.Decimal; retail: Prisma.Decimal }[]>`
+    db.batch.count({ where }),
+    db.batch.findMany({ where, skip, take, orderBy: [{ expiryDate: "asc" }, { createdAt: "asc" }], include: { medicine: { select: { id: true, name: true, genericName: true, unit: true } } } }),
+    db.$queryRaw<{ units: number; cost: Prisma.Decimal; retail: Prisma.Decimal }[]>`
       SELECT COALESCE(SUM(quantity),0)::int AS units, COALESCE(SUM(quantity*"purchasePrice"),0) AS cost, COALESCE(SUM(quantity*"salePrice"),0) AS retail
       FROM "Batch" WHERE "expiryDate" >= ${today}::date AND quantity > 0`,
   ]);

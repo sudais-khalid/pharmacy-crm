@@ -1,6 +1,6 @@
 import { runInTx } from "@/lib/db";
 import type { ServiceContext } from "@/modules/identity";
-import { audit, emit } from "@/modules/platform";
+import { audit, emit, nextNumber } from "@/modules/platform";
 import { AppError } from "@/lib/errors";
 import { todayStr, dateOnly } from "@/lib/dates";
 import { D, ZERO } from "@/lib/money";
@@ -36,7 +36,7 @@ export async function createPurchase(ctx: ServiceContext, input: PurchaseInput) 
     const paid = D(input.paid).toDecimalPlaces(2);
     if (paid.gt(total)) throw new AppError(400, "Paid amount cannot exceed the invoice total.");
 
-    const [{ n }] = await tx.$queryRaw<{ n: bigint }[]>`SELECT nextval('purchase_seq') AS n`;
+    const n = await nextNumber(tx, "PURCHASE");
     const number = `PUR-${today.replace(/-/g, "")}-${String(n).padStart(5, "0")}`;
 
     const purchase = await tx.purchase.create({

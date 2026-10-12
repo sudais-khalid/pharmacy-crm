@@ -12,7 +12,7 @@ function secret() {
   return new TextEncoder().encode(s);
 }
 
-export type SessionUser = { id: string; name: string; email: string; role: Role };
+export type SessionUser = { id: string; name: string; email: string; role: Role; pharmacyId: string };
 
 export async function createSessionToken(userId: string) {
   return new SignJWT({}).setProtectedHeader({ alg: "HS256" }).setSubject(userId).setIssuedAt().setExpirationTime(`${MAX_AGE}s`).sign(secret());
@@ -42,10 +42,10 @@ export async function getSessionUser(): Promise<SessionUser | null> {
     if (!payload.sub) return null;
     const user = await prisma.user.findUnique({
       where: { id: payload.sub },
-      select: { id: true, name: true, email: true, role: true, active: true },
+      select: { id: true, name: true, email: true, role: true, active: true, pharmacyId: true },
     });
     if (!user || !user.active) return null;
-    return { id: user.id, name: user.name, email: user.email, role: user.role };
+    return { id: user.id, name: user.name, email: user.email, role: user.role, pharmacyId: user.pharmacyId };
   } catch {
     return null;
   }

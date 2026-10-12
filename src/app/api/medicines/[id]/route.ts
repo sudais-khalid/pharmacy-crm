@@ -1,10 +1,9 @@
 import { route, readJson, AppError } from "@/lib/api";
-import { prisma } from "@/lib/prisma";
 import { medicineSchema, updateMedicine, deleteOrArchiveMedicine } from "@/modules/catalog";
 import { sellableStock } from "@/modules/inventory";
 
-export const GET = route("medicines.view", async ({ params, svc }) => {
-  const med = await prisma.medicine.findUnique({
+export const GET = route("medicines.view", async ({ params, svc, db }) => {
+  const med = await db.medicine.findUnique({
     where: { id: params.id },
     include: { category: true, batches: { orderBy: { expiryDate: "asc" } } },
   });
