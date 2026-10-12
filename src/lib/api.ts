@@ -4,6 +4,8 @@ import { ZodError } from "zod";
 import { getSessionUser, type SessionUser, can, type Permission, serviceContext, type ServiceContext, type RequestMeta } from "@/modules/identity";
 import { AppError } from "./errors";
 import { IDEMPOTENCY_HEADER, withIdempotency } from "./idempotency";
+import { assertSameOrigin } from "./origin";
+import { clientIp } from "./request";
 
 export { AppError };
 
@@ -20,14 +22,14 @@ type RouteOptions = {
 
 /** Client address and user agent for the audit log. */
 export function requestMeta(req: NextRequest): RequestMeta {
-  const forwarded = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim();
-  return { ip: forwarded || req.headers.get("x-real-ip") || null, userAgent: req.headers.get("user-agent") };
+  return { ip: clientIp(req), userAgent: req.headers.get("user-agent") };
 }
 
 /** Wraps an API handler with authentication, permission check and uniform error handling. */
 export function route(permission: Permission | null, fn: (ctx: Ctx) => Promise<unknown>, options: RouteOptions = {}) {
   return async (req: NextRequest, { params }: { params: Promise<Record<string, string>> }) => {
     try {
+      assertSameOrigin(req);
       const user = await getSessionUser();
       if (!user) throw new AppError(401, "You are not signed in.");
       if (permission && !can(user.role, permission)) throw new AppError(403, "You do not have permission to do this.");

@@ -26,7 +26,6 @@
 - UI was not opened in a real browser in my environment (no browser available): please click through each screen once
 - Docker files are written but were not run (no Docker in my environment)
 - Migration SQL was generated from the schema by script because Prisma's engine download was blocked; apply with `prisma migrate deploy`
-- Login rate limit is in-memory (per server process)
 - Sale prices come from the batch being sold; a sale spanning batches with different prices is priced per batch
 
 ## Next tasks (suggested)

@@ -67,7 +67,7 @@ Tasks:
 - [x] 0.4 Make every service function accept a transaction client `tx` and a context object `{ actor, pharmacyId }` (pharmacyId is unused until P1 but the signatures are ready)
 - [x] 0.5 Add `AuditLog`, `OutboxEvent`, `IdempotencyKey`, `RateLimitHit` tables and helpers (`audit()`, `emit()`, `withIdempotency()`)
 - [x] 0.6 Wire audit and outbox into existing write paths: sale, cancel, purchase, adjustment, payments, medicine price change, user changes
-- [ ] 0.7 Origin header check for non-GET API calls; move login rate limit to PostgreSQL
+- [x] 0.7 Origin header check for non-GET API calls; move login rate limit to PostgreSQL
 - [ ] 0.8 `pg_trgm` extension and trigram indexes
 - [ ] 0.9 Worker entry point with pg-boss and the outbox dispatcher; `worker` service in `docker-compose.yml`
 - [ ] 0.10 Design tokens as CSS variables, Fira Sans and Fira Code through `next/font`, split `components/ui.tsx` into one file per component

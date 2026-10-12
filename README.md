@@ -137,7 +137,7 @@ npm run typecheck
 npm run lint
 ```
 
-With the app running and seeded: `npm run test:smoke` (54 HTTP checks: login, permissions, validation, sale → cancel flow, reports, page loads).
+With the app running and seeded: `npm run test:smoke` (57 HTTP checks: login, permissions, validation, sale → cancel flow, reports, page loads).
 
 > `npm test` truncates the tables of the database in `.env.test`. Never point it at real data.
 
@@ -169,10 +169,11 @@ Every state change writes an append-only `AuditLog` row and an `OutboxEvent` in 
 
 - Passwords hashed with bcrypt; sessions are signed JWTs in an `httpOnly`, `SameSite=Lax` cookie (`Secure` in production). Deactivating a user locks them out immediately (checked against the database on every request).
 - All input validated with Zod; all queries go through Prisma (parameterised).
-- Login is rate-limited (8 attempts / 15 min per IP + email, in memory – use a shared store if you run several instances).
+- Login is rate-limited in PostgreSQL (failed attempts: 8 per IP and email, 30 per IP, per 15 minutes), so limits survive restarts and hold across server processes. The client IP is taken from `X-Forwarded-For` only when `TRUST_PROXY=1`.
 - CSV export neutralises spreadsheet formula injection.
 - Put the app behind HTTPS in production (the session cookie is `Secure` when `NODE_ENV=production`).
 - State-changing endpoints require a JSON body and a `SameSite=Lax` cookie, which blocks cross-site form posts.
+- State-changing requests from a browser on another origin are rejected (`Origin` / `Sec-Fetch-Site` check). Extra trusted origins go in `ALLOWED_ORIGINS`.
 
 ## Not included
 
@@ -185,7 +186,7 @@ Customer/supplier **returns**, **prescriptions/doctors** with file upload, **exp
 | `JWT_SECRET must be set...` | Set a 32+ character `JWT_SECRET` in `.env` |
 | `Can't reach database server` | Check PostgreSQL is running and `DATABASE_URL` is right |
 | `relation "Medicine" does not exist` | Run `npx prisma migrate deploy` |
-| Login says too many attempts | Wait 15 minutes or restart the server |
+| Login says too many attempts | Wait 15 minutes, or clear the `RateLimitHit` rows for that login |
 | Seed says data already exists | Seed only runs on an empty database. For a clean start: `npx prisma migrate reset` then `npm run db:seed` |
 | Barcode scanner types but nothing happens | Click the POS search box (or press F2) first; the scanner must send Enter |
 

@@ -56,5 +56,9 @@ ok "Invoice loads" "$(code -b /tmp/smoke_cashier.jar $B/api/sales/$SID)" 200
 ok "Archive instead of delete (has history)" "$(curl -s -b /tmp/smoke_admin.jar -X DELETE $B/api/medicines/$NID | js "d['archived']")" True
 for t in sales profit purchases lowStock expired customerBalances supplierBalances; do ok "Report: $t" "$(code -b /tmp/smoke_admin.jar "$B/api/reports?type=$t&from=2020-01-01&to=2030-01-01")" 200; done
 ok "Report rejects bad range" "$(code -b /tmp/smoke_admin.jar "$B/api/reports?type=sales&from=2030-01-01&to=2020-01-01")" 400
+ok "Cross-site write blocked" "$(code -b /tmp/smoke_admin.jar -X POST $B/api/categories -H 'content-type: application/json' -H 'Origin: https://evil.example' -d '{"name":"x"}')" 403
+ok "Same-origin write allowed" "$(code -b /tmp/smoke_admin.jar -X POST $B/api/categories -H 'content-type: application/json' -H "Origin: $B" -d "{\"name\":\"Smoke $(date +%s)\"}")" 200
+for i in $(seq 1 8); do code -X POST $B/api/auth/login -H 'content-type: application/json' -d '{"email":"nobody@example.com","password":"wrong"}' >/dev/null; done
+ok "Login locked after repeated failures" "$(code -X POST $B/api/auth/login -H 'content-type: application/json' -d '{"email":"nobody@example.com","password":"wrong"}')" 429
 for p in /dashboard /pos /medicines /inventory /customers /suppliers /purchases /purchases/new /sales /reports /users /settings; do ok "Page $p renders" "$(code -b /tmp/smoke_admin.jar $B$p)" 200; done
 exit $fail

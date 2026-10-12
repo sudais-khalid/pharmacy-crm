@@ -24,6 +24,8 @@ services:
       DATABASE_URL: postgresql://pharmacy:${POSTGRES_PASSWORD}@db:5432/pharmacy_crm?schema=public
       JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in .env}
       APP_TIMEZONE: ${APP_TIMEZONE:-Asia/Karachi}
+      # Set to 1 only when a reverse proxy in front of the app sets X-Forwarded-For
+      TRUST_PROXY: ${TRUST_PROXY:-0}
     ports:
       - "3000:3000"
 
