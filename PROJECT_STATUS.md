@@ -1,7 +1,17 @@
 # Project status
 
 ## Current phase
-Phase 0 (foundation) is complete and tagged `v1.0.0`. Next: Phase 1, tenancy and the platform console (see `docs/plan/05-roadmap.md`).
+Phase 1 (tenancy and Developer console) is complete and tagged `v1.1.0`. Next: Phase 2, the Windows desktop installer (see `docs/plan/05-roadmap.md`).
+
+## Phase 1 delivered
+- Multi-pharmacy data: every business table carries `pharmacyId`; the original shop became pharmacy `main` (rehearsed on a copy, numbering continues)
+- Isolation enforced by PostgreSQL row-level security: the app runs as the restricted `pcrm_app` role inside a tenant transaction, and without a pharmacy nothing is visible; checked by `tests/rls.test.ts` (catalog driven) and the HTTP suite `npm run test:isolation`
+- Separate sign-in realms: staff, Developer and platform support, each with its own cookie and token audience; session versions revoke sessions at once
+- Permanent Developer account from server configuration, mandatory TOTP (RFC 6238) with recovery codes, server-shell recovery
+- Developer console: overview, pharmacies (create with first admin by invite or temporary password, profile, status with re-authentication, plan and limits, feature switches, activity), accounts across pharmacies (activate, deactivate, reset link, sign out everywhere, unlock), support sessions
+- Invite and reset links (hashed, single use, expiring), forced password change for temporary passwords
+- Staff sign-in by pharmacy code and username at `/p/<code>/login` or `/login`
+- 108 integration tests, 105 smoke checks, 58 HTTP isolation checks
 
 ## Phase 0 delivered
 - Next.js 15.5 and React 19 (14.x is end of life and affected by a critical Windows remote code execution advisory); production dependency audit clean
