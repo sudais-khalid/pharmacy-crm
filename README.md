@@ -77,7 +77,8 @@ The seed contains fictional data only: 25 medicines (some low-stock, some near e
 
 | Variable | Purpose |
 |---|---|
-| `DATABASE_URL` | PostgreSQL connection string |
+| `DATABASE_URL` | PostgreSQL connection string of the owning role (runs migrations; used by the Developer console, login, worker) |
+| `APP_DATABASE_URL` | Optional dedicated login that is a member of `pcrm_app`, used for all pharmacy data. Without it the app switches to `pcrm_app` on each connection |
 | `JWT_SECRET` | Signs session cookies. At least 32 random characters (`openssl rand -base64 48`) |
 | `APP_TIMEZONE` | Timezone for "today", daily reports and the chart (default `Asia/Karachi`) |
 | `POSTGRES_PASSWORD` | Docker Compose only |
@@ -177,6 +178,7 @@ Every state change writes an append-only `AuditLog` row and an `OutboxEvent` in 
 
 ## Security notes
 
+- **Tenant isolation is enforced by PostgreSQL.** Business code runs as the restricted `pcrm_app` role inside a transaction that sets the pharmacy; row-level security policies on every table with a `pharmacyId` hide and refuse other pharmacies' rows, and without a pharmacy nothing is visible. Only an allow-listed set of modules may use the unrestricted platform client (`src/lib/platform-db.ts`), enforced by dependency-cruiser. `tests/rls.test.ts` discovers tenant tables from the catalog and checks every one.
 - Passwords hashed with bcrypt; sessions are signed JWTs in an `httpOnly`, `SameSite=Lax` cookie (`Secure` in production). Deactivating a user locks them out immediately (checked against the database on every request).
 - All input validated with Zod; all queries go through Prisma (parameterised).
 - Login is rate-limited in PostgreSQL (failed attempts: 8 per IP and email, 30 per IP, per 15 minutes), so limits survive restarts and hold across server processes. The client IP is taken from `X-Forwarded-For` only when `TRUST_PROXY=1`.

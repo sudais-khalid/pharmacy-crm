@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import { prisma } from "@/lib/prisma";
+import { platformDb } from "@/lib/platform-db";
 import { createPurchase, paySupplier, supplierBalance } from "@/modules/procurement";
 import { adjustStock } from "@/modules/inventory";
 import { can } from "@/modules/identity";
@@ -21,12 +21,12 @@ describe("purchases", () => {
     const p = await createPurchase(ctxOf(u), input(s.id, m.id, { discount: 100, paid: 1000 }));
     expect(p.subtotal.toString()).toBe("4000");
     expect(p.total.toString()).toBe("3900");
-    const b = await prisma.batch.findFirstOrThrow({ where: { medicineId: m.id } });
+    const b = await platformDb.batch.findFirstOrThrow({ where: { medicineId: m.id } });
     expect(b.quantity).toBe(100);
-    expect(await prisma.stockMovement.count({ where: { type: "PURCHASE", batchId: b.id } })).toBe(1);
-    expect((await supplierBalance(prisma, s.id)).toString()).toBe("2900");
+    expect(await platformDb.stockMovement.count({ where: { type: "PURCHASE", batchId: b.id } })).toBe(1);
+    expect((await supplierBalance(platformDb, s.id)).toString()).toBe("2900");
     await paySupplier(ctxOf(u), s.id, { amount: 2900, method: "CASH" });
-    expect((await supplierBalance(prisma, s.id)).toString()).toBe("0");
+    expect((await supplierBalance(platformDb, s.id)).toString()).toBe("0");
     await expect(paySupplier(ctxOf(u), s.id, { amount: 1, method: "CASH" })).rejects.toThrow(/more than the outstanding/);
   });
 
@@ -36,10 +36,10 @@ describe("purchases", () => {
     const m = await makeMedicine();
     await createPurchase(ctxOf(u), input(s.id, m.id));
     await createPurchase(ctxOf(u), input(s.id, m.id));
-    expect((await prisma.batch.findFirstOrThrow({ where: { medicineId: m.id } })).quantity).toBe(200);
+    expect((await platformDb.batch.findFirstOrThrow({ where: { medicineId: m.id } })).quantity).toBe(200);
     const bad = input(s.id, m.id, { items: [{ medicineId: m.id, batchNumber: "B1", expiryDate: inDays(10), quantity: 5, purchasePrice: 40, salePrice: 50 }] });
     await expect(createPurchase(ctxOf(u), bad)).rejects.toThrow(/different expiry/);
-    expect(await prisma.purchase.count()).toBe(2); // failed purchase rolled back
+    expect(await platformDb.purchase.count()).toBe(2); // failed purchase rolled back
   });
 
   it("rejects already-expired stock and overpayment", async () => {
@@ -59,8 +59,8 @@ describe("stock adjustments", () => {
     const b = await makeBatch(m.id, "A", 60, 10);
     await expect(adjustStock(ctxOf(u), { batchId: b.id, kind: "REMOVE", quantity: 11, note: "count" })).rejects.toThrow(/Only 10/);
     await adjustStock(ctxOf(u), { batchId: b.id, kind: "EXPIRY", quantity: 4, note: "expired stock" });
-    expect((await prisma.batch.findUniqueOrThrow({ where: { id: b.id } })).quantity).toBe(6);
-    expect(await prisma.stockMovement.findFirstOrThrow({ where: { type: "EXPIRY" } })).toMatchObject({ quantity: -4, balanceAfter: 6 });
+    expect((await platformDb.batch.findUniqueOrThrow({ where: { id: b.id } })).quantity).toBe(6);
+    expect(await platformDb.stockMovement.findFirstOrThrow({ where: { type: "EXPIRY" } })).toMatchObject({ quantity: -4, balanceAfter: 6 });
   });
 });
 

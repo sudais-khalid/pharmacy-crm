@@ -1,4 +1,4 @@
-import { prisma } from "@/lib/prisma";
+import { platformDb } from "@/lib/platform-db";
 import type { DomainEvents, EventType } from "./events";
 
 export type OutboxEvent<T extends EventType = EventType> = { id: bigint; type: T; payload: DomainEvents[T]; attempts: number };
@@ -24,7 +24,7 @@ type Row = { id: bigint; type: string; payload: unknown; attempts: number };
  */
 export async function dispatchOutbox(handlers: OutboxHandlers, opts: { batchSize?: number } = {}) {
   const batchSize = opts.batchSize ?? 50;
-  const claimed = await prisma.$queryRaw<Row[]>`
+  const claimed = await platformDb.$queryRaw<Row[]>`
     UPDATE "OutboxEvent" SET "availableAt" = (now() AT TIME ZONE 'UTC') + make_interval(secs => ${LEASE_SECONDS})
     WHERE id IN (
       SELECT id FROM "OutboxEvent"
@@ -42,11 +42,11 @@ export async function dispatchOutbox(handlers: OutboxHandlers, opts: { batchSize
     try {
       const list = (handlers[event.type] ?? []) as OutboxHandler[];
       for (const handle of list) await handle(event);
-      await prisma.outboxEvent.update({ where: { id: row.id }, data: { processedAt: new Date(), lastError: null } });
+      await platformDb.outboxEvent.update({ where: { id: row.id }, data: { processedAt: new Date(), lastError: null } });
       delivered++;
     } catch (e) {
       const attempts = row.attempts + 1;
-      await prisma.outboxEvent.update({
+      await platformDb.outboxEvent.update({
         where: { id: row.id },
         data: { attempts, lastError: String(e instanceof Error ? e.stack ?? e.message : e).slice(0, 2000), availableAt: new Date(Date.now() + outboxBackoffMs(attempts)) },
       });

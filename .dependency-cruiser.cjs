@@ -49,11 +49,30 @@ module.exports = {
       to: { path: "^src/modules/", pathNot: "^src/modules/identity/index\\.ts$" },
     },
     {
+      name: "platform-db-allowlist",
+      severity: "error",
+      comment:
+        "platformDb bypasses tenant isolation. Only cross-pharmacy code may use it: the platform module and console, " +
+        "login and session lookups, maintenance helpers, the worker, seed, scripts and tests.",
+      from: {
+        pathNot: [
+          "^src/modules/platform/",
+          "^src/modules/identity/session\\.ts$",
+          "^src/lib/(rate-limit|idempotency|platform-db)\\.ts$",
+          "^src/worker\\.ts$",
+          "^src/app/api/(auth|platform)/",
+          "^src/app/\\(platform\\)/",
+          "^(tests|prisma|scripts)/",
+        ],
+      },
+      to: { path: "^src/lib/platform-db\\.ts$" },
+    },
+    {
       name: "no-server-code-in-components",
       severity: "error",
       comment: "UI components run in the browser; they must not import the database or business modules.",
       from: { path: "^src/components/" },
-      to: { path: "^src/(modules/|lib/(prisma|api|money)\\.ts$)" },
+      to: { path: "^src/(modules/|lib/(prisma|platform-db|db|api|money)\\.ts$)" },
     },
   ],
   options: {

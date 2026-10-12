@@ -2,6 +2,7 @@ import { createHash } from "crypto";
 import { Prisma } from "@prisma/client";
 import { prisma, type Tx } from "./prisma";
 import { tenantTransaction } from "./db";
+import { platformDb } from "./platform-db";
 import { AppError } from "./errors";
 import { toJson } from "./json";
 
@@ -58,6 +59,6 @@ export async function withIdempotency(
 /** Deletes stored responses older than the retention window. Scheduled by the worker. */
 export async function purgeIdempotencyKeys(now = new Date()) {
   const cutoff = new Date(now.getTime() - RETENTION_HOURS * 3600 * 1000);
-  const { count } = await prisma.idempotencyKey.deleteMany({ where: { createdAt: { lt: cutoff } } });
+  const { count } = await platformDb.idempotencyKey.deleteMany({ where: { createdAt: { lt: cutoff } } });
   return count;
 }

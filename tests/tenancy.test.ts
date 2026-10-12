@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach } from "vitest";
+import { platformDb } from "@/lib/platform-db";
 import { prisma } from "@/lib/prisma";
 import { tenantTransaction } from "@/lib/db";
 import { createSale } from "@/modules/sales";
@@ -26,7 +27,7 @@ describe("tenant scoping", () => {
       numbers.push((await createSale(ctxOf(u), sale(m.id))).invoiceNo);
     }
     expect(numbers.map((n) => n.slice(-5))).toEqual(["00001", "00001", "00002"]);
-    const counters = await prisma.tenantCounter.findMany({ orderBy: { value: "asc" } });
+    const counters = await platformDb.tenantCounter.findMany({ orderBy: { value: "asc" } });
     expect(counters.map((c) => [c.pharmacyId === pharmacyId ? "test" : "other", c.key, Number(c.value)])).toEqual([["other", "INVOICE", 1], ["test", "INVOICE", 2]]);
   });
 
@@ -35,9 +36,9 @@ describe("tenant scoping", () => {
     await makeMedicine("Panadol", { barcode: "8901" });
     await makeMedicine("Panadol", { barcode: "8901" }, other.id);
     await expect(makeMedicine("Copy", { barcode: "8901" })).rejects.toThrow();
-    await prisma.user.create({ data: { pharmacyId, name: "Ali", email: "ali-a@t.test", username: "ali", passwordHash: "x" } });
-    await prisma.user.create({ data: { pharmacyId: other.id, name: "Ali", email: "ali-b@t.test", username: "ali", passwordHash: "x" } });
-    expect(await prisma.user.count({ where: { username: "ali" } })).toBe(2);
+    await platformDb.user.create({ data: { pharmacyId, name: "Ali", email: "ali-a@t.test", username: "ali", passwordHash: "x" } });
+    await platformDb.user.create({ data: { pharmacyId: other.id, name: "Ali", email: "ali-b@t.test", username: "ali", passwordHash: "x" } });
+    expect(await platformDb.user.count({ where: { username: "ali" } })).toBe(2);
   });
 });
 
@@ -48,7 +49,7 @@ describe("pharmacy settings", () => {
     expect(before).toMatchObject({ pharmacyName: "Pharmacy test", currency: "PKR", expiryWarningDays: 90 });
     const after = await updateSettings(ctxOf(u), { ...before, pharmacyName: "City Care", expiryWarningDays: 60, email: "" });
     expect(after).toMatchObject({ pharmacyName: "City Care", expiryWarningDays: 60, email: "" });
-    const row = await prisma.auditLog.findFirstOrThrow({ where: { action: "settings.update" } });
+    const row = await platformDb.auditLog.findFirstOrThrow({ where: { action: "settings.update" } });
     expect(row.pharmacyId).toBe(pharmacyId);
     expect(row.after).toMatchObject({ pharmacyName: "City Care" });
   });

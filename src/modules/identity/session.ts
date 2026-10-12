@@ -1,6 +1,6 @@
 import { cookies } from "next/headers";
 import { SignJWT, jwtVerify } from "jose";
-import { prisma } from "@/lib/prisma";
+import { platformDb } from "@/lib/platform-db";
 import type { Role } from "./permissions";
 
 export const SESSION_COOKIE = "pharmacy_session";
@@ -40,7 +40,7 @@ export async function getSessionUser(): Promise<SessionUser | null> {
   try {
     const { payload } = await jwtVerify(token, secret());
     if (!payload.sub) return null;
-    const user = await prisma.user.findUnique({
+    const user = await platformDb.user.findUnique({
       where: { id: payload.sub },
       select: { id: true, name: true, email: true, role: true, active: true, pharmacyId: true },
     });

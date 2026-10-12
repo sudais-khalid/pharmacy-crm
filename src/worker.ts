@@ -3,7 +3,7 @@
  * Started as its own process: `node dist/worker.js` (Docker `worker` service, desktop supervisor).
  */
 import { PgBoss } from "pg-boss";
-import { prisma } from "@/lib/prisma";
+import { platformDb } from "@/lib/platform-db";
 import { logger } from "@/lib/logger";
 import { purgeIdempotencyKeys } from "@/lib/idempotency";
 import { purgeRateLimitHits } from "@/lib/rate-limit";
@@ -29,7 +29,7 @@ async function waitForSchema(timeoutMs = 120_000) {
   const start = Date.now();
   for (;;) {
     try {
-      await prisma.$queryRaw`SELECT 1 FROM "OutboxEvent" LIMIT 1`;
+      await platformDb.$queryRaw`SELECT 1 FROM "OutboxEvent" LIMIT 1`;
       return;
     } catch (e) {
       if (Date.now() - start > timeoutMs) throw e;
@@ -76,7 +76,7 @@ async function main() {
     log("stopping", { signal });
     await loop;
     await boss.stop({ graceful: true, timeout: 20_000 });
-    await prisma.$disconnect();
+    await platformDb.$disconnect();
     process.exit(0);
   };
   process.on("SIGTERM", () => void shutdown("SIGTERM"));
@@ -89,6 +89,6 @@ async function main() {
 
 main().catch(async (e) => {
   log("worker failed to start", { error: String(e) });
-  await prisma.$disconnect().catch(() => {});
+  await platformDb.$disconnect().catch(() => {});
   process.exit(1);
 });

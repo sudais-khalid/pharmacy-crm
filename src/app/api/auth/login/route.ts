@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
-import { prisma } from "@/lib/prisma";
+import { platformDb } from "@/lib/platform-db";
 import { loginSchema, setSessionCookie } from "@/modules/identity";
 import { errorResponse, readJson } from "@/lib/api";
 import { AppError } from "@/lib/errors";
@@ -25,7 +25,7 @@ export async function POST(req: NextRequest) {
       throw new AppError(429, "Too many login attempts. Try again in a few minutes.");
     }
 
-    const user = await prisma.user.findUnique({ where: { email } });
+    const user = await platformDb.user.findUnique({ where: { email } });
     const ok = await bcrypt.compare(password, user?.passwordHash ?? DUMMY_HASH);
     if (!user || !ok) {
       await recordHit(accountBucket);

@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import { prisma } from "@/lib/prisma";
+import { platformDb } from "@/lib/platform-db";
 import { createSale, cancelSale } from "@/modules/sales";
 import { receiveCustomerPayment, customerBalance } from "@/modules/customers";
 import { resetDb, makeUser, makeMedicine, makeBatch, makeCustomer, ctxOf } from "./helpers";
@@ -16,10 +16,10 @@ describe("FEFO allocation", () => {
     const a = await makeBatch(m.id, "A", 30, 20, 50);
     const b = await makeBatch(m.id, "B", 200, 50, 52);
     const sale = await createSale(ctxOf(u), { ...base, items: [line(m.id, 25)] });
-    const items = await prisma.saleItem.findMany({ where: { saleId: sale.id }, orderBy: { quantity: "desc" } });
+    const items = await platformDb.saleItem.findMany({ where: { saleId: sale.id }, orderBy: { quantity: "desc" } });
     expect(items.map((i) => [i.batchId, i.quantity])).toEqual([[a.id, 20], [b.id, 5]]);
-    expect((await prisma.batch.findUniqueOrThrow({ where: { id: a.id } })).quantity).toBe(0);
-    expect((await prisma.batch.findUniqueOrThrow({ where: { id: b.id } })).quantity).toBe(45);
+    expect((await platformDb.batch.findUniqueOrThrow({ where: { id: a.id } })).quantity).toBe(0);
+    expect((await platformDb.batch.findUniqueOrThrow({ where: { id: b.id } })).quantity).toBe(45);
     expect(sale.subtotal.toString()).toBe("1260"); // 20*50 + 5*52
   });
 
@@ -31,7 +31,7 @@ describe("FEFO allocation", () => {
     await expect(createSale(ctxOf(u), { ...base, items: [line(m.id, 10)] })).rejects.toThrow(/Insufficient stock/);
     const ok = await createSale(ctxOf(u), { ...base, items: [line(m.id, 5)] });
     expect(ok.total.toString()).toBe("250");
-    expect((await prisma.batch.findFirstOrThrow({ where: { batchNumber: "OLD" } })).quantity).toBe(100);
+    expect((await platformDb.batch.findFirstOrThrow({ where: { batchNumber: "OLD" } })).quantity).toBe(100);
   });
 });
 
@@ -43,9 +43,9 @@ describe("sale integrity", () => {
     await makeBatch(m1.id, "X", 90, 10);
     await makeBatch(m2.id, "Y", 90, 1);
     await expect(createSale(ctxOf(u), { ...base, items: [line(m1.id, 5), line(m2.id, 3)] })).rejects.toThrow(/Insufficient/);
-    expect((await prisma.batch.findFirstOrThrow({ where: { batchNumber: "X" } })).quantity).toBe(10);
-    expect(await prisma.sale.count()).toBe(0);
-    expect(await prisma.stockMovement.count()).toBe(0);
+    expect((await platformDb.batch.findFirstOrThrow({ where: { batchNumber: "X" } })).quantity).toBe(10);
+    expect(await platformDb.sale.count()).toBe(0);
+    expect(await platformDb.stockMovement.count()).toBe(0);
   });
 
   it("calculates percent discounts and records movements", async () => {
@@ -57,7 +57,7 @@ describe("sale integrity", () => {
     expect(sale.discount.toString()).toBe("10");
     expect(sale.total.toString()).toBe("90");
     expect(sale.amountPaid.toString()).toBe("90");
-    const mv = await prisma.stockMovement.findMany();
+    const mv = await platformDb.stockMovement.findMany();
     expect(mv).toHaveLength(1);
     expect(mv[0]).toMatchObject({ type: "SALE", quantity: -2, balanceAfter: 8, reference: sale.invoiceNo });
   });
@@ -78,7 +78,7 @@ describe("sale integrity", () => {
     await makeBatch(m.id, "A", 90, 50);
     const s = await Promise.all([1, 2, 3, 4, 5].map(() => createSale(ctxOf(u), { ...base, items: [line(m.id, 1)] })));
     expect(new Set(s.map((x) => x.invoiceNo)).size).toBe(5);
-    expect((await prisma.batch.findFirstOrThrow()).quantity).toBe(45);
+    expect((await platformDb.batch.findFirstOrThrow()).quantity).toBe(45);
   });
 
   it("concurrent sales cannot oversell", async () => {
@@ -87,7 +87,7 @@ describe("sale integrity", () => {
     await makeBatch(m.id, "A", 90, 5);
     const results = await Promise.allSettled([1, 2, 3, 4].map(() => createSale(ctxOf(u), { ...base, items: [line(m.id, 2)] })));
     expect(results.filter((r) => r.status === "fulfilled")).toHaveLength(2);
-    expect((await prisma.batch.findFirstOrThrow()).quantity).toBe(1);
+    expect((await platformDb.batch.findFirstOrThrow()).quantity).toBe(1);
   });
 });
 
@@ -100,16 +100,16 @@ describe("credit (udhaar)", () => {
     const c = await makeCustomer(1000);
 
     await createSale(ctxOf(cashier), { ...base, paymentMethod: "CREDIT", customerId: c.id, items: [line(m.id, 5)] }); // 500 owed
-    expect((await customerBalance(prisma, c.id)).toString()).toBe("500");
+    expect((await customerBalance(platformDb, c.id)).toString()).toBe("500");
 
     await expect(createSale(ctxOf(cashier), { ...base, paymentMethod: "CREDIT", customerId: c.id, items: [line(m.id, 6)] })).rejects.toThrow(/Credit limit exceeded/);
-    expect((await customerBalance(prisma, c.id)).toString()).toBe("500");
+    expect((await customerBalance(platformDb, c.id)).toString()).toBe("500");
 
     await createSale(ctxOf(pharmacist), { ...base, paymentMethod: "CREDIT", customerId: c.id, items: [line(m.id, 6)] }); // override
-    expect((await customerBalance(prisma, c.id)).toString()).toBe("1100");
+    expect((await customerBalance(platformDb, c.id)).toString()).toBe("1100");
 
     await receiveCustomerPayment(ctxOf(cashier), c.id, { amount: 300, method: "CASH" });
-    expect((await customerBalance(prisma, c.id)).toString()).toBe("800");
+    expect((await customerBalance(platformDb, c.id)).toString()).toBe("800");
     await expect(receiveCustomerPayment(ctxOf(cashier), c.id, { amount: 900, method: "CASH" })).rejects.toThrow(/more than the outstanding/);
   });
 
@@ -119,7 +119,7 @@ describe("credit (udhaar)", () => {
     await makeBatch(m.id, "A", 90, 100, 100);
     const c = await makeCustomer(5000);
     await createSale(ctxOf(u), { ...base, paymentMethod: "CASH", amountPaid: 150, customerId: c.id, items: [line(m.id, 4)] });
-    expect((await customerBalance(prisma, c.id)).toString()).toBe("250");
+    expect((await customerBalance(platformDb, c.id)).toString()).toBe("250");
   });
 
   it("requires a customer for credit sales", async () => {
@@ -138,11 +138,11 @@ describe("cancel sale", () => {
     const b = await makeBatch(m.id, "B", 200, 50);
     const c = await makeCustomer(10000);
     const sale = await createSale(ctxOf(u), { ...base, paymentMethod: "CASH", amountPaid: 500, customerId: c.id, items: [line(m.id, 25)] });
-    expect((await customerBalance(prisma, c.id)).toString()).toBe("750");
+    expect((await customerBalance(platformDb, c.id)).toString()).toBe("750");
     await cancelSale(ctxOf(u), sale.id, "Customer changed mind");
-    expect((await prisma.batch.findUniqueOrThrow({ where: { id: a.id } })).quantity).toBe(20);
-    expect((await prisma.batch.findUniqueOrThrow({ where: { id: b.id } })).quantity).toBe(50);
-    expect((await customerBalance(prisma, c.id)).toString()).toBe("0");
+    expect((await platformDb.batch.findUniqueOrThrow({ where: { id: a.id } })).quantity).toBe(20);
+    expect((await platformDb.batch.findUniqueOrThrow({ where: { id: b.id } })).quantity).toBe(50);
+    expect((await customerBalance(platformDb, c.id)).toString()).toBe("0");
     await expect(cancelSale(ctxOf(u), sale.id, "again")).rejects.toThrow(/already cancelled/);
   });
 });
@@ -152,19 +152,19 @@ describe("invariants", () => {
     const u = await makeUser();
     const m = await makeMedicine();
     const a = await makeBatch(m.id, "A", 60, 0);
-    await prisma.stockMovement.create({ data: { pharmacyId: m.pharmacyId, medicineId: m.id, batchId: a.id, type: "OPENING", quantity: 0, balanceAfter: 0 } });
+    await platformDb.stockMovement.create({ data: { pharmacyId: m.pharmacyId, medicineId: m.id, batchId: a.id, type: "OPENING", quantity: 0, balanceAfter: 0 } });
     const { adjustStock } = await import("@/modules/inventory");
     await adjustStock(ctxOf(u), { batchId: a.id, kind: "ADD", quantity: 40, note: "opening count" });
     await createSale(ctxOf(u), { ...base, items: [line(m.id, 7)] });
     await adjustStock(ctxOf(u), { batchId: a.id, kind: "DAMAGE", quantity: 3, note: "broken" });
-    const sum = await prisma.stockMovement.aggregate({ where: { batchId: a.id }, _sum: { quantity: true } });
-    expect((await prisma.batch.findUniqueOrThrow({ where: { id: a.id } })).quantity).toBe(sum._sum.quantity);
+    const sum = await platformDb.stockMovement.aggregate({ where: { batchId: a.id }, _sum: { quantity: true } });
+    expect((await platformDb.batch.findUniqueOrThrow({ where: { id: a.id } })).quantity).toBe(sum._sum.quantity);
   });
 
   it("database refuses negative stock", async () => {
     const m = await makeMedicine();
     const a = await makeBatch(m.id, "A", 60, 3);
-    await expect(prisma.$executeRawUnsafe(`UPDATE "Batch" SET quantity = -1 WHERE id = '${a.id}'`)).rejects.toThrow();
+    await expect(platformDb.$executeRawUnsafe(`UPDATE "Batch" SET quantity = -1 WHERE id = '${a.id}'`)).rejects.toThrow();
   });
 });
 
@@ -185,8 +185,8 @@ describe("service context", () => {
       }),
     ).rejects.toThrow(/abort/);
 
-    expect((await prisma.batch.findUniqueOrThrow({ where: { id: a.id } })).quantity).toBe(10);
-    expect(await prisma.sale.count()).toBe(0);
-    expect(await prisma.stockMovement.count({ where: { batchId: a.id } })).toBe(0);
+    expect((await platformDb.batch.findUniqueOrThrow({ where: { id: a.id } })).quantity).toBe(10);
+    expect(await platformDb.sale.count()).toBe(0);
+    expect(await platformDb.stockMovement.count({ where: { batchId: a.id } })).toBe(0);
   });
 });

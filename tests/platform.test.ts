@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import { prisma } from "@/lib/prisma";
+import { platformDb } from "@/lib/platform-db";
 import { runInTx } from "@/lib/db";
 import { withIdempotency, purgeIdempotencyKeys } from "@/lib/idempotency";
 import { createSale } from "@/modules/sales";
@@ -35,14 +35,14 @@ describe("idempotency", () => {
     expect(first.replayed).toBe(false);
     expect(second.replayed).toBe(true);
     expect(second.body).toEqual(first.body);
-    expect(await prisma.sale.count()).toBe(1);
-    expect((await prisma.batch.findFirstOrThrow()).quantity).toBe(48);
+    expect(await platformDb.sale.count()).toBe(1);
+    expect((await platformDb.batch.findFirstOrThrow()).quantity).toBe(48);
   });
 
   it("serialises concurrent duplicates into one sale", async () => {
     const { u, m } = await setup();
     const results = await Promise.all([1, 2, 3].map(() => sell(u, saleBody(m.id), "key-concurrent-01")));
-    expect(await prisma.sale.count()).toBe(1);
+    expect(await platformDb.sale.count()).toBe(1);
     expect(results.filter((r) => !r.replayed)).toHaveLength(1);
     expect(new Set(results.map((r) => JSON.stringify(r.body))).size).toBe(1);
   });
@@ -51,13 +51,13 @@ describe("idempotency", () => {
     const { u, m } = await setup();
     await sell(u, saleBody(m.id, 2), "key-reuse-00001");
     await expect(sell(u, saleBody(m.id, 3), "key-reuse-00001")).rejects.toThrow(/different request/);
-    expect(await prisma.sale.count()).toBe(1);
+    expect(await platformDb.sale.count()).toBe(1);
   });
 
   it("stores nothing for a failed request, so it can be retried", async () => {
     const { u, m } = await setup();
     await expect(sell(u, saleBody(m.id, 500), "key-failure-001")).rejects.toThrow(/Insufficient/);
-    expect(await prisma.idempotencyKey.count()).toBe(0);
+    expect(await platformDb.idempotencyKey.count()).toBe(0);
     const ok = await sell(u, saleBody(m.id, 5), "key-failure-001");
     expect(ok.replayed).toBe(false);
   });
@@ -68,7 +68,7 @@ describe("idempotency", () => {
     await sell(u, saleBody(m.id), "key-shared-0001");
     const r = await sell(other, saleBody(m.id), "key-shared-0001");
     expect(r.replayed).toBe(false);
-    expect(await prisma.sale.count()).toBe(2);
+    expect(await platformDb.sale.count()).toBe(2);
   });
 
   it("rejects malformed keys and purges expired ones", async () => {
@@ -83,10 +83,10 @@ describe("audit log and outbox", () => {
   it("audit rows are append-only", async () => {
     const u = await makeUser();
     await runInTx(ctxOf(u), (tx) => audit(tx, ctxOf(u), { action: "test.write", entity: "Test", entityId: "1", after: { a: 1 } }));
-    const row = await prisma.auditLog.findFirstOrThrow();
+    const row = await platformDb.auditLog.findFirstOrThrow();
     expect(row.after).toEqual({ a: 1 });
-    await expect(prisma.auditLog.update({ where: { id: row.id }, data: { action: "tampered" } })).rejects.toThrow(/append-only/);
-    await expect(prisma.auditLog.delete({ where: { id: row.id } })).rejects.toThrow(/append-only/);
+    await expect(platformDb.auditLog.update({ where: { id: row.id }, data: { action: "tampered" } })).rejects.toThrow(/append-only/);
+    await expect(platformDb.auditLog.delete({ where: { id: row.id } })).rejects.toThrow(/append-only/);
   });
 
   it("audit and outbox rows roll back with the business transaction", async () => {
@@ -98,15 +98,15 @@ describe("audit log and outbox", () => {
         throw new Error("rollback");
       }),
     ).rejects.toThrow("rollback");
-    expect(await prisma.auditLog.count()).toBe(0);
-    expect(await prisma.outboxEvent.count()).toBe(0);
+    expect(await platformDb.auditLog.count()).toBe(0);
+    expect(await platformDb.outboxEvent.count()).toBe(0);
   });
 });
 
 describe("write paths are audited and emit events", () => {
   const rows = async () => ({
-    audit: await prisma.auditLog.findMany({ orderBy: { id: "asc" } }),
-    events: await prisma.outboxEvent.findMany({ orderBy: { id: "asc" } }),
+    audit: await platformDb.auditLog.findMany({ orderBy: { id: "asc" } }),
+    events: await platformDb.outboxEvent.findMany({ orderBy: { id: "asc" } }),
   });
 
   it("a sale writes exactly one audit row and one outbox event; a failed sale writes none", async () => {

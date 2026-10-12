@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import { prisma } from "@/lib/prisma";
+import { platformDb } from "@/lib/platform-db";
 import { runInTx } from "@/lib/db";
 import { emit, dispatchOutbox, outboxBackoffMs, OUTBOX_MAX_ATTEMPTS, type OutboxHandlers } from "@/modules/platform";
 import { resetDb, makeUser, ctxOf } from "./helpers";
@@ -20,7 +20,7 @@ describe("outbox dispatcher", () => {
     const handlers: OutboxHandlers = { MedicineCreated: [async (e) => void seen.push(e.payload.medicineId)] };
     expect(await dispatchOutbox(handlers)).toEqual({ claimed: 3, delivered: 3, failed: 0 });
     expect(seen).toEqual(["m0", "m1", "m2"]);
-    expect(await prisma.outboxEvent.count({ where: { processedAt: null } })).toBe(0);
+    expect(await platformDb.outboxEvent.count({ where: { processedAt: null } })).toBe(0);
     expect((await dispatchOutbox(handlers)).claimed).toBe(0);
   });
 
@@ -33,7 +33,7 @@ describe("outbox dispatcher", () => {
     await emitMany(1);
     const r = await dispatchOutbox({ MedicineCreated: [async () => { throw new Error("mail server down"); }] });
     expect(r).toEqual({ claimed: 1, delivered: 0, failed: 1 });
-    const ev = await prisma.outboxEvent.findFirstOrThrow();
+    const ev = await platformDb.outboxEvent.findFirstOrThrow();
     expect(ev.attempts).toBe(1);
     expect(ev.processedAt).toBeNull();
     expect(ev.lastError).toMatch(/mail server down/);
@@ -45,7 +45,7 @@ describe("outbox dispatcher", () => {
 
   it("parks events after the maximum number of attempts", async () => {
     await emitMany(1);
-    await prisma.outboxEvent.updateMany({ data: { attempts: OUTBOX_MAX_ATTEMPTS, availableAt: new Date(0) } });
+    await platformDb.outboxEvent.updateMany({ data: { attempts: OUTBOX_MAX_ATTEMPTS, availableAt: new Date(0) } });
     expect((await dispatchOutbox({})).claimed).toBe(0);
   });
 

@@ -1,5 +1,5 @@
 import { statfsSync } from "node:fs";
-import { prisma } from "@/lib/prisma";
+import { platformDb } from "@/lib/platform-db";
 
 export type CheckResult = { ok: boolean; [detail: string]: unknown };
 
@@ -24,7 +24,7 @@ const MIN_FREE_RATIO = 0.1;
 async function database(): Promise<CheckResult> {
   const t = Date.now();
   try {
-    await prisma.$queryRaw`SELECT 1`;
+    await platformDb.$queryRaw`SELECT 1`;
     return { ok: true, latencyMs: Date.now() - t };
   } catch (e) {
     return { ok: false, error: describe(e) };
@@ -33,7 +33,7 @@ async function database(): Promise<CheckResult> {
 
 async function worker(): Promise<CheckResult> {
   try {
-    const [row] = await prisma.$queryRaw<{ pending: bigint; parked: bigint; oldest: number | null }[]>`
+    const [row] = await platformDb.$queryRaw<{ pending: bigint; parked: bigint; oldest: number | null }[]>`
       SELECT count(*) FILTER (WHERE attempts < 10) AS pending,
              count(*) FILTER (WHERE attempts >= 10) AS parked,
              EXTRACT(EPOCH FROM ((now() AT TIME ZONE 'UTC') - min("createdAt") FILTER (WHERE attempts < 10)))::float AS oldest

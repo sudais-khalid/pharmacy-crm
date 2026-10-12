@@ -2,7 +2,7 @@
 import bcrypt from "bcryptjs";
 import { loadEnvConfig } from "@next/env";
 loadEnvConfig(process.cwd());
-import { prisma } from "../src/lib/prisma";
+import { platformDb as prisma } from "../src/lib/platform-db";
 import { addDays, todayStr } from "../src/lib/dates";
 import { createMedicine } from "../src/modules/catalog";
 import { createPurchase } from "../src/modules/procurement";
