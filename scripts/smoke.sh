@@ -3,15 +3,20 @@
 B=${BASE_URL:-http://localhost:3000}; fail=0
 ok(){ if [ "$2" = "$3" ]; then echo "PASS  $1"; else echo "FAIL  $1 (expected $3, got $2)"; fail=1; fi; }
 code(){ curl -s -o /dev/null -w "%{http_code}" "$@"; }
-login(){ code -c /tmp/smoke_$1.jar -X POST $B/api/auth/login -H 'content-type: application/json' -d "{\"email\":\"$1@example.com\",\"password\":\"$2\"}"; }
+login(){ code -c /tmp/smoke_$1.jar -X POST $B/api/auth/login -H 'content-type: application/json' -d "{\"pharmacy\":\"demo\",\"username\":\"$1\",\"password\":\"$2\"}"; }
 js(){ python3 -c "import sys,json;d=json.load(sys.stdin);print($1)"; }
 
 ok "Health endpoint is public" "$(code $B/api/health)" 200
 ok "Health reports database up" "$(curl -s $B/api/health | js "d['checks']['database']['ok']")" True
 ok "API requires login" "$(code $B/api/medicines)" 401
 ok "Page redirects to login" "$(code $B/dashboard)" 307
-ok "Wrong password rejected" "$(code -X POST $B/api/auth/login -H 'content-type: application/json' -d '{"email":"admin@example.com","password":"nope"}')" 401
-ok "Invalid body rejected (validation)" "$(code -X POST $B/api/auth/login -H 'content-type: application/json' -d '{"email":"x"}')" 400
+ok "Wrong password rejected" "$(code -X POST $B/api/auth/login -H 'content-type: application/json' -d '{"pharmacy":"demo","username":"admin","password":"nope"}')" 401
+ok "Unknown pharmacy rejected like a wrong password" "$(code -X POST $B/api/auth/login -H 'content-type: application/json' -d '{"pharmacy":"no-such-place","username":"admin","password":"Admin@12345"}')" 401
+ok "Sign-in with email instead of username" "$(code -X POST $B/api/auth/login -H 'content-type: application/json' -d '{"pharmacy":"demo","username":"admin@example.com","password":"Admin@12345"}')" 200
+ok "Pharmacy sign-in page shows the pharmacy" "$(curl -s $B/api/auth/pharmacy/demo | js "d['name']")" "Demo Pharmacy"
+ok "Unknown pharmacy sign-in page is 404" "$(code $B/p/no-such-place/login)" 404
+ok "Pharmacy sign-in page renders" "$(code $B/p/demo/login)" 200
+ok "Invalid body rejected (validation)" "$(code -X POST $B/api/auth/login -H 'content-type: application/json' -d '{"username":"x"}')" 400
 ok "Admin login" "$(login admin 'Admin@12345')" 200
 ok "Pharmacist login" "$(login pharmacist 'Pharmacist@12345')" 200
 ok "Cashier login" "$(login cashier 'Cashier@12345')" 200
@@ -60,8 +65,8 @@ for t in sales profit purchases lowStock expired customerBalances supplierBalanc
 ok "Report rejects bad range" "$(code -b /tmp/smoke_admin.jar "$B/api/reports?type=sales&from=2030-01-01&to=2020-01-01")" 400
 ok "Cross-site write blocked" "$(code -b /tmp/smoke_admin.jar -X POST $B/api/categories -H 'content-type: application/json' -H 'Origin: https://evil.example' -d '{"name":"x"}')" 403
 ok "Same-origin write allowed" "$(code -b /tmp/smoke_admin.jar -X POST $B/api/categories -H 'content-type: application/json' -H "Origin: $B" -d "{\"name\":\"Smoke $(date +%s)\"}")" 200
-for i in $(seq 1 8); do code -X POST $B/api/auth/login -H 'content-type: application/json' -d '{"email":"nobody@example.com","password":"wrong"}' >/dev/null; done
-ok "Login locked after repeated failures" "$(code -X POST $B/api/auth/login -H 'content-type: application/json' -d '{"email":"nobody@example.com","password":"wrong"}')" 429
+for i in $(seq 1 8); do code -X POST $B/api/auth/login -H 'content-type: application/json' -d '{"pharmacy":"demo","username":"nobody","password":"wrong"}' >/dev/null; done
+ok "Login locked after repeated failures" "$(code -X POST $B/api/auth/login -H 'content-type: application/json' -d '{"pharmacy":"demo","username":"nobody","password":"wrong"}')" 429
 # Developer console (needs PLATFORM_OWNER_EMAIL and PLATFORM_OWNER_PASSWORD set for the server and this script)
 if [ -n "$PLATFORM_OWNER_EMAIL" ] && [ -n "$PLATFORM_OWNER_PASSWORD" ]; then
   # totp SECRET [STEP_OFFSET]: authenticator code for the current 30 s step plus an offset
@@ -97,7 +102,7 @@ if [ -n "$PLATFORM_OWNER_EMAIL" ] && [ -n "$PLATFORM_OWNER_PASSWORD" ]; then
   next_step
   ok "Developer suspends a pharmacy" "$(code -b /tmp/smoke_dev.jar -X POST $B/api/platform/pharmacies/$DEMO/status -H 'content-type: application/json' -d "{\"status\":\"SUSPENDED\",\"reason\":\"smoke test\",\"code\":\"$(totp "$SECRET")\"}")" 200
   ok "Suspended pharmacy: open staff session ends" "$(code -b /tmp/smoke_admin.jar $B/api/medicines)" 401
-  ok "Suspended pharmacy: sign-in refused with a reason" "$(curl -s -X POST $B/api/auth/login -H 'content-type: application/json' -d '{"email":"admin@example.com","password":"Admin@12345"}' | js "'suspended' in d['error']")" True
+  ok "Suspended pharmacy: sign-in refused with a reason" "$(curl -s -X POST $B/api/auth/login -H 'content-type: application/json' -d '{"pharmacy":"demo","username":"admin","password":"Admin@12345"}' | js "'suspended' in d['error']")" True
   next_step
   ok "Developer reactivates the pharmacy" "$(code -b /tmp/smoke_dev.jar -X POST $B/api/platform/pharmacies/$DEMO/status -H 'content-type: application/json' -d "{\"status\":\"ACTIVE\",\"reason\":\"smoke test done\",\"code\":\"$(totp "$SECRET")\"}")" 200
   ok "Reactivated pharmacy: staff session works again" "$(code -b /tmp/smoke_admin.jar $B/api/medicines)" 200

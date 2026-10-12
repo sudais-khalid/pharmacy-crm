@@ -52,8 +52,8 @@ describe("accounts across pharmacies", () => {
 
   it("shows and clears a sign-in lock", async () => {
     const u = await makeUser("CASHIER");
-    for (let i = 0; i < 8; i++) await recordHit(`login:local:${u.email}`);
-    await recordHit("login:local:someone-else@t.test");
+    for (let i = 0; i < 8; i++) await recordHit(`login:local:test:${u.username}`);
+    await recordHit("login:local:test:someone-else");
     expect((await listAccounts()).items.find((a) => a.id === u.id)?.locked).toBe(true);
     expect(await unlockAccount(dev, u.id)).toEqual({ clearedAttempts: 8 });
     expect((await listAccounts()).items.find((a) => a.id === u.id)?.locked).toBe(false);

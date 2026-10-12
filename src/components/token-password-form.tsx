@@ -57,7 +57,7 @@ export function TokenPasswordForm({ token }: { token: string }) {
         {done && (
           <div className="space-y-4 text-center">
             <p className="flex items-center justify-center gap-2 text-sm text-success"><CheckCircle2 className="h-5 w-5" aria-hidden /> Password saved.</p>
-            <Link href="/login" className="inline-flex w-full items-center justify-center rounded-lg bg-primary px-3.5 py-2 text-sm font-medium text-on-primary hover:bg-primary/90">Go to sign in</Link>
+            <Link href={`/p/${done.pharmacySlug}/login`} className="inline-flex w-full items-center justify-center rounded-lg bg-primary px-3.5 py-2 text-sm font-medium text-on-primary hover:bg-primary/90">Go to sign in</Link>
           </div>
         )}
       </Card>

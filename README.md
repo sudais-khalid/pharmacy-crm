@@ -75,11 +75,15 @@ docker compose exec app npm run db:seed   # optional demo data
 
 ## Development accounts (seed data – development only)
 
-| Role | Email | Password |
+The seed creates the pharmacy **Demo Pharmacy** with the code `demo`. Sign in at `/p/demo/login` (or `/login`, then enter the code `demo`).
+
+| Role | Username | Password |
 |---|---|---|
-| Admin | `admin@example.com` | `Admin@12345` |
-| Pharmacist | `pharmacist@example.com` | `Pharmacist@12345` |
-| Cashier | `cashier@example.com` | `Cashier@12345` |
+| Pharmacy Admin | `admin` | `Admin@12345` |
+| Pharmacist | `pharmacist` | `Pharmacist@12345` |
+| Cashier | `cashier` | `Cashier@12345` |
+
+Staff sign in with their pharmacy code and username (the email also works). Usernames and emails are unique within a pharmacy, so two pharmacies can each have an `admin`.
 
 **Never use these in production.** Run the app without seeding, then create a real admin: seed once, log in, add your own admin user in *Users*, and deactivate the demo accounts. Change the pharmacy name, address and phone in *Settings*; they appear on invoices.
 
@@ -161,7 +165,7 @@ npm run typecheck
 npm run lint
 ```
 
-With the app running and seeded: `npm run test:smoke` (100 HTTP checks: login, permissions, validation, sale → cancel flow, reports, page loads).
+With the app running and seeded: `npm run test:smoke` (105 HTTP checks: login, permissions, validation, sale → cancel flow, reports, page loads).
 
 > `npm test` truncates the tables of the database in `.env.test`. Never point it at real data.
 

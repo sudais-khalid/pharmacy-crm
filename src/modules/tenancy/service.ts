@@ -30,8 +30,6 @@ export function temporaryPassword() {
 export async function createPharmacy(c: DevContext, input: CreatePharmacyInput) {
   const exists = await platformDb.pharmacy.findUnique({ where: { slug: input.pharmacy.slug } });
   if (exists) throw new AppError(409, "A pharmacy with this URL name already exists.", { fields: { "pharmacy.slug": "Already taken" } });
-  const emailTaken = await platformDb.user.findUnique({ where: { email: input.admin.email } });
-  if (emailTaken) throw new AppError(409, "This email is already used by another account.", { fields: { "admin.email": "Already used" } });
 
   const password = input.credentials === "password" ? temporaryPassword() : null;
   const adminHash = password ? await bcrypt.hash(password, 10) : await unusableHash();
@@ -156,8 +154,8 @@ export async function setPharmacyStatus(c: DevContext, id: string, input: { stat
 const LOGIN_LOCK_WINDOW_MS = 15 * 60 * 1000;
 const LOGIN_LOCK_MAX = 8;
 
-/** Login rate-limit buckets of one account (see the login route). */
-const loginBuckets = (email: string) => ({ bucket: { startsWith: "login:", endsWith: `:${email}` } });
+/** Login rate-limit buckets of one account: login:<ip>:<pharmacy slug>:<username> (see the login route). */
+const loginBuckets = (slug: string, username: string) => ({ bucket: { startsWith: "login:", endsWith: `:${slug}:${username}` } });
 
 export async function listAccounts(filter: { q?: string; pharmacyId?: string; page?: number; pageSize?: number } = {}) {
   const page = Math.max(1, filter.page ?? 1);
@@ -178,13 +176,13 @@ export async function listAccounts(filter: { q?: string; pharmacyId?: string; pa
   ]);
   const since = new Date(Date.now() - LOGIN_LOCK_WINDOW_MS);
   const items = await Promise.all(
-    users.map(async (u) => ({ ...u, locked: (await platformDb.rateLimitHit.count({ where: { ...loginBuckets(u.email), at: { gt: since } } })) >= LOGIN_LOCK_MAX })),
+    users.map(async (u) => ({ ...u, locked: (await platformDb.rateLimitHit.count({ where: { ...loginBuckets(u.pharmacy.slug, u.username), at: { gt: since } } })) >= LOGIN_LOCK_MAX })),
   );
   return { total, page, pageSize, items };
 }
 
 async function staffAccount(id: string) {
-  const user = await platformDb.user.findUnique({ where: { id }, select: { id: true, email: true, active: true, isSystem: true, pharmacyId: true } });
+  const user = await platformDb.user.findUnique({ where: { id }, select: { id: true, username: true, active: true, isSystem: true, pharmacyId: true, pharmacy: { select: { slug: true } } } });
   if (!user || user.isSystem) throw new AppError(404, "Account not found.");
   return user;
 }
@@ -224,7 +222,7 @@ export async function issueAccountReset(c: DevContext, id: string) {
 /** Clears failed sign-in attempts that locked the account. */
 export async function unlockAccount(c: DevContext, id: string) {
   const user = await staffAccount(id);
-  const { count } = await platformDb.rateLimitHit.deleteMany({ where: loginBuckets(user.email) });
+  const { count } = await platformDb.rateLimitHit.deleteMany({ where: loginBuckets(user.pharmacy.slug, user.username) });
   await audit(platformDb, actorOf(c), { action: "user.unlock", entity: "User", entityId: id, pharmacyId: user.pharmacyId, after: { clearedAttempts: count } });
   return { clearedAttempts: count };
 }
@@ -261,4 +259,11 @@ export async function setFeatureFlag(c: DevContext, id: string, key: FeatureKey,
     });
     return { key, enabled };
   });
+}
+
+/** What a sign-in page may show about a pharmacy before anyone signs in. */
+export async function publicPharmacyInfo(slug: string) {
+  const p = await platformDb.pharmacy.findUnique({ where: { slug: slug.toLowerCase() }, select: { slug: true, name: true, city: true, status: true } });
+  if (!p || p.status === "DEACTIVATED") return null;
+  return { slug: p.slug, name: p.name, city: p.city, suspended: p.status === "SUSPENDED" };
 }

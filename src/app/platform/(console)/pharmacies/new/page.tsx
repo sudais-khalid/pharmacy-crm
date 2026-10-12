@@ -119,7 +119,7 @@ export default function NewPharmacyPage() {
 /** Shown once after creation. The secret part cannot be retrieved again. */
 function CreatedPanel({ result }: { result: Result }) {
   const origin = typeof window !== "undefined" ? window.location.origin : "";
-  const loginUrl = `${origin}/login`;
+  const loginUrl = `${origin}/p/${result.pharmacy.slug}/login`;
   const secret = result.credentials.kind === "invite" ? `${origin}${result.credentials.path}` : result.credentials.password;
   const message =
     result.credentials.kind === "invite"

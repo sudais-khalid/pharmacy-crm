@@ -46,7 +46,7 @@ model User {
   id                 String    @id @default(uuid())
   pharmacyId         String    @default(dbgenerated("current_setting('app.pharmacy_id'::text, true)"))
   name               String
-  email              String    @unique
+  email              String
   username           String
   passwordHash       String
   role               Role      @default(CASHIER)
@@ -67,6 +67,7 @@ model User {
   pharmacy Pharmacy @relation(fields: [pharmacyId], references: [id])
 
   @@unique([pharmacyId, username])
+  @@unique([pharmacyId, email])
   @@index([pharmacyId])
 }
 

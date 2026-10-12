@@ -60,10 +60,11 @@ describe("creating a pharmacy", () => {
     expect(visible.map((u) => u.username).sort()).toEqual(["ayesha", "platform-support"]);
   });
 
-  it("refuses taken URL names and emails, and invalid or reserved names", async () => {
+  it("refuses taken URL names and invalid or reserved names", async () => {
     await createPharmacy(dev, input());
     await expect(createPharmacy(dev, input())).rejects.toThrow(/URL name already exists/);
-    await expect(createPharmacy(dev, input({ pharmacy: { name: "Other", slug: "other" } }))).rejects.toThrow(/email is already used/);
+    // the same person may administer two pharmacies: emails are unique per pharmacy only
+    await expect(createPharmacy(dev, input({ pharmacy: { name: "Other", slug: "other" } }))).resolves.toMatchObject({ pharmacy: { slug: "other" } });
     for (const bad of ["platform", "a", "-bad", "bad-", "has space", "x".repeat(41)]) expect(slugSchema.safeParse(bad).success, bad).toBe(false);
     expect(slugSchema.parse("Al-Shifa-2")).toBe("al-shifa-2");
   });
