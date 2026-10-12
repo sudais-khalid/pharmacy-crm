@@ -2,6 +2,18 @@ import { statfsSync } from "node:fs";
 import { prisma } from "@/lib/prisma";
 
 export type CheckResult = { ok: boolean; [detail: string]: unknown };
+
+/** A short, never-empty description of an error (driver errors sometimes have an empty message). */
+function describe(e: unknown): string {
+  if (e instanceof AggregateError && e.errors.length) return e.errors.map(describe).join("; ");
+  if (e instanceof Error) {
+    const code = (e as { code?: string }).code;
+    const first = e.message.split("\n")[0].trim();
+    return [e.name !== "Error" ? e.name : "", code ?? "", first].filter(Boolean).join(": ") || "unknown error";
+  }
+  return String(e) || "unknown error";
+}
+
 export type Health = { status: "ok" | "degraded" | "down"; checks: Record<"database" | "worker" | "disk", CheckResult>; uptimeSeconds: number; version: string };
 
 /** The worker is considered behind when an event has waited longer than this. */
@@ -15,7 +27,7 @@ async function database(): Promise<CheckResult> {
     await prisma.$queryRaw`SELECT 1`;
     return { ok: true, latencyMs: Date.now() - t };
   } catch (e) {
-    return { ok: false, error: e instanceof Error ? e.message.split("\n")[0] : "unreachable" };
+    return { ok: false, error: describe(e) };
   }
 }
 
@@ -29,7 +41,7 @@ async function worker(): Promise<CheckResult> {
     const oldest = row.oldest === null ? 0 : Math.round(row.oldest);
     return { ok: oldest <= OUTBOX_LAG_LIMIT_S, pendingEvents: Number(row.pending), parkedEvents: Number(row.parked), oldestPendingSeconds: oldest };
   } catch (e) {
-    return { ok: false, error: e instanceof Error ? e.message.split("\n")[0] : "unknown" };
+    return { ok: false, error: describe(e) };
   }
 }
 
@@ -41,7 +53,7 @@ function disk(path = process.env.DATA_DIR ?? process.cwd()): CheckResult {
     const ratio = total ? free / total : 1;
     return { ok: free >= MIN_FREE_BYTES && ratio >= MIN_FREE_RATIO, freeBytes: free, freePercent: Math.round(ratio * 1000) / 10 };
   } catch (e) {
-    return { ok: false, error: e instanceof Error ? e.message : "unknown" };
+    return { ok: false, error: describe(e) };
   }
 }
 
