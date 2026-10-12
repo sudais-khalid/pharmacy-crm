@@ -2,10 +2,23 @@
 
 The current schema (14 tables) stays the core. This document lists every addition, the reason for it, and how to migrate without losing data. All money stays `Decimal(12,2)`, all keys stay UUID, and every new table that holds history is append-only.
 
+The biggest change is **multi-tenancy**: almost every table gains a `pharmacyId` column protected by PostgreSQL Row-Level Security (section 2.2). Model snippets in sections 3 to 6 omit that column for readability; it is present on every one of them.
+
 ## 1. Overview of new and changed entities
 
 ```mermaid
 erDiagram
+  Pharmacy ||--o{ User : employs
+  Pharmacy ||--o{ Role : "custom roles"
+  Pharmacy ||--o{ Customer : serves
+  Pharmacy ||--|| PharmacySettings : configures
+  PlatformUser ||--o{ Pharmacy : creates
+  PlatformUser ||--o{ SupportSession : opens
+  Customer ||--o| CustomerAccount : "portal login"
+  CustomerAccount ||--o{ CustomerOrder : places
+  CustomerOrder ||--|{ CustomerOrderItem : lines
+  CustomerOrder ||--o{ StockReservation : holds
+  CustomerOrder ||--o| Sale : "fulfilled as"
   Role ||--o{ User : has
   User ||--o{ CashSession : opens
   CashSession ||--o{ Sale : contains
@@ -30,57 +43,214 @@ erDiagram
   StoredFile ||--o{ Expense : receipt
 ```
 
-## 2. Identity
+## 2. Tenancy and identity
 
-### 2.1 Role becomes a table
+### 2.1 Pharmacy (the tenant)
+
+```prisma
+model Pharmacy {
+  id               String         @id @default(uuid())
+  slug             String         @unique          // used in /p/<slug>/login and /shop/<slug>
+  name             String                          // display name, editable by Pharmacy Admin
+  legalName        String?
+  logoFileId       String?                         // StoredFile, resized 512 and 128 px
+  brandColor       String?                         // hex, validated for contrast
+  address          String         @default("")
+  city             String?
+  phone            String         @default("")
+  whatsapp         String?
+  email            String?
+  licenseNumber    String?                         // drug sale licence, printed on bills
+  taxNumber        String?
+  status           PharmacyStatus @default(ACTIVE) // ACTIVE, GRACE, SUSPENDED, DEACTIVATED
+  statusReason     String?
+  plan             String         @default("STANDARD")
+  subscriptionEndsAt DateTime?
+  maxUsers         Int            @default(10)
+  timezone         String         @default("Asia/Karachi")
+  currency         String         @default("PKR")
+  createdById      String                          // PlatformUser
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+}
+```
+
+Only Developer screens write `status`, `plan`, `subscriptionEndsAt`, `maxUsers` and `slug`. Pharmacy Admins edit the profile and branding fields.
+
+### 2.2 Which tables are tenant tables
+
+Every table below gets `pharmacyId String` (not null, FK to `Pharmacy`, indexed) and a Row-Level Security policy:
+
+`User`, `Role` (custom roles only, see 2.4), `Category`, `Medicine`, `Batch`, `StockMovement`, `Customer`, `CustomerAccount`, `CustomerLedger`, `Supplier`, `SupplierLedger`, `SupplierProduct`, `SupplierItemAlias`, `Purchase`, `PurchaseItem`, `PurchaseOrder`, `PurchaseOrderItem`, `Sale`, `SaleItem`, `SaleReturn`, `SaleReturnItem`, `SupplierReturn`, `SupplierReturnItem`, `CashSession`, `CashMovement`, `CustomerOrder`, `CustomerOrderItem`, `OrderStatusEvent`, `StockReservation`, `Prescription`, `StoredFile`, `BillIntake`, `BillIntakeLine`, `ExpenseCategory`, `Expense`, `DailySummary`, `Notification`, `NotificationRead`, `AuditLog`, `OutboxEvent`, `IdempotencyKey`, `PharmacySettings`, `TenantCounter`, `FeatureFlag`.
+
+Child tables (for example `SaleItem`) carry `pharmacyId` too, even though the parent has it. That keeps every RLS policy a simple column comparison with no joins, which is both faster and harder to get wrong.
+
+Unique keys that are global today become per pharmacy:
+
+| Today | After |
+|---|---|
+| `Sale.invoiceNo @unique` | `@@unique([pharmacyId, invoiceNo])` |
+| `Purchase.number @unique` | `@@unique([pharmacyId, number])` |
+| `Medicine.barcode @unique`, `Medicine.sku @unique` | `@@unique([pharmacyId, barcode])`, `@@unique([pharmacyId, sku])` |
+| `Category.name @unique` | `@@unique([pharmacyId, name])` |
+| `User.email @unique` | `@@unique([pharmacyId, username])`, email optional |
+| `Batch @@unique([medicineId, batchNumber])` | unchanged (medicine already belongs to one pharmacy) |
+
+RLS template applied to each tenant table in the migration:
+
+```sql
+ALTER TABLE "Sale" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "Sale" FORCE ROW LEVEL SECURITY;
+CREATE POLICY tenant_isolation ON "Sale"
+  USING ("pharmacyId" = current_setting('app.pharmacy_id', true)::uuid)
+  WITH CHECK ("pharmacyId" = current_setting('app.pharmacy_id', true)::uuid);
+```
+
+### 2.3 Accounts in three realms
+
+```prisma
+model PlatformUser {                       // Developer accounts, no pharmacyId
+  id             String   @id @default(uuid())
+  name           String
+  email          String   @unique
+  passwordHash   String
+  totpSecret     String?                   // encrypted at rest; required before first use
+  recoveryCodes  String[]                  // hashed
+  sessionVersion Int      @default(1)
+  lastLoginAt    DateTime?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+}
+
+model User {                               // pharmacy staff
+  id                 String   @id @default(uuid())
+  pharmacyId         String
+  roleId             String
+  name               String
+  username           String                // unique inside the pharmacy
+  email              String?
+  phone              String?
+  passwordHash       String?               // null until an invite is accepted
+  mustChangePassword Boolean  @default(false)
+  totpSecret         String?
+  active             Boolean  @default(true)
+  sessionVersion     Int      @default(1)
+  failedLogins       Int      @default(0)
+  lockedUntil        DateTime?
+  lastLoginAt        DateTime?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+  @@unique([pharmacyId, username])
+}
+
+model CustomerAccount {                    // customer portal login
+  id             String   @id @default(uuid())
+  pharmacyId     String
+  customerId     String   @unique          // one login per customer record
+  phone          String                    // login id, normalised to E.164
+  passwordHash   String?
+  active         Boolean  @default(true)
+  sessionVersion Int      @default(1)
+  failedLogins   Int      @default(0)
+  lockedUntil    DateTime?
+  lastLoginAt    DateTime?
+  createdById    String
+  createdAt      DateTime @default(now())
+  @@unique([pharmacyId, phone])
+}
+```
+
+There is deliberately **no API that writes `PlatformUser`** except the owner changing their own password and 2FA. The first row comes from `PLATFORM_OWNER_EMAIL` and `PLATFORM_OWNER_PASSWORD` on boot; recovery is the `platform:recover-owner` server command.
+
+### 2.4 Roles
 
 ```prisma
 model Role {
   id          String   @id @default(uuid())
-  key         String   @unique          // DEVELOPER, SUPER_ADMIN, PHARMACIST, CASHIER, or custom slug
+  pharmacyId  String?                      // null = global system template
+  key         String                       // PHARMACY_ADMIN, PHARMACIST, CASHIER, or custom slug
   name        String
   description String?
-  system      Boolean  @default(false)  // system roles cannot be deleted or renamed
-  hidden      Boolean  @default(false)  // DEVELOPER is hidden from non-developers
-  permissions String[]                  // values from the code permission catalog
+  system      Boolean  @default(false)     // templates are read-only
+  permissions String[]                     // tenant permission catalog values only
   landingPath String   @default("/dashboard")
-  users       User[]
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+  @@unique([pharmacyId, key])
 }
 ```
 
-`User` changes:
+System templates are readable by every pharmacy (RLS policy allows `pharmacyId IS NULL` for SELECT only). A trigger blocks removing or deactivating the last active user holding `PHARMACY_ADMIN` in a pharmacy.
 
-| Field | Type | Purpose |
-|---|---|---|
-| `roleId` | String, FK | Replaces the `role` enum column |
-| `sessionVersion` | Int, default 1 | Bumped on role change, deactivation or password reset to revoke sessions |
-| `mustChangePassword` | Boolean | Forced change after seed or reset |
-| `lastLoginAt` | DateTime? | Shown in user list, used for inactive account review |
-| `phone` | String? | For OTP or WhatsApp notices later |
+### 2.5 Tokens, 2FA and sessions
 
-Migration (one release, no downtime needed for a single shop):
+```prisma
+model AuthToken {
+  id          String    @id @default(uuid())
+  realm       Realm                        // PLATFORM, STAFF, CUSTOMER
+  subjectId   String                       // PlatformUser, User or CustomerAccount id
+  pharmacyId  String?
+  purpose     TokenPurpose                 // INVITE, RESET
+  tokenHash   String    @unique            // sha256 of the random token; the token itself is never stored
+  expiresAt   DateTime
+  usedAt      DateTime?
+  revokedAt   DateTime?
+  createdByRealm Realm
+  createdById String
+  createdAt   DateTime  @default(now())
+  @@index([subjectId, purpose])
+}
 
-1. Create `Role`, seed four system roles with default permission sets.
-2. Add nullable `roleId`; backfill: `ADMIN -> SUPER_ADMIN`, `PHARMACIST -> PHARMACIST`, `CASHIER -> CASHIER`.
-3. Make `roleId` required, drop the old `role` column and the `Role` enum.
-4. Create the Developer account from environment variables on first boot (`DEV_ADMIN_EMAIL`, `DEV_ADMIN_PASSWORD`), never from the seed file.
+model SupportSession {                     // Developer entering a pharmacy
+  id          String    @id @default(uuid())
+  platformUserId String
+  pharmacyId  String
+  reason      String
+  startedAt   DateTime  @default(now())
+  endedAt     DateTime?
+}
+```
 
-### 2.2 Supporting tables
+`AuditLog` gains `realm` and `supportSessionId`, so every action in a support session is traceable and shown to the pharmacy as "Platform support".
+
+### 2.6 Per-pharmacy settings, counters and flags
+
+The single-row `Setting` table becomes `PharmacySettings` with `pharmacyId` as its primary key. Branding fields move to `Pharmacy`; operational settings stay here (see section 7.1).
+
+```prisma
+model TenantCounter {                      // replaces global sequences
+  pharmacyId String
+  key        String                        // INVOICE, PURCHASE, PO, RETURN, SUPPLIER_RETURN, EXPENSE, ORDER
+  value      BigInt  @default(0)
+  @@id([pharmacyId, key])
+}
+
+model FeatureFlag {
+  pharmacyId String?                       // null = platform default
+  key        String                        // ocr, purchaseOrders, cashSessions, returns, expenses, customerPortal
+  enabled    Boolean @default(false)
+  updatedAt  DateTime @updatedAt
+  @@id([pharmacyId, key])
+}
+```
+
+Effective flag = pharmacy row if present, otherwise the platform default. Only the Developer edits flags.
+
+### 2.7 Supporting tables
 
 ```prisma
 model IdempotencyKey {
   key        String   @id
-  userId     String
+  pharmacyId String
+  actorId    String
   route      String
   status     Int
   response   Json
-  createdAt  DateTime @default(now())   // purged after 24 h
+  createdAt  DateTime @default(now())    // purged after 24 h
 }
 
-model RateLimitHit {
-  bucket    String                       // e.g. "login:ip:email"
+model RateLimitHit {                     // not tenant scoped: login happens before a tenant is known
+  bucket    String                       // e.g. "login:staff:<slug>:<username>", "login:ip:<ip>"
   at        DateTime @default(now())
   @@index([bucket, at])
 }
@@ -167,7 +337,7 @@ Rule enforced in service and by a check query: total returned quantity per `sale
 
 ## 4. Procurement
 
-### 4.1 Supplier price list
+### 4.1 Supplier catalog (price list maintained by pharmacists)
 
 ```prisma
 model SupplierProduct {
@@ -304,7 +474,87 @@ model SupplierItemAlias {
 }
 ```
 
-## 5. Finance
+## 5. Customer orders
+
+```prisma
+model CustomerOrder {
+  id            String      @id @default(uuid())
+  pharmacyId    String
+  number        String                          // ORD-YYYYMMDD-00001 from TenantCounter
+  customerId    String
+  accountId     String                          // CustomerAccount that placed it
+  status        OrderStatus                     // PLACED, NEEDS_PRESCRIPTION, CONFIRMED, READY, OUT_FOR_DELIVERY, COMPLETED, REJECTED, CANCELLED
+  fulfilment    String                          // PICKUP or DELIVERY
+  deliveryAddress String?
+  paymentChoice String                          // PAY_AT_PICKUP, CASH_ON_DELIVERY, ACCOUNT
+  customerNote  String?
+  estimatedTotal Decimal    @db.Decimal(12, 2)  // at placing time, informational
+  confirmedTotal Decimal?   @db.Decimal(12, 2)  // locked at confirmation
+  saleId        String?     @unique             // set when completed
+  confirmedById String?
+  rejectReason  String?
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+  items         CustomerOrderItem[]
+  events        OrderStatusEvent[]
+  @@unique([pharmacyId, number])
+  @@index([pharmacyId, status, createdAt])
+  @@index([customerId])
+}
+
+model CustomerOrderItem {
+  id            String   @id @default(uuid())
+  pharmacyId    String
+  orderId       String
+  medicineId    String
+  quantity      Int
+  lockedPrice   Decimal? @db.Decimal(12, 2)     // set at confirmation
+  prescriptionId String?
+  @@unique([orderId, medicineId])
+}
+
+model OrderStatusEvent {                        // timeline shown to customer and staff
+  id         String   @id @default(uuid())
+  pharmacyId String
+  orderId    String
+  from       OrderStatus?
+  to         OrderStatus
+  actorRealm Realm
+  actorId    String
+  note       String?
+  at         DateTime @default(now())
+}
+
+model StockReservation {
+  id         String   @id @default(uuid())
+  pharmacyId String
+  medicineId String
+  orderId    String
+  quantity   Int
+  expiresAt  DateTime
+  releasedAt DateTime?                          // set on completion, cancel or expiry
+  @@index([pharmacyId, medicineId, releasedAt])
+}
+
+model Prescription {
+  id           String   @id @default(uuid())
+  pharmacyId   String
+  customerId   String
+  fileId       String                           // StoredFile, purpose PRESCRIPTION
+  doctorName   String?
+  issuedOn     DateTime? @db.Date
+  status       String   @default("PENDING")    // PENDING, APPROVED, REJECTED
+  reviewedById String?
+  reviewNote   String?
+  createdAt    DateTime @default(now())
+}
+```
+
+Available to sell for a medicine = sum of non-expired batch quantity minus sum of unreleased, unexpired reservations. The POS search, the portal catalog and `createSale` all use this one function from the inventory module. When `createSale` is called for an order, that order's own reservation is excluded from the calculation and released in the same transaction.
+
+`Medicine` gains `onlineVisible Boolean @default(false)` and `onlineDescription String?`. `Sale` gains `orderId String? @unique`.
+
+## 6. Finance
 
 ```prisma
 model ExpenseCategory {
@@ -342,28 +592,33 @@ model DailySummary {                       // maintained by report.rollup, rebui
 }
 ```
 
-## 6. Platform
+## 7. Platform
+
+Every model in this section carries `pharmacyId` as described in section 2.2. `AuditLog.pharmacyId` is nullable for Developer actions that are not inside a pharmacy (for example creating a pharmacy).
 
 ```prisma
 model AuditLog {
-  id             BigInt   @id @default(autoincrement())
-  at             DateTime @default(now())
-  userId         String?
-  impersonatedBy String?
-  action         String                    // e.g. sale.cancel, medicine.price.update, role.update
-  entity         String
-  entityId       String
-  before         Json?
-  after          Json?
-  ip             String?
-  userAgent      String?
-  @@index([entity, entityId])
-  @@index([userId, at])
-  @@index([at])
+  id               BigInt   @id @default(autoincrement())
+  pharmacyId       String?
+  at               DateTime @default(now())
+  realm            Realm                     // PLATFORM, STAFF, CUSTOMER
+  actorId          String?
+  supportSessionId String?                   // set when the Developer acts inside a pharmacy
+  action           String                    // e.g. sale.cancel, medicine.price.update, role.update, pharmacy.suspend
+  entity           String
+  entityId         String
+  before           Json?
+  after            Json?
+  ip               String?
+  userAgent        String?
+  @@index([pharmacyId, entity, entityId])
+  @@index([pharmacyId, at])
+  @@index([actorId, at])
 }
 
 model OutboxEvent {
   id          BigInt    @id @default(autoincrement())
+  pharmacyId  String?
   type        String
   payload     Json
   createdAt   DateTime  @default(now())
@@ -375,16 +630,18 @@ model OutboxEvent {
 
 model Notification {
   id                 String   @id @default(uuid())
-  type               String                // EXPIRY_30, EXPIRY_7, EXPIRED, LOW_STOCK, INTAKE_READY, PO_OVERDUE, CASH_DIFF
-  severity           String                // INFO, WARNING, CRITICAL
+  pharmacyId         String?                 // null = platform notification for the Developer
+  type               String                  // EXPIRY_30, EXPIRY_7, EXPIRED, LOW_STOCK, INTAKE_READY, PO_OVERDUE, CASH_DIFF, NEW_ORDER, RESET_REQUEST, SUBSCRIPTION
+  severity           String                  // INFO, WARNING, CRITICAL
   title              String
   body               String
   link               String?
   audiencePermission String
-  dedupeKey          String   @unique      // e.g. EXPIRY_30:batchId
+  dedupeKey          String
   createdAt          DateTime @default(now())
   resolvedAt         DateTime?
   reads              NotificationRead[]
+  @@unique([pharmacyId, dedupeKey])
 }
 
 model NotificationRead {
@@ -393,49 +650,73 @@ model NotificationRead {
   readAt         DateTime @default(now())
   @@id([notificationId, userId])
 }
-
-model FeatureFlag {
-  key       String  @id                    // ocr, purchaseOrders, cashSessions, returns, expenses
-  enabled   Boolean @default(false)
-  updatedAt DateTime @updatedAt
-}
 ```
 
-`AuditLog` hardening: the application database user is granted `INSERT, SELECT` only on this table.
+`AuditLog` hardening: `app_user` is granted `INSERT, SELECT` only on this table.
 
-### 6.1 Setting additions
+### 7.1 Pharmacy settings (operational)
+
+`PharmacySettings` (one row per pharmacy) keeps the current settings fields that are not branding, plus:
 
 | Field | Default | Notes |
 |---|---|---|
 | `expiryAlertDays` | 30 | From the notes; the existing `expiryWarningDays` (90) stays for the planning screen |
 | `receiptFormat` | `THERMAL_80` | `THERMAL_80`, `THERMAL_58`, `A4` |
+| `receiptHeader`, `invoiceFooter` | pharmacy name, existing footer | Editable by Pharmacy Admin |
 | `autoPrintReceipt` | true | Print dialog opens after a sale |
 | `cashDiffThreshold` | 100 | Difference that requires a note at shift close |
 | `requireCashSession` | true | Cash sales blocked without an open session |
-| `ocrProvider` | `LOCAL` | `LOCAL` or a cloud adapter key |
+| `ocrProvider` | `LOCAL` | `LOCAL` or a cloud adapter key (allowed values controlled by the Developer) |
 | `reorderCoverDays` | 7 | Used by reorder suggestions |
-| `taxNumber`, `licenseNumber` | empty | Printed on bills (drug sale licence) |
+| `portalEnabled` | false | Customer portal on or off |
+| `portalMaxOpenOrders` | 3 | Per customer |
+| `reservationHours` | 24 | Lifetime of a confirmed order's stock reservation |
+| `deliveryEnabled` | false | Shows the delivery option in the portal |
 
-## 7. Indexes and search
+## 8. Indexes and search
 
 ```sql
 CREATE EXTENSION IF NOT EXISTS pg_trgm;
 CREATE INDEX medicine_name_trgm    ON "Medicine" USING gin (lower(name) gin_trgm_ops);
 CREATE INDEX medicine_generic_trgm ON "Medicine" USING gin (lower("genericName") gin_trgm_ops);
 CREATE INDEX customer_name_trgm    ON "Customer" USING gin (lower(name) gin_trgm_ops);
-CREATE INDEX customer_phone_idx    ON "Customer" (phone);
-CREATE INDEX sale_phone_idx        ON "Sale" ("customerPhone");
+CREATE INDEX customer_phone_idx    ON "Customer" ("pharmacyId", phone);
+CREATE INDEX sale_phone_idx        ON "Sale" ("pharmacyId", "customerPhone");
 CREATE INDEX alias_text_trgm       ON "SupplierItemAlias" USING gin (text gin_trgm_ops);
-CREATE INDEX batch_expiring        ON "Batch" ("expiryDate") WHERE quantity > 0;
+CREATE INDEX batch_expiring        ON "Batch" ("pharmacyId", "expiryDate") WHERE quantity > 0;
 ```
 
-## 8. Sequences
+Trigram indexes are not tenant-prefixed (GIN cannot lead with a uuid column efficiently without `btree_gin`). RLS filters the matches; with `btree_gin` installed, the indexes can become `(pharmacyId, lower(name))` when a single pharmacy grows beyond about 100k medicines.
 
-`po_seq`, `return_seq`, `supplier_return_seq`, `expense_seq` follow the existing `invoice_seq` pattern so numbers are unique under concurrency.
+## 9. Numbering
 
-## 9. Migration rules
+Global PostgreSQL sequences (`invoice_seq`, `purchase_seq`) are replaced by `TenantCounter` so each pharmacy has its own series starting at 1:
+
+```sql
+UPDATE "TenantCounter" SET value = value + 1
+WHERE "pharmacyId" = $1 AND key = 'INVOICE'
+RETURNING value;
+```
+
+Runs inside the sale transaction. The row lock serialises numbering only within one pharmacy. Number formats stay as today (`INV-YYYYMMDD-00001`), with new keys for `PO`, `RET`, `SRET`, `EXP` and `ORD`.
+
+## 10. Migration rules
 
 1. One Prisma migration per phase feature, never edit an applied migration.
 2. Additive first (new nullable columns, new tables), backfill in the same migration with SQL, then tighten constraints in a follow-up migration.
-3. Every migration is tested on a copy of production data before release (`pg_dump` then restore into a staging database, run `prisma migrate deploy`, run the smoke script).
-4. Raw SQL that Prisma cannot express (partial indexes, check constraints, trigram indexes, grants) lives in the migration file with a comment explaining it, as the existing constraints migration already does.
+3. Every migration is tested on a copy of production data before release (`pg_dump` then restore into a staging database, run `prisma migrate deploy`, run the smoke script and the tenant isolation suite).
+4. Raw SQL that Prisma cannot express (RLS policies, partial indexes, check constraints, trigram indexes, grants) lives in the migration file with a comment explaining it, as the existing constraints migration already does.
+5. Every new tenant table must ship with its `pharmacyId`, index and RLS policy in the same migration. A CI check queries `pg_tables` and fails if any table with a `pharmacyId` column has RLS disabled.
+
+### 10.1 Moving the current single-shop data to multi-tenant
+
+The existing installation becomes the first pharmacy. Done in Phase 1 in this order:
+
+1. Create `Pharmacy`, `PlatformUser`, `TenantCounter`, `PharmacySettings`, `AuthToken`, `CustomerAccount`, `SupportSession`.
+2. Insert one `Pharmacy` from the current `Setting` row (name, address, phone, email, currency) with a slug chosen at migration time.
+3. Add nullable `pharmacyId` to every tenant table and backfill it with that pharmacy's id.
+4. Seed `TenantCounter` from the current `invoice_seq` and `purchase_seq` values so numbering continues without gaps or duplicates.
+5. Create role templates; map users: `ADMIN -> PHARMACY_ADMIN`, `PHARMACIST -> PHARMACIST`, `CASHIER -> CASHIER`; derive `username` from the email's local part.
+6. Make `pharmacyId` not null, replace global unique keys with the per-pharmacy keys in section 2.2, drop the old `Role` enum, sequences and `Setting` table.
+7. Enable RLS and create policies; create `app_user` and `platform_user` roles with their grants; switch `DATABASE_URL` to `app_user`.
+8. Run the full test suite, the smoke script and the isolation suite against a restored copy before running it on the live database.
