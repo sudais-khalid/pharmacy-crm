@@ -383,3 +383,141 @@ model RateLimitHit {
 
   @@index([bucket, at])
 }
+
+// ---------------------------------------------------------------------------
+// Tenancy and platform (Phase 1). docs/plan/03-data-model.md, section 2.
+// ---------------------------------------------------------------------------
+
+enum PharmacyStatus {
+  ACTIVE
+  GRACE
+  SUSPENDED
+  DEACTIVATED
+}
+
+enum Realm {
+  PLATFORM
+  STAFF
+}
+
+enum TokenPurpose {
+  INVITE
+  RESET
+}
+
+// A pharmacy is one tenant. Only the platform console writes status, plan, limits and slug.
+model Pharmacy {
+  id                 String         @id @default(uuid())
+  slug               String         @unique
+  name               String
+  legalName          String?
+  address            String         @default("")
+  city               String?
+  phone              String         @default("")
+  whatsapp           String?
+  email              String?
+  licenseNumber      String?
+  taxNumber          String?
+  status             PharmacyStatus @default(ACTIVE)
+  statusReason       String?
+  plan               String         @default("STANDARD")
+  subscriptionEndsAt DateTime?
+  maxUsers           Int            @default(10)
+  ocrMonthlyLimit    Int            @default(300)
+  timezone           String         @default("Asia/Karachi")
+  currency           String         @default("PKR")
+  createdById        String?
+  createdAt          DateTime       @default(now())
+  updatedAt          DateTime       @updatedAt
+
+  settings        PharmacySettings?
+  counters        TenantCounter[]
+  featureFlags    FeatureFlag[]
+  supportSessions SupportSession[]
+  authTokens      AuthToken[]
+
+  @@index([status])
+}
+
+// Operational settings, one row per pharmacy.
+model PharmacySettings {
+  pharmacyId        String   @id
+  invoiceFooter     String   @default("Thank you for your purchase. Get well soon!")
+  expiryWarningDays Int      @default(90)
+  expiryAlertDays   Int      @default(30)
+  updatedAt         DateTime @updatedAt
+
+  pharmacy Pharmacy @relation(fields: [pharmacyId], references: [id], onDelete: Cascade)
+}
+
+// Developer accounts. No API writes this table except an owner changing their own password and 2FA.
+model PlatformUser {
+  id             String    @id @default(uuid())
+  name           String
+  email          String    @unique
+  passwordHash   String
+  totpSecret     String? // AES-256-GCM encrypted
+  totpEnabledAt  DateTime?
+  recoveryCodes  String[] // SHA-256 hashes
+  sessionVersion Int       @default(1)
+  lastLoginAt    DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+}
+
+// Per-pharmacy number series (invoices, purchases, ...). Replaces global sequences.
+model TenantCounter {
+  pharmacyId String
+  key        String
+  value      BigInt @default(0)
+
+  pharmacy Pharmacy @relation(fields: [pharmacyId], references: [id], onDelete: Cascade)
+
+  @@id([pharmacyId, key])
+}
+
+// Invite and password reset links. Only the SHA-256 of the token is stored.
+model AuthToken {
+  id             String       @id @default(uuid())
+  realm          Realm
+  subjectId      String
+  pharmacyId     String?
+  purpose        TokenPurpose
+  tokenHash      String       @unique
+  expiresAt      DateTime
+  usedAt         DateTime?
+  revokedAt      DateTime?
+  createdByRealm Realm
+  createdById    String
+  createdAt      DateTime     @default(now())
+
+  pharmacy Pharmacy? @relation(fields: [pharmacyId], references: [id], onDelete: Cascade)
+
+  @@index([subjectId, purpose])
+}
+
+// The Developer working inside a pharmacy. Every audit row written meanwhile references it.
+model SupportSession {
+  id             String    @id @default(uuid())
+  platformUserId String
+  pharmacyId     String
+  reason         String
+  startedAt      DateTime  @default(now())
+  endedAt        DateTime?
+
+  pharmacy Pharmacy @relation(fields: [pharmacyId], references: [id])
+
+  @@index([pharmacyId, startedAt])
+}
+
+// Per-pharmacy feature switches set by the Developer. Defaults live in code.
+model FeatureFlag {
+  pharmacyId String
+  key        String
+  enabled    Boolean
+  updatedAt  DateTime @updatedAt
+
+  pharmacy Pharmacy @relation(fields: [pharmacyId], references: [id], onDelete: Cascade)
+
+  @@id([pharmacyId, key])
+}
