@@ -6,6 +6,8 @@ code(){ curl -s -o /dev/null -w "%{http_code}" "$@"; }
 login(){ code -c /tmp/smoke_$1.jar -X POST $B/api/auth/login -H 'content-type: application/json' -d "{\"email\":\"$1@example.com\",\"password\":\"$2\"}"; }
 js(){ python3 -c "import sys,json;d=json.load(sys.stdin);print($1)"; }
 
+ok "Health endpoint is public" "$(code $B/api/health)" 200
+ok "Health reports database up" "$(curl -s $B/api/health | js "d['checks']['database']['ok']")" True
 ok "API requires login" "$(code $B/api/medicines)" 401
 ok "Page redirects to login" "$(code $B/dashboard)" 307
 ok "Wrong password rejected" "$(code -X POST $B/api/auth/login -H 'content-type: application/json' -d '{"email":"admin@example.com","password":"nope"}')" 401

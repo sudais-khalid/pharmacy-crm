@@ -77,6 +77,9 @@ The seed contains fictional data only: 25 medicines (some low-stock, some near e
 | `JWT_SECRET` | Signs session cookies. At least 32 random characters (`openssl rand -base64 48`) |
 | `APP_TIMEZONE` | Timezone for "today", daily reports and the chart (default `Asia/Karachi`) |
 | `POSTGRES_PASSWORD` | Docker Compose only |
+| `LOG_LEVEL` | `info` by default (`debug`, `warn`, `error`, `silent`). Logs are JSON lines on stdout |
+| `TRUST_PROXY` | `1` only behind a reverse proxy that sets `X-Forwarded-For` |
+| `ALLOWED_ORIGINS` | Extra origins allowed to send write requests, comma separated |
 
 Currency label and the expiry-warning period are configured in *Settings* (default `PKR`, 90 days).
 
@@ -139,7 +142,7 @@ npm run typecheck
 npm run lint
 ```
 
-With the app running and seeded: `npm run test:smoke` (57 HTTP checks: login, permissions, validation, sale → cancel flow, reports, page loads).
+With the app running and seeded: `npm run test:smoke` (59 HTTP checks: login, permissions, validation, sale → cancel flow, reports, page loads).
 
 > `npm test` truncates the tables of the database in `.env.test`. Never point it at real data.
 
@@ -166,6 +169,7 @@ Every state change writes an append-only `AuditLog` row and an `OutboxEvent` in 
 | `GET/POST /api/users`, `PUT /api/users/:id` | admin only |
 | `GET/PUT /api/settings` | PUT admin only |
 | `GET /api/dashboard` | |
+| `GET /api/health` | public; `status` is `ok`, `degraded` (worker behind or low disk) or `down` (503, database unreachable) |
 
 ## Security notes
 

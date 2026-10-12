@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { Prisma } from "@prisma/client";
 import { ZodError } from "zod";
@@ -6,6 +7,7 @@ import { AppError } from "./errors";
 import { IDEMPOTENCY_HEADER, withIdempotency } from "./idempotency";
 import { assertSameOrigin } from "./origin";
 import { clientIp } from "./request";
+import { logger } from "./logger";
 
 export { AppError };
 
@@ -68,8 +70,9 @@ export function errorResponse(e: unknown) {
     if (e.code === "P2003") return NextResponse.json({ error: "This record is referenced by other records." }, { status: 409 });
     if (e.code === "P2025") return NextResponse.json({ error: "Record not found." }, { status: 404 });
   }
-  console.error("[api error]", e);
-  return NextResponse.json({ error: "Something went wrong on the server." }, { status: 500 });
+  const ref = randomUUID().slice(0, 8);
+  logger.error({ err: e, ref }, "unhandled API error");
+  return NextResponse.json({ error: `Something went wrong on the server. Reference: ${ref}`, ref }, { status: 500 });
 }
 
 export async function readJson(req: NextRequest): Promise<unknown> {

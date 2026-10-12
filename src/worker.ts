@@ -4,11 +4,13 @@
  */
 import { PgBoss } from "pg-boss";
 import { prisma } from "@/lib/prisma";
+import { logger } from "@/lib/logger";
 import { purgeIdempotencyKeys } from "@/lib/idempotency";
 import { purgeRateLimitHits } from "@/lib/rate-limit";
 import { dispatchOutbox, type OutboxHandlers } from "@/modules/platform";
 
-const log = (msg: string, extra: Record<string, unknown> = {}) => console.log(JSON.stringify({ at: new Date().toISOString(), svc: "worker", msg, ...extra }));
+const workerLog = logger.child({ svc: "worker" });
+const log = (msg: string, extra: Record<string, unknown> = {}) => workerLog.info(extra, msg);
 
 /** Event handlers by type. Modules add theirs as features arrive (notifications, rollups, alerts). */
 const handlers: OutboxHandlers = {};
