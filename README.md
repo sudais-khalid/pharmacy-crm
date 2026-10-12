@@ -165,6 +165,8 @@ npm run typecheck
 npm run lint
 ```
 
+With the app running and seeded: `npm run test:isolation` signs in to two pharmacies and calls every pharmacy API that takes a record id with the other pharmacy's ids (all must answer 404), and checks lists never show the other pharmacy. It fails if a new API route with an id is not listed in `scripts/isolation-check.mjs`.
+
 With the app running and seeded: `npm run test:smoke` (105 HTTP checks: login, permissions, validation, sale → cancel flow, reports, page loads).
 
 > `npm test` truncates the tables of the database in `.env.test`. Never point it at real data.

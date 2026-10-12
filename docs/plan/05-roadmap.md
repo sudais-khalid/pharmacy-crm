@@ -103,7 +103,7 @@ Tasks:
 - [x] 1.11 Support sessions: enter a pharmacy with a reason, banner, audit with `supportSessionId`, end session
 - [x] 1.12 Per-pharmacy feature flags and limits editor (staff seats, OCR pages per month)
 - [x] 1.13 Per-pharmacy login page `/p/<slug>/login` and the generic `/login` with remembered pharmacy code
-- [ ] 1.14 Tenant isolation test suite: two pharmacies, every endpoint called across tenants must return 404; runs in CI
+- [x] 1.14 Tenant isolation test suite: two pharmacies, every endpoint called across tenants must return 404; runs in CI
 
 Acceptance criteria:
 

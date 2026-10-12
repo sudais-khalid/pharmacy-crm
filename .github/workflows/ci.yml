@@ -83,7 +83,7 @@ jobs:
       - name: Build
         run: npm run build
 
-      - name: Smoke test against the built app
+      - name: Smoke and tenant isolation tests against the built app
         env:
           PGPASSWORD: ci_password
         run: |
@@ -97,6 +97,7 @@ jobs:
             sleep 1
           done
           BASE_URL=http://localhost:3000 bash scripts/smoke.sh
+          BASE_URL=http://localhost:3000 node scripts/isolation-check.mjs
 
       - name: Show server log on failure
         if: failure()

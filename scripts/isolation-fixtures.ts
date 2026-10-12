@@ -1,0 +1,50 @@
+/**
+ * Creates a second pharmacy with one of every business record, for the HTTP isolation check.
+ * Prints JSON with its sign-in details and record ids. Safe to run repeatedly (new URL name each time).
+ *
+ *   DATABASE_URL=... npx tsx scripts/isolation-fixtures.ts
+ */
+import { loadEnvConfig } from "@next/env";
+loadEnvConfig(process.cwd());
+
+async function main() {
+  const bcrypt = (await import("bcryptjs")).default;
+  const { platformDb } = await import("../src/lib/platform-db");
+  const { serviceContext } = await import("../src/modules/identity");
+  const { createSale } = await import("../src/modules/sales");
+  const { createPurchase } = await import("../src/modules/procurement");
+  const { addDays, todayStr, dateOnly } = await import("../src/lib/dates");
+
+  const slug = `isolation-${Date.now().toString(36)}`;
+  const password = "Isolation-check-123";
+  const pharmacy = await platformDb.pharmacy.create({ data: { slug, name: "Isolation Bravo", settings: { create: {} } } });
+  const pharmacyId = pharmacy.id;
+  const admin = await platformDb.user.create({
+    data: { pharmacyId, name: "Bravo Admin", username: "badmin", email: `badmin@${slug}.example`, role: "ADMIN", passwordHash: await bcrypt.hash(password, 10) },
+  });
+  const ctx = serviceContext(admin, pharmacyId);
+  const medicine = await platformDb.medicine.create({ data: { pharmacyId, name: "Bravo Only Syrup", barcode: `B-${slug}`, salePrice: 90, purchasePrice: 60 } });
+  const batch = await platformDb.batch.create({
+    data: { pharmacyId, medicineId: medicine.id, batchNumber: "BRAVO-1", expiryDate: dateOnly(addDays(todayStr(), 300)), quantity: 40, salePrice: 90, purchasePrice: 60 },
+  });
+  const customer = await platformDb.customer.create({ data: { pharmacyId, name: "Bravo Only Customer", phone: "0399-9999999", creditLimit: 10000 } });
+  const supplier = await platformDb.supplier.create({ data: { pharmacyId, name: "Bravo Only Supplier" } });
+  const sale = await createSale(ctx, { items: [{ medicineId: medicine.id, quantity: 2 }], discountType: "AMOUNT", discountValue: 0, paymentMethod: "CREDIT", customerId: customer.id });
+  const purchase = await createPurchase(ctx, {
+    supplierId: supplier.id, purchaseDate: todayStr(), discount: 0, paid: 0, paymentMethod: "CASH",
+    items: [{ medicineId: medicine.id, batchNumber: "BRAVO-2", expiryDate: addDays(todayStr(), 400), quantity: 10, purchasePrice: 60, salePrice: 90 }],
+  });
+
+  console.log(JSON.stringify({
+    pharmacy: slug,
+    admin: { username: "badmin", password },
+    ids: { medicine: medicine.id, batch: batch.id, customer: customer.id, supplier: supplier.id, sale: sale.id, purchase: purchase.id, user: admin.id },
+    names: { medicine: medicine.name, customer: customer.name, supplier: supplier.name, invoice: sale.invoiceNo, purchase: purchase.number },
+  }));
+  process.exit(0);
+}
+
+main().catch((e) => {
+  console.error(e);
+  process.exit(1);
+});

@@ -21,7 +21,8 @@
     "db:check": "node scripts/db-check.mjs",
     "postinstall": "prisma generate",
     "test:smoke": "bash scripts/smoke.sh",
-    "platform:recover-owner": "tsx scripts/recover-owner.ts"
+    "platform:recover-owner": "tsx scripts/recover-owner.ts",
+    "test:isolation": "node scripts/isolation-check.mjs"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
