@@ -6,7 +6,8 @@
 |---|---|
 | Money and stock must never be wrong | Every write is a single PostgreSQL transaction; database constraints back up application rules; append-only ledgers and movements |
 | Small team, small budget | One deployable codebase, one database, no Redis or Kafka. PostgreSQL does storage, queue, search and locking |
-| 2 to 15 concurrent users per pharmacy | A single Node process plus one worker is enough. Optimise for latency at the counter, not for scale-out |
+| Many pharmacies on one platform, 2 to 15 staff each | Shared database with strict tenant isolation (section 5.2). One web process and one worker serve dozens of pharmacies; add web replicas as the number grows |
+| One owner runs the platform | Developer console for onboarding, suspension, credentials and support, so no database access is needed for daily operations |
 | Counter staff are not technical | Fast keyboard-first POS, role-specific screens, clear errors, nothing destructive without confirmation |
 | Unreliable internet in some shops | Core flows run on the local network. Cloud services (OCR provider, backups offsite) are optional adapters with fallbacks |
 | Owner needs proof of who did what | Audit log on every state change; nothing that touches money is hard-deleted |
@@ -23,8 +24,9 @@ Why not microservices: the domains share one transaction boundary (a sale touche
 flowchart LR
   cashier[Cashier<br/>counter PC or tablet]
   pharmacist[Pharmacist<br/>PC or phone]
-  owner[Super Admin / Owner<br/>PC or phone]
-  dev[Developer Admin]
+  owner[Pharmacy Admin<br/>PC or phone]
+  dev[Developer<br/>platform owner]
+  customer[Customer<br/>phone browser]
   app((Pharmacy CRM))
   printer[Thermal / A4 printer]
   ocr[OCR provider<br/>cloud or local]
@@ -35,6 +37,7 @@ flowchart LR
   pharmacist --> app
   owner --> app
   dev --> app
+  customer --> app
   app --> printer
   app --> ocr
   app --> backup
@@ -77,16 +80,20 @@ The worker is the same codebase started with a different entry point (`node dist
 ```
 src/
   app/                      Next.js routes only (thin)
+    (platform)/             Developer console: pharmacies, accounts, system
     (pos)/                  cashier layout: full-screen POS, no sidebar
     (app)/                  back-office layout with sidebar
+    (portal)/shop/[slug]/   customer portal, mobile first, pharmacy branded
     api/                    route handlers: parse, authorise, call module, respond
   modules/
-    identity/               users, roles, permissions, sessions
+    tenancy/                pharmacies, status, subscription, branding, onboarding, counters
+    identity/               platform users, staff, customer accounts, roles, permissions, sessions, tokens, 2FA
     catalog/                medicines, categories, supplier price list
     inventory/              batches, movements, adjustments, expiry
     sales/                  POS sale, invoices, returns, cash sessions, receipts
     customers/              customers, ledger, payments
-    procurement/            suppliers, purchase orders, purchases, supplier returns, bill intake (OCR)
+    procurement/            suppliers, supplier catalog, purchase orders, purchases, supplier returns, bill intake (OCR)
+    orders/                 customer orders, reservations, prescriptions
     finance/                expenses, profit and loss
     reporting/              report registry, exports, rollups
     notifications/          rules, notification store, delivery channels
@@ -145,29 +152,144 @@ sequenceDiagram
 
 Rules:
 
+- **Tenant context first.** The route wrapper takes `pharmacyId` from the session (staff and customer realms) or from the support session (Developer), checks the pharmacy status, and the use case runs inside `withTenant(pharmacyId, ...)`. There is no code path that reaches tenant tables without it.
 - **One use case, one transaction.** Audit row and outbox row are written inside the same transaction, so they can never disagree with the data.
 - **Idempotency** for retry-prone writes (complete sale, post purchase, receive order): the client sends an `Idempotency-Key` header; the server stores `(key, user, response)` for 24 hours and replays the stored response on a duplicate. Protects against double-clicks and flaky Wi-Fi.
 - **Typed errors**: `AppError(status, code, message, fields)`. The UI maps `code` to friendly text and highlights `fields`.
 
-## 5. Identity and access control
+## 5. Tenancy, identity and access
 
-### 5.1 Roles from the requirements
+### 5.1 Platform model
 
-| Role | Purpose | Lands on | Key abilities | Cannot |
+The product is a **platform that hosts many pharmacies**. There are three levels of account, and each level can only see what is below it.
+
+```mermaid
+flowchart TB
+  dev[Developer<br/>platform owner, only you]
+  subgraph ph1[Pharmacy A tenant]
+    a1[Pharmacy Admin]
+    p1[Pharmacist]
+    c1[Cashier]
+    r1[Custom roles]
+    cu1[Customers]
+  end
+  subgraph ph2[Pharmacy B tenant]
+    a2[Pharmacy Admin]
+    p2[Pharmacist]
+    c2[Cashier]
+    cu2[Customers]
+  end
+  dev -->|creates, activates, deactivates, supports| ph1
+  dev --> ph2
+  a1 -->|creates staff, roles, customer accounts| p1
+  a1 --> c1
+  a1 --> r1
+  a1 --> cu1
+```
+
+| Level | Who | Sees |
+|---|---|---|
+| Platform | Developer (the product owner) | Every pharmacy, every account, system health |
+| Pharmacy (tenant) | Pharmacy Admin, Pharmacist, Cashier, custom roles | Only their own pharmacy's data |
+| Customer | Customer accounts created by the pharmacy | Only their own orders, invoices and balance at that pharmacy |
+
+### 5.2 Tenant isolation
+
+| Option | Isolation | Cost to run | Cross-pharmacy reporting for the Developer | Verdict |
 |---|---|---|---|---|
-| **Developer Admin** | Technical owner of the installation | System console | Health, logs, jobs, backups and restore, feature flags, maintenance mode, impersonate for support (logged) | Is hidden from user lists of other roles; cannot be edited or removed by Super Admin |
-| **Super Admin** | Pharmacy owner | Owner dashboard | Everything business related: users, roles, prices, reports, net profit, settings | Developer console |
-| **Pharmacist** | Runs stock and procurement | Pharmacist dashboard | Medicines, batches, expiry, adjustments, purchase orders, receiving, OCR bill review, returns approval, POS | Users, settings, expenses, net profit (configurable) |
-| **Cashier** | Counter sales | POS (full screen) | Sell, take payment, print and reprint own receipts, quick add customer, open and close own cash session | See cost price or profit, cancel invoices, adjust stock, view other cashiers' sessions |
+| Database per pharmacy | Strongest | High: N databases to migrate, back up and monitor | Hard | Too heavy for many small pharmacies |
+| Schema per pharmacy | Strong | Medium: N schemas per migration, Prisma support is awkward | Hard | Migration pain grows with every customer |
+| **Shared schema, `pharmacyId` column, PostgreSQL Row-Level Security** | Strong when RLS is enforced | Low: one database, one migration | Easy | **Chosen** |
 
-### 5.2 Permission model
+How it is enforced, in layers, so one mistake is not enough to leak data:
 
-- **Permission catalog lives in code** (`identity/permissions.ts`) because each permission is tied to code that checks it. Examples: `pos.sell`, `sales.cancel`, `sales.reprint.any`, `inventory.adjust`, `po.approve`, `ocr.review`, `finance.view`, `cost.view`, `system.console`.
-- **Roles live in the database** (`Role` table with a `permissions text[]` column). The four roles above are seeded as `system = true` and cannot be deleted. Super Admin may create custom roles (for example "Senior Cashier" with `sales.cancel`).
-- **Sensitive data permissions** such as `cost.view` are applied in queries and DTO mappers, not only in the UI, so cost price and profit never reach a cashier's browser.
-- **Session invalidation**: each user has `sessionVersion`. Changing a role, deactivating or resetting a password increments it; the JWT carries the version and is rejected if it is stale. This is a one-column change to the existing check in `getSessionUser`.
-- **Re-authentication** (password prompt) for dangerous actions: restore backup, change roles, delete data, approve write-offs above a threshold.
-- **Developer impersonation** writes `impersonatedBy` on every audit row produced during the session.
+1. **Column**: every tenant table has `pharmacyId uuid not null` with a foreign key to `Pharmacy`. It is the first column of every composite index and every business unique key (`(pharmacyId, invoiceNo)`, `(pharmacyId, barcode)`).
+2. **Tenant-scoped database access**: services never import the global Prisma client. They receive a tenant context and run inside `withTenant(pharmacyId, (tx) => ...)`, which opens a transaction and first executes `select set_config('app.pharmacy_id', $1, true)` (transaction-local).
+3. **Row-Level Security**: every tenant table has a policy `USING ("pharmacyId" = current_setting('app.pharmacy_id', true)::uuid)` with the same `WITH CHECK`. If the setting is missing the comparison is null and **no rows match**, so a forgotten context fails closed instead of leaking.
+4. **Database roles**: the web app connects as `app_user`, which does not own the tables and has no `BYPASSRLS`. Migrations run as `app_owner`. Only the platform module uses a separate `platform_user` connection with `BYPASSRLS`, for Developer screens that list across pharmacies.
+5. **Everything else carries the tenant**: file keys are prefixed `pharmacies/<id>/`, job payloads include `pharmacyId`, scheduled jobs fan out per active pharmacy, search and caches are keyed by pharmacy.
+6. **Per-pharmacy numbering**: global PostgreSQL sequences are replaced by a `TenantCounter(pharmacyId, key, value)` row updated with `UPDATE ... SET value = value + 1 RETURNING value`. Each pharmacy gets its own `INV-...00001` series, and the row lock only serialises sales inside the same pharmacy.
+7. **Isolation test suite**: two seeded pharmacies; every API endpoint is called with pharmacy A's session using pharmacy B's record ids and must return 404. Runs in CI on every commit.
+
+### 5.3 Identity realms
+
+Three kinds of account live in three separate tables, log in on separate pages and receive separate cookies. A bug in the customer portal therefore cannot produce a staff or Developer session.
+
+| Realm | Table | Login page | Credentials | Cookie | Session |
+|---|---|---|---|---|---|
+| Platform | `PlatformUser` | `/platform/login` | Email, password, **TOTP code (mandatory)** | `pcrm_platform` | 2 h, sliding |
+| Staff | `User` (has `pharmacyId`) | `/p/<pharmacy-slug>/login` (shows the pharmacy logo) or `/login` with a pharmacy code remembered on the device | Username, password, optional TOTP | `pcrm_staff` | 8 h, sliding while active |
+| Customer | `CustomerAccount` (has `pharmacyId`, linked to `Customer`) | `/shop/<pharmacy-slug>/login` | Phone number, password | `pcrm_customer` | 30 days |
+
+Each realm has its own route wrapper (`platformRoute`, `staffRoute`, `customerRoute`) built on the existing `route()` helper. The JWT carries `realm`, `sub`, `pharmacyId` (staff and customer) and `sessionVersion`; a token from one realm is rejected by the others.
+
+Usernames are unique inside a pharmacy, so two pharmacies can both have a user called `ali`.
+
+### 5.4 Roles
+
+| Role | Level | Created by | Can do | Cannot do |
+|---|---|---|---|---|
+| **Developer** | Platform | Server environment on first boot only | Everything. Create pharmacies and their admin credentials; activate, suspend, deactivate pharmacies; activate and deactivate any user or customer account; issue reset and invite links for anyone; force logout; support access into any pharmacy with full permissions; feature flags and limits per pharmacy; subscription dates; data export; system console (health, jobs, logs, backups, maintenance) | Nothing is restricted. The account itself cannot be removed or demoted by anyone |
+| **Pharmacy Admin** | Pharmacy | Developer (first admin), then other Pharmacy Admins | All access inside the pharmacy: profile and branding (name, logo, contacts, receipt text), custom roles, staff accounts and passwords, customer accounts, prices, reports, net profit, settings, audit log | See other pharmacies or the platform console; remove the last active Pharmacy Admin |
+| **Pharmacist** | Pharmacy | Pharmacy Admin | Dashboard, medicines and batches, **supplier catalogs (add medicines for each supplier)**, purchase orders and receiving, OCR bill review, expiry and stock adjustments, approve returns, confirm and prepare customer orders, review prescriptions, POS | Staff, roles, branding, expenses and net profit (unless granted) |
+| **Cashier** | Pharmacy | Pharmacy Admin | POS, cash and card payments, print and reprint own receipts, quick add customer, hand over ready customer orders and collect payment, own cash session | Cost price and profit, cancellations, stock changes, other cashiers' sessions |
+| **Custom role** | Pharmacy | Pharmacy Admin | Any subset of tenant permissions, for example "Senior Cashier" with cancellations | Platform permissions (they are not in the tenant catalog) |
+| **Customer** | Customer | Pharmacy Admin or staff with `customers.accounts` | Browse in-stock medicines, place and track orders, upload prescriptions, view own invoices and credit balance, reorder | Anything outside their own records |
+
+**Why the Developer role is permanent ("always with me")**:
+
+- Developer accounts live only in `PlatformUser`. No API endpoint creates, deactivates, demotes or deletes a `PlatformUser`; the only self-service is changing your own password and 2FA device.
+- The first account is created on boot from `PLATFORM_OWNER_EMAIL` and `PLATFORM_OWNER_PASSWORD` when the table is empty. After that the variables are ignored.
+- Recovery when the password or 2FA device is lost is a server command, `npm run platform:recover-owner`, which needs shell access to the server. Nobody with only a browser can take the role over.
+- Every Developer action is audited. Support access into a pharmacy shows a banner to the Developer and appears in that pharmacy's audit log as "Platform support", which builds trust with pharmacy owners.
+
+### 5.5 Permission model
+
+- **Two catalogs in code**: tenant permissions (`pos.sell`, `sales.cancel`, `cost.view`, `supplierCatalog.manage`, `orders.fulfil`, `customers.accounts`, `roles.manage`, `branding.manage`, ...) and platform permissions (`platform.pharmacies.manage`, `platform.users.manage`, `platform.support`, `platform.system`). Tenant roles can only contain tenant permissions.
+- **Role templates**: Pharmacy Admin, Pharmacist and Cashier are global system templates (`pharmacyId` null, read-only). Custom roles belong to one pharmacy. "Duplicate role" copies a template into an editable custom role.
+- **No privilege escalation**: a user can only grant permissions they hold themselves, and only Pharmacy Admins can edit roles.
+- **Sensitive data permissions** such as `cost.view` are applied in queries and DTO mappers, so cost price and profit never reach a cashier's browser.
+- **Session invalidation**: `sessionVersion` on every account. Role change, deactivation, password reset or "force logout" increments it and all existing sessions die on their next request. Suspending a pharmacy blocks all its staff and customer sessions the same way.
+- **Re-authentication** for dangerous actions: changing roles, issuing a reset link for a Pharmacy Admin, deactivating a pharmacy, restoring a backup.
+
+### 5.6 Credential lifecycle
+
+```mermaid
+sequenceDiagram
+  participant D as Developer
+  participant P as Platform console
+  participant DB as PostgreSQL
+  participant A as New Pharmacy Admin
+
+  D->>P: Create pharmacy (name, slug, contacts) + admin (name, username, phone/email)
+  P->>DB: one transaction: Pharmacy, settings, counters, default categories, admin user (no password), invite token hash
+  P-->>D: invite link shown once: Copy / Share on WhatsApp / Send email
+  D->>A: shares link
+  A->>P: opens /invite/<token>, sets password (and 2FA if enabled)
+  P->>DB: verify hash, unused, not expired; set password; mark token used
+  A->>P: first-run wizard: logo, details, receipt format, staff, import medicines
+```
+
+| Mechanism | Rule |
+|---|---|
+| Invite link | 32 random bytes, only the SHA-256 hash is stored, valid 72 h, single use. Used for new pharmacies, new staff and new customer accounts |
+| Temporary password | Alternative to an invite: a strong generated password shown once, `mustChangePassword` forces a change at first login |
+| Reset link | Same token mechanism with purpose `RESET`, valid 1 h. Issuing a new link revokes older unused ones. Using it bumps `sessionVersion` so every old session ends |
+| Who can issue | Developer: anyone. Pharmacy Admin: staff and customers of their pharmacy. Staff with `customers.accounts`: customers only |
+| Forgot password (self-service) | Staff: request appears as a notification to the Pharmacy Admin, who issues a link (many staff have no email). Customers: same, to the pharmacy. Email self-service works automatically when an email adapter is configured |
+| Delivery | Link is always copyable; WhatsApp share uses a `wa.me` URL with prefilled text; email through an adapter (SMTP or a transactional email service). SMS later through an adapter |
+| Lockout | Rate limit per account and per IP; Developer and Pharmacy Admin can unlock |
+
+Pharmacy status and its effects:
+
+| Status | Staff and customer login | Data | Developer access | Typical cause |
+|---|---|---|---|---|
+| `ACTIVE` | Allowed | Read and write | Yes | Normal |
+| `GRACE` | Allowed with a payment banner | Read and write | Yes | Subscription ended less than N days ago |
+| `SUSPENDED` | Blocked with a message showing the pharmacy's contact for the platform | Kept, read-only to Developer | Yes | Non-payment or Developer decision |
+| `DEACTIVATED` | Blocked | Kept, hidden from lists, exportable | Yes | Pharmacy left the platform; can be reactivated |
+
+Data is never hard-deleted by status changes. Permanent deletion is a separate Developer action with a typed confirmation and a final export.
 
 ## 6. Key flows
 
@@ -246,7 +368,7 @@ stateDiagram-v2
 
 ### 6.3 Sale, retail bill and cash session (R6, R8, R15, A2)
 
-- **Cash session**: a cashier opens a session with an opening float before the first cash sale. Every cash sale, refund and cash payment is linked to the open session. Closing records the counted amount; the system shows expected vs counted and the difference, which needs a note above a threshold. Super Admin sees all sessions.
+- **Cash session**: a cashier opens a session with an opening float before the first cash sale. Every cash sale, refund and cash payment is linked to the open session. Closing records the counted amount; the system shows expected vs counted and the difference, which needs a note above a threshold. Pharmacy Admin sees all sessions of the pharmacy.
 - **Walk-in details**: the sale stores `customerName` and `customerPhone` snapshot fields. If a phone number matches an existing customer, the POS suggests linking. "Save as customer" creates one in the same transaction.
 - **Receipt rendering**: one receipt data model, three templates (80 mm thermal, 58 mm thermal, A4). Templates are print CSS with `@page { size: 80mm auto }`; printing uses the browser print dialog or kiosk-mode auto print. A local ESC/POS print agent is a later option if cash drawer kick is needed.
 - **Bill content**: pharmacy header, invoice number, date and time, cashier, customer name and phone, lines with batch and expiry, discount, total, paid, change, balance, footer, and a QR code with the invoice number for fast lookup on returns.
@@ -272,11 +394,63 @@ Net profit         = Gross profit - Stock losses - Operating expenses
 
 Expenses are recorded with a category, amount, date, payment method and optional receipt photo (same file storage). Supplier payments are not expenses; they settle a payable.
 
+### 6.6 Customer accounts and online orders (R23, R24)
+
+Customers use a mobile-first portal at `/shop/<pharmacy-slug>`, branded with the pharmacy's name, logo and colour. Accounts are created by the pharmacy (from the customer page: "Create portal login"), which keeps the portal private to known customers and avoids spam orders. Self-registration with staff approval can be switched on later per pharmacy.
+
+```mermaid
+stateDiagram-v2
+  [*] --> PLACED: customer submits
+  PLACED --> NEEDS_PRESCRIPTION: Rx item without valid prescription
+  NEEDS_PRESCRIPTION --> PLACED: prescription uploaded
+  PLACED --> CONFIRMED: pharmacist confirms (stock reserved, prices locked)
+  PLACED --> REJECTED: pharmacist rejects with reason
+  CONFIRMED --> READY: items picked
+  READY --> OUT_FOR_DELIVERY: delivery chosen
+  READY --> COMPLETED: handed over at counter (sale created)
+  OUT_FOR_DELIVERY --> COMPLETED: delivered (sale created)
+  PLACED --> CANCELLED: customer or staff cancels
+  CONFIRMED --> CANCELLED: reservation released
+  READY --> CANCELLED
+  COMPLETED --> [*]
+  REJECTED --> [*]
+  CANCELLED --> [*]
+```
+
+Rules:
+
+| Concern | Decision |
+|---|---|
+| What customers see | Only medicines flagged `onlineVisible` with sellable stock. Availability is shown as "In stock" or "Few left", never exact counts. Cost price is never exposed |
+| Stock | Placing an order checks availability but holds nothing. **Confirming** creates `StockReservation` rows (per medicine, with an expiry, default 24 h). POS and portal availability = sellable stock minus active reservations, so the counter cannot sell what an order is waiting for |
+| Price | Prices are locked at confirmation and shown to the customer. Fulfilment creates the sale through the normal `createSale` path (FEFO, stock movements, ledger) with the order's locked prices, so there is one code path for stock out |
+| Payment | Pay at pickup, cash on delivery, or "add to my account" when the customer's credit limit allows. Online payment is a later adapter |
+| Prescriptions | Rx items require a prescription image (same file storage as OCR). The pharmacist approves or rejects it; approval is recorded on the order and kept with the sale |
+| Staff alerts | New order notification for permission `orders.fulfil`, with a sound and a badge in POS and the sidebar |
+| Customer updates | Status timeline in the portal; WhatsApp or SMS updates later through the messaging adapter |
+| Abuse limits | Max open orders per customer (default 3), rate limit on order creation, staff can disable a portal account in one click |
+| Expiry of reservations | `orders.expireReservations` job releases stale reservations and notifies staff |
+
+### 6.7 Supplier catalog (R25)
+
+- `SupplierProduct` links a supplier to the medicines it supplies, with supplier code, pack size, last price, bonus rule (for example "10+1"), lead time and a preferred flag.
+- **Pharmacists maintain it** from the supplier page: search and add existing medicines, or create a new medicine inline (name, generic, category, unit, prices, barcode) and link it in one step. Bulk import from a supplier price list (CSV or Excel) with a preview and error report.
+- Posting a purchase updates `lastPrice` automatically, so the list stays current without manual work.
+- Used by reorder suggestions (which supplier to order from), by purchase order forms (only that supplier's medicines are offered first) and by OCR matching (supplier codes printed on bills).
+
+### 6.8 Pharmacy onboarding (R18, R21)
+
+1. Developer opens the platform console, "New pharmacy": name, URL slug, owner name, phone, email, city, licence number, plan and subscription end date.
+2. One transaction creates the pharmacy, its settings with defaults, counters, default expense categories, and the first Pharmacy Admin with an invite link (or temporary password).
+3. Pharmacy Admin opens the link, sets a password, and is taken to a **first-run wizard**: profile and logo, receipt format and footer, staff accounts, import medicines and opening stock, import customers.
+4. The pharmacy appears on the Developer's dashboard with usage (users, invoices this month, storage, last activity) and status.
+5. Branding (R21) can be changed any time by the Pharmacy Admin: display name, logo (PNG or JPG, resized server-side to 512 px and 128 px versions), address, phones, email, licence and tax numbers, receipt header and footer, brand colour. Branding appears on the staff app header, the login page, receipts, purchase orders and the customer portal.
+
 ## 7. Cross-cutting services
 
 ### 7.1 Audit log
 
-`AuditLog(id, at, userId, impersonatedBy, action, entity, entityId, before jsonb, after jsonb, ip, userAgent)`. Written by a helper `audit(tx, ...)` inside the use case transaction. Append-only (database role has no UPDATE or DELETE on the table). Viewer for Super Admin with filters by user, entity and date. Entity pages (invoice, medicine, customer) show their own history tab, which covers R9.
+`AuditLog(id, at, userId, impersonatedBy, action, entity, entityId, before jsonb, after jsonb, ip, userAgent)`. Written by a helper `audit(tx, ...)` inside the use case transaction. Append-only (database role has no UPDATE or DELETE on the table). Viewer for Pharmacy Admin (own pharmacy) and Developer (all pharmacies) with filters by user, entity and date. Entity pages (invoice, medicine, customer) show their own history tab, which covers R9.
 
 ### 7.2 Outbox and events
 
@@ -292,6 +466,9 @@ Expenses are recorded with a category, amount, date, payment method and optional
 | `reorder.suggest` | nightly | Draft purchase orders |
 | `po.overdue` | daily | Orders past expected date |
 | `report.rollup` | hourly | Refresh `DailySummary` for dashboards |
+| `orders.expireReservations` | every 15 min | Release reservations of stale confirmed orders |
+| `subscription.check` | daily | Move pharmacies to `GRACE` or `SUSPENDED`, notify Developer and Pharmacy Admin |
+| `tokens.cleanup` | daily | Delete expired invite and reset tokens |
 | `backup.nightly` | daily 02:00 | `pg_dump`, compress, copy offsite, keep 14 daily and 12 monthly |
 | `files.cleanup` | weekly | Remove discarded intake images after retention period |
 
@@ -330,6 +507,10 @@ pg-boss is chosen because it runs on the existing PostgreSQL. No Redis to instal
 | Secrets | `.env` never committed; Docker secrets for production; JWT secret rotation supported by keeping previous key for verification |
 | Dependencies | `npm audit` and Dependabot in CI; the Docker image runs as non-root |
 | Backups | Encrypted at rest offsite; restore tested monthly from the developer console |
+| Tenant isolation | `pharmacyId` on every tenant row, Row-Level Security, non-owner database role, isolation test suite in CI (section 5.2) |
+| Platform account | Mandatory TOTP, separate login and cookie, short session, recovery only from the server shell |
+| Tokens | Invite and reset tokens stored as SHA-256 hashes, single use, short expiry, revoked on reissue |
+| Customer portal | Separate realm, rate limits on login and orders, no cost or stock counts exposed, uploads limited to images and PDF |
 
 ## 9. Non-functional targets
 
@@ -345,7 +526,7 @@ pg-boss is chosen because it runs on the existing PostgreSQL. No Redis to instal
 
 Future proofing without building it now:
 
-- **Multi-branch**: all new tables get no branch column yet, but stock queries go through inventory module functions only, so adding `branchId` later changes one module rather than every screen.
+- **Branches inside a pharmacy**: tenants already isolate pharmacies. Branches would add a `locationId` under a pharmacy; stock queries go through inventory module functions only, so that change stays inside one module.
 - **Offline POS**: the PWA shell caches the medicine list; true offline selling (queue sales, sync later) is a separate project because it needs conflict rules for stock. Not planned.
 
 ## 10. Architecture decision records (summary)
@@ -360,3 +541,7 @@ Future proofing without building it now:
 | ADR-6 | Transactional outbox for side effects | Calling notifications inline | Side effects never fail a sale and never get lost |
 | ADR-7 | Browser print with CSS templates for receipts | ESC/POS agent from day one | Works on any printer with no install; agent can be added later |
 | ADR-8 | Append-only audit log in the same transaction | Database triggers | Captures user intent and context, not only row diffs |
+| ADR-9 | Shared schema multi-tenancy with `pharmacyId` and Row-Level Security | Database or schema per pharmacy | One migration and one backup for all pharmacies; RLS makes isolation fail closed |
+| ADR-10 | Three identity realms (platform, staff, customer) with separate tables and cookies | One user table with a role column | A bug in one realm cannot mint a session in another; Developer can never be demoted through the app |
+| ADR-11 | Customer orders reserve stock at confirmation and become sales through `createSale` | Deduct stock when the order is placed | No phantom stock loss from abandoned orders; one code path for stock out |
+| ADR-12 | Invite and reset links instead of sending passwords | Developer or admin types passwords for others | Nobody but the account owner knows the password; links are single use and expire |
