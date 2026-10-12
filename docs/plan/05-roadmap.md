@@ -61,7 +61,7 @@ Why this order:
 
 Tasks:
 
-- [ ] 0.1 Upgrade Next.js to the latest patched 14.2.x and `eslint-config-next` to match; run the full test suite
+- [x] 0.1 Upgrade Next.js to the maintained 15.5 line (15.5.27) with React 19, because 14.x is end of life and versions below 15.5.24 have a critical remote code execution flaw on Windows-hosted servers; override vulnerable transitive build tools; run the full test suite
 - [ ] 0.2 GitHub Actions CI: install, typecheck, lint, integration tests against a PostgreSQL service container, build, `npm audit --audit-level=high`
 - [ ] 0.3 Move `src/services/*` into `src/modules/<domain>/` with an `index.ts` per module; add `dependency-cruiser` rules for module boundaries
 - [ ] 0.4 Make every service function accept a transaction client `tx` and a context object `{ actor, pharmacyId }` (pharmacyId is unused until P1 but the signatures are ready)

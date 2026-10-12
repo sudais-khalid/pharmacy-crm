@@ -542,7 +542,7 @@ pg-boss is chosen because it runs on the existing PostgreSQL. No Redis to instal
 
 | Area | Measure |
 |---|---|
-| Framework | Upgrade Next.js 14.2.15 to the latest patched 14.2.x immediately (published advisory), evaluate Next 15 in a later phase |
+| Framework | Next.js 15.5.x (maintained line) with React 19; production dependencies must have zero known vulnerabilities in CI; evaluate Next 16 after go-live |
 | Sessions | httpOnly, SameSite Lax, Secure in production, `sessionVersion` revocation, 8 hour expiry with sliding refresh for active POS |
 | CSRF | Existing JSON-only body rule plus an `Origin` header check on all non-GET API requests |
 | Rate limits | Move from in-memory to a PostgreSQL table so limits survive restarts and multiple replicas |

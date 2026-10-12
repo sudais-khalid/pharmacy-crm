@@ -11,12 +11,12 @@ type Ctx = { req: NextRequest; user: SessionUser; params: Record<string, string>
 
 /** Wraps an API handler with authentication, permission check and uniform error handling. */
 export function route(permission: Permission | null, fn: (ctx: Ctx) => Promise<unknown>) {
-  return async (req: NextRequest, { params }: { params: Record<string, string> }) => {
+  return async (req: NextRequest, { params }: { params: Promise<Record<string, string>> }) => {
     try {
       const user = await getSessionUser();
       if (!user) throw new AppError(401, "You are not signed in.");
       if (permission && !can(user.role, permission)) throw new AppError(403, "You do not have permission to do this.");
-      const data = await fn({ req, user, params });
+      const data = await fn({ req, user, params: await params });
       return NextResponse.json(data ?? { ok: true });
     } catch (e) {
       return errorResponse(e);
