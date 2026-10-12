@@ -71,6 +71,54 @@ flowchart TB
 
 The worker is the same codebase started with a different entry point (`node dist/worker.js`), so domain services are shared and never duplicated.
 
+### 2.3 Deployment modes: desktop installer and server
+
+The same codebase ships in two ways. Business code does not know which mode it runs in; only the start-up layer differs.
+
+| | Desktop mode (Windows installer) | Server mode (Docker) |
+|---|---|---|
+| Delivered as | `PharmacyCRM-Setup-x.y.z.exe` (NSIS installer built with electron-builder) | `docker compose up` on a VPS or a shop server |
+| Typical use | One pharmacy PC runs everything, works without internet; other counter devices on the shop Wi-Fi connect to it | The Developer hosts many pharmacies centrally |
+| Database | Embedded PostgreSQL 16 (bundled binaries), data in `%PROGRAMDATA%\PharmacyCRM\pgdata` | PostgreSQL 16 container |
+| Web and worker | Next.js standalone server and the worker started as child processes by the Electron main process | `web` and `worker` containers |
+| UI | Electron window loading `http://127.0.0.1:<port>`; other devices use the browser or the same app in client mode | Browser or installed PWA |
+| Backups | `pg_dump` (bundled) to a chosen folder, USB drive or synced cloud folder, plus offsite upload when online | Nightly job to offsite storage |
+| Updates | `electron-updater` from a release feed; automatic backup before every update; migrations run on start | New image, migrations on start |
+
+```mermaid
+flowchart TB
+  subgraph pc[Pharmacy PC: PharmacyCRM.exe]
+    main[Electron main process<br/>supervisor, tray icon, updater]
+    pg[(Embedded PostgreSQL 16)]
+    web[Next.js standalone server]
+    wk[Worker: jobs, OCR, backups]
+    win[App window]
+    main --> pg
+    main --> web
+    main --> wk
+    win --> web
+  end
+  tab[Counter tablet or second PC<br/>browser or client mode] -->|shop Wi-Fi| web
+  wk -->|when online| cloud[OCR cloud adapter, offsite backup, updates]
+```
+
+Design decisions:
+
+| Concern | Decision |
+|---|---|
+| Shell | **Electron**. It ships its own Node runtime, so the existing Next.js server, Prisma and pg-boss run unchanged. Tauri would need a separate Node sidecar binary and gives no benefit for a server-shaped app |
+| Database | Real PostgreSQL, not SQLite, so Row-Level Security, `pg_trgm`, pg-boss and every migration behave exactly as on the server. The `embedded-postgres` package provides the Windows binaries; the major version is pinned to 16 |
+| First start | The main process initialises the data directory, generates a random superuser password protected with Windows DPAPI (Electron `safeStorage`), creates `app_owner`, `app_user` and `platform_user`, runs migrations, then starts the web server and worker. A splash screen shows progress |
+| Developer account on a desktop install | The installer build embeds the owner email and a bcrypt hash of the owner password, taken from build-time secrets that never enter the repository. First login forces TOTP enrolment. Anyone else who installs the exe cannot become Developer; recovery is `PharmacyCRM.exe --recover-owner`, which requires a Windows administrator |
+| After install | The Developer logs in, creates the pharmacy and its admin exactly as in server mode (section 6.7). One installation can host one or several pharmacies |
+| Client mode | The same installer offers "This computer runs the pharmacy" or "Connect to a pharmacy server" (LAN address or cloud URL). Client mode is only the window, with no database or server |
+| LAN access | Off by default (server binds to `127.0.0.1`). When the Pharmacy Admin enables it, the server binds to the LAN interface, the installer's firewall rule opens the port for private networks only, and the address is shown as a QR code for tablets |
+| Ports | Picks a free local port at start; PostgreSQL listens on `127.0.0.1` only, never on the LAN |
+| OCR offline | Local Tesseract adapter works without internet; the cloud adapter is used when online and allowed |
+| Code signing | Installer and app signed with an Authenticode certificate so Windows SmartScreen does not block it |
+| Size | Roughly 300 MB installed (Electron, PostgreSQL binaries, app). Acceptable for a PC that runs a shop |
+| Mode switch | `DEPLOY_MODE=desktop` or `server`. The only mode-specific code is in `desktop/` (Electron main, supervisor, updater) and in `platform/` start-up (owner bootstrap source, backup target) |
+
 ## 3. Code organisation
 
 ### 3.1 Target layout
@@ -98,6 +146,7 @@ src/
   components/               shared UI kit (design tokens, table, form, dialog)
   lib/                      framework glue: prisma client, api wrapper, dates, money
   worker.ts                 worker entry point
+desktop/                    Electron main process: supervisor, embedded PostgreSQL, updater, tray (desktop mode only)
 ```
 
 Each module has the same internal shape:
@@ -541,3 +590,4 @@ Future proofing without building it now:
 | ADR-10 | Two identity realms (platform, staff) with separate tables and cookies | One user table with a role column | A bug in the pharmacy app cannot mint a Developer session; Developer can never be demoted through the app |
 | ADR-11 | One stock entry workflow for manual, OCR and file import, posting through existing stock-in code | Separate OCR screen with its own posting | One set of rules and one review screen; manual entry is the fallback for any OCR failure inside the same grid |
 | ADR-12 | Invite and reset links instead of sending passwords | Developer or admin types passwords for others | Nobody but the account owner knows the password; links are single use and expire |
+| ADR-13 | Windows desktop installer with Electron and embedded PostgreSQL, alongside Docker server mode | Desktop-only app with SQLite; web-only hosting | Works offline in a shop with one PC, same database features as the server, one codebase for both |
