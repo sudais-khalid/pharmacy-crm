@@ -5,3 +5,4 @@ export { dispatchOutbox, outboxBackoffMs, OUTBOX_MAX_ATTEMPTS, type OutboxEvent,
 export { getHealth, type Health, type CheckResult } from "./health";
 export { nextNumber, type CounterKey } from "./counters";
 export { getSettings, updateSettings, type PharmacySettingsView } from "./settings";
+export { FEATURE_FLAGS, FEATURE_KEYS, getFeatureFlags, type FeatureKey } from "./flags";

@@ -78,6 +78,17 @@ if [ -n "$PLATFORM_OWNER_EMAIL" ] && [ -n "$PLATFORM_OWNER_PASSWORD" ]; then
   ok "Two-factor enrolled, recovery codes issued" "$CODES" 10
   ok "Developer session reaches the console" "$(code -b /tmp/smoke_dev.jar $B/platform)" 200
   ok "Developer session is not a staff session" "$(code -b /tmp/smoke_dev.jar $B/api/medicines)" 401
+  SLUG="smoke-$(date +%s)"
+  NEWP=$(curl -s -b /tmp/smoke_dev.jar -X POST $B/api/platform/pharmacies -H 'content-type: application/json' -H "Origin: $B" -d "{\"pharmacy\":{\"name\":\"Smoke Pharmacy\",\"slug\":\"$SLUG\"},\"plan\":{},\"features\":[\"ocr\"],\"admin\":{\"name\":\"Smoke Admin\",\"username\":\"smokeadmin\",\"email\":\"$SLUG@example.com\"},\"credentials\":\"invite\"}")
+  PID=$(echo "$NEWP" | js "d['pharmacy']['id']")
+  ok "Developer creates a pharmacy with an invite" "$(echo "$NEWP" | js "d['credentials']['kind']")" invite
+  ok "Duplicate URL name rejected" "$(code -b /tmp/smoke_dev.jar -X POST $B/api/platform/pharmacies -H 'content-type: application/json' -d "{\"pharmacy\":{\"name\":\"Again\",\"slug\":\"$SLUG\"},\"plan\":{},\"admin\":{\"name\":\"X Y\",\"username\":\"xy\",\"email\":\"other-$SLUG@example.com\"},\"credentials\":\"invite\"}")" 409
+  ok "New pharmacy is listed" "$(curl -s -b /tmp/smoke_dev.jar "$B/api/platform/pharmacies?q=$SLUG" | js "len(d['items'])")" 1
+  ok "Pharmacy detail loads" "$(code -b /tmp/smoke_dev.jar $B/api/platform/pharmacies/$PID)" 200
+  ok "Unknown pharmacy is 404" "$(code -b /tmp/smoke_dev.jar $B/api/platform/pharmacies/00000000-0000-0000-0000-000000000000)" 404
+  ok "Other pharmacy staff invisible to this pharmacy" "$(curl -s -b /tmp/smoke_admin.jar $B/api/users | js "str(any(u['username']=='smokeadmin' for u in d))")" False
+  ok "Invite link page opens" "$(code $B$(echo "$NEWP" | js "d['credentials']['path']"))" 200
+  for p in /platform/pharmacies /platform/pharmacies/new /platform/pharmacies/$PID; do ok "Console page $p renders" "$(code -b /tmp/smoke_dev.jar $B$p)" 200; done
 fi
 for p in /dashboard /pos /medicines /inventory /customers /suppliers /purchases /purchases/new /sales /reports /users /settings; do ok "Page $p renders" "$(code -b /tmp/smoke_admin.jar $B$p)" 200; done
 exit $fail
