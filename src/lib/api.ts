@@ -38,7 +38,7 @@ export function route(permission: Permission | null, fn: (ctx: Ctx) => Promise<u
   return async (req: NextRequest, { params }: { params: Promise<Record<string, string>> }) => {
     try {
       assertSameOrigin(req);
-      const user = await getSessionUser();
+      const user = await getSessionUser({ refresh: true });
       if (!user) throw new AppError(401, "You are not signed in.");
       if (permission && !can(user.role, permission)) throw new AppError(403, "You do not have permission to do this.");
       const base = { req, user, params: await params, svc: serviceContext(user, user.pharmacyId, requestMeta(req)) };

@@ -36,7 +36,13 @@ export async function updateUser(ctx: ServiceContext, id: string, input: UserUpd
   return runInTx(ctx, async (tx) => {
     const before = await tx.user.findUnique({ where: { id }, select: publicFields });
     if (!before) throw new AppError(404, "User not found.");
-    const after = await tx.user.update({ where: { id }, data: { ...data, ...(passwordHash ? { passwordHash } : {}) }, select: publicFields });
+    // a role change, deactivation or new password ends every existing session of this account
+    const revoke = !!passwordHash || (data.role !== undefined && data.role !== before.role) || (data.active === false && before.active);
+    const after = await tx.user.update({
+      where: { id },
+      data: { ...data, ...(passwordHash ? { passwordHash, mustChangePassword: false } : {}), ...(revoke ? { sessionVersion: { increment: 1 } } : {}) },
+      select: publicFields,
+    });
 
     const keys = (["name", "role", "active"] as const).filter((k) => before[k] !== after[k]);
     const action = before.active && !after.active ? "user.deactivate" : passwordHash && !keys.length ? "user.password.reset" : "user.update";
@@ -46,5 +52,15 @@ export async function updateUser(ctx: ServiceContext, id: string, input: UserUpd
       after: { ...Object.fromEntries(keys.map((k) => [k, after[k]])), ...(passwordHash ? { passwordChanged: true } : {}) },
     });
     return { id: after.id, name: after.name, email: after.email, role: after.role, active: after.active };
+  });
+}
+
+/** Ends every session of a staff account on its next request. */
+export async function forceLogout(ctx: ServiceContext, id: string) {
+  return runInTx(ctx, async (tx) => {
+    const res = await tx.user.updateMany({ where: { id }, data: { sessionVersion: { increment: 1 } } });
+    if (res.count === 0) throw new AppError(404, "User not found.");
+    await audit(tx, ctx, { action: "user.logout.force", entity: "User", entityId: id });
+    return { ok: true };
   });
 }

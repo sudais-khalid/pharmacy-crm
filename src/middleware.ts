@@ -1,25 +1,26 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { jwtVerify } from "jose";
+import { SESSION_COOKIES, verifySession } from "@/lib/session-token";
 
-const COOKIE = "pharmacy_session";
+/** Pages anyone may open (sign-in, invitation and password reset links). */
+const PUBLIC_PREFIXES = ["/login", "/p/", "/invite/", "/reset/"];
 
-async function valid(token?: string) {
-  if (!token) return false;
-  try {
-    await jwtVerify(token, new TextEncoder().encode(process.env.JWT_SECRET || ""));
-    return true;
-  } catch {
-    return false;
-  }
-}
-
+/**
+ * Page guard. Developer console pages need a platform session, everything else a staff session.
+ * Signatures and realms are checked here; the account itself is re-checked on every API call and page load.
+ */
 export async function middleware(req: NextRequest) {
-  const ok = await valid(req.cookies.get(COOKIE)?.value);
   const { pathname } = req.nextUrl;
-  if (pathname === "/login") {
-    return ok ? NextResponse.redirect(new URL("/dashboard", req.url)) : NextResponse.next();
+
+  if (pathname === "/platform/login") return NextResponse.next();
+  if (pathname === "/platform" || pathname.startsWith("/platform/")) {
+    const ok = await verifySession("platform", req.cookies.get(SESSION_COOKIES.platform)?.value);
+    return ok ? NextResponse.next() : NextResponse.redirect(new URL("/platform/login", req.url));
   }
-  if (!ok) {
+
+  const staff = await verifySession("staff", req.cookies.get(SESSION_COOKIES.staff)?.value);
+  if (pathname === "/login") return staff ? NextResponse.redirect(new URL("/dashboard", req.url)) : NextResponse.next();
+  if (PUBLIC_PREFIXES.some((p) => pathname.startsWith(p))) return NextResponse.next();
+  if (!staff) {
     const url = new URL("/login", req.url);
     if (pathname !== "/") url.searchParams.set("next", pathname);
     return NextResponse.redirect(url);

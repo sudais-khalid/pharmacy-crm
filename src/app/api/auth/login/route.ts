@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
 import { platformDb } from "@/lib/platform-db";
-import { loginSchema, setSessionCookie } from "@/modules/identity";
+import { loginSchema, setStaffSession } from "@/modules/identity";
 import { errorResponse, readJson } from "@/lib/api";
 import { AppError } from "@/lib/errors";
 import { isLimited, recordHit, clearBucket } from "@/lib/rate-limit";
@@ -34,8 +34,11 @@ export async function POST(req: NextRequest) {
     }
     if (!user.active) throw new AppError(403, "This account has been disabled. Contact your administrator.");
 
+    if (user.isSystem) throw new AppError(401, "Incorrect email or password.");
+
     await clearBucket(accountBucket);
-    await setSessionCookie(user.id);
+    await platformDb.user.update({ where: { id: user.id }, data: { lastLoginAt: new Date() } });
+    await setStaffSession(user);
     return NextResponse.json({ user: { id: user.id, name: user.name, email: user.email, role: user.role } });
   } catch (e) {
     return errorResponse(e);
