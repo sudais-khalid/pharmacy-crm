@@ -3,3 +3,4 @@ export { setStaffSession, getSessionUser, loadStaffSession, setPlatformSession, 
 export { serviceContext, type Actor, type RequestMeta, type ServiceContext } from "./context";
 export { loginSchema, userCreateSchema, userUpdateSchema } from "./schema";
 export { createUser, updateUser, forceLogout, usernameFromEmail, type UserCreateInput, type UserUpdateInput } from "./service";
+export { ensurePlatformOwner, platformPasswordLogin, startTotpEnrolment, confirmTotpEnrolment, verifySecondFactor, recoverPlatformOwner } from "./platform-auth";

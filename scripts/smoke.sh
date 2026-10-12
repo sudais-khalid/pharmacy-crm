@@ -62,5 +62,22 @@ ok "Cross-site write blocked" "$(code -b /tmp/smoke_admin.jar -X POST $B/api/cat
 ok "Same-origin write allowed" "$(code -b /tmp/smoke_admin.jar -X POST $B/api/categories -H 'content-type: application/json' -H "Origin: $B" -d "{\"name\":\"Smoke $(date +%s)\"}")" 200
 for i in $(seq 1 8); do code -X POST $B/api/auth/login -H 'content-type: application/json' -d '{"email":"nobody@example.com","password":"wrong"}' >/dev/null; done
 ok "Login locked after repeated failures" "$(code -X POST $B/api/auth/login -H 'content-type: application/json' -d '{"email":"nobody@example.com","password":"wrong"}')" 429
+# Developer console (needs PLATFORM_OWNER_EMAIL and PLATFORM_OWNER_PASSWORD set for the server and this script)
+if [ -n "$PLATFORM_OWNER_EMAIL" ] && [ -n "$PLATFORM_OWNER_PASSWORD" ]; then
+  totp(){ python3 -c "import base64,hmac,hashlib,struct,sys,time;k=base64.b32decode(sys.argv[1].replace(' ','')+'='*((8-len(sys.argv[1].replace(' ',''))%8)%8));m=hmac.new(k,struct.pack('>Q',int(time.time())//30),hashlib.sha1).digest();o=m[-1]&15;print('%06d'%((struct.unpack('>I',m[o:o+4])[0]&0x7fffffff)%1000000))" "$1"; }
+  ok "Console API needs a Developer session" "$(code $B/api/platform/auth/me)" 401
+  ok "Staff session is not a Developer session" "$(code -b /tmp/smoke_admin.jar $B/api/platform/auth/me)" 401
+  ok "Console page redirects without a Developer session" "$(code -b /tmp/smoke_admin.jar $B/platform)" 307
+  ok "Developer wrong password rejected" "$(code -X POST $B/api/platform/auth/login -H 'content-type: application/json' -d "{\"email\":\"$PLATFORM_OWNER_EMAIL\",\"password\":\"wrong-password\"}")" 401
+  NEXT=$(curl -s -c /tmp/smoke_dev.jar -X POST $B/api/platform/auth/login -H 'content-type: application/json' -d "{\"email\":\"$PLATFORM_OWNER_EMAIL\",\"password\":\"$PLATFORM_OWNER_PASSWORD\"}" | js "d['next']")
+  ok "Developer password accepted, second factor next" "$NEXT" enrol
+  ok "Console stays closed before the second factor" "$(code -b /tmp/smoke_dev.jar $B/platform)" 307
+  SECRET=$(curl -s -b /tmp/smoke_dev.jar $B/api/platform/auth/enrol | js "d['secret']")
+  ok "Wrong enrolment code rejected" "$(code -b /tmp/smoke_dev.jar -c /tmp/smoke_dev.jar -X POST $B/api/platform/auth/enrol -H 'content-type: application/json' -d '{"code":"000000"}')" 400
+  CODES=$(curl -s -b /tmp/smoke_dev.jar -c /tmp/smoke_dev.jar -X POST $B/api/platform/auth/enrol -H 'content-type: application/json' -d "{\"code\":\"$(totp "$SECRET")\"}" | js "len(d['recoveryCodes'])")
+  ok "Two-factor enrolled, recovery codes issued" "$CODES" 10
+  ok "Developer session reaches the console" "$(code -b /tmp/smoke_dev.jar $B/platform)" 200
+  ok "Developer session is not a staff session" "$(code -b /tmp/smoke_dev.jar $B/api/medicines)" 401
+fi
 for p in /dashboard /pos /medicines /inventory /customers /suppliers /purchases /purchases/new /sales /reports /users /settings; do ok "Page $p renders" "$(code -b /tmp/smoke_admin.jar $B$p)" 200; done
 exit $fail

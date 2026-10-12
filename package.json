@@ -20,7 +20,8 @@
     "db:reset": "prisma migrate reset --force",
     "db:check": "node scripts/db-check.mjs",
     "postinstall": "prisma generate",
-    "test:smoke": "bash scripts/smoke.sh"
+    "test:smoke": "bash scripts/smoke.sh",
+    "platform:recover-owner": "tsx scripts/recover-owner.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
@@ -39,6 +40,7 @@
     "pg": "^8.23.1",
     "pg-boss": "^12.37.1",
     "pino": "^9.14.0",
+    "qrcode": "^1.5.4",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
     "react-is": "^19.3.0",
@@ -49,6 +51,7 @@
     "@types/bcryptjs": "^2.4.6",
     "@types/node": "^20.16.0",
     "@types/pg": "^8.23.1",
+    "@types/qrcode": "^1.5.6",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
     "autoprefixer": "^10.4.20",

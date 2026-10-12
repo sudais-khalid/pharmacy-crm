@@ -26,6 +26,10 @@ services:
       APP_TIMEZONE: ${APP_TIMEZONE:-Asia/Karachi}
       # Set to 1 only when a reverse proxy in front of the app sets X-Forwarded-For
       TRUST_PROXY: ${TRUST_PROXY:-0}
+      # Developer account, created on the very first start only
+      PLATFORM_OWNER_EMAIL: ${PLATFORM_OWNER_EMAIL:-}
+      PLATFORM_OWNER_PASSWORD: ${PLATFORM_OWNER_PASSWORD:-}
+      TOTP_ENCRYPTION_KEY: ${TOTP_ENCRYPTION_KEY:-}
     ports:
       - "3000:3000"
     healthcheck:

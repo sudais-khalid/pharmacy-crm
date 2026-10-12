@@ -49,6 +49,18 @@ For production: `npm run build && npm start`, plus the background worker in a se
 
 The worker (`src/worker.ts`, bundled to `dist/worker.js`) delivers outbox events and runs scheduled maintenance through pg-boss, which keeps its queue in the same PostgreSQL database (schema `pgboss`). It stops gracefully on SIGTERM, SIGINT or an IPC `"shutdown"` message.
 
+## Developer console
+
+The Developer (platform owner) signs in at `/platform/login` with email, password and a code from an authenticator app. Two-factor sign-in is mandatory and is set up at the first sign-in; ten single-use recovery codes are shown once.
+
+The account is created only from server configuration (`PLATFORM_OWNER_EMAIL` and `PLATFORM_OWNER_PASSWORD`) on the first start. No screen or API can create, demote or delete it. If the password or phone is lost, recover it from the server shell:
+
+```bash
+npm run platform:recover-owner -- --email you@example.com
+```
+
+This prints a new password and removes two-factor sign-in so it is set up again.
+
 ## Desktop (Windows) proof of concept
 
 `npm run build:desktop`, then `cd desktop && npm install && npm run poc`. Electron starts an embedded PostgreSQL, the server and the worker, captures the login page and writes `desktop/poc-report.json`. The full installer is roadmap Phase 2; see `docs/plan/06-desktop-poc.md`.
@@ -82,6 +94,8 @@ The seed contains fictional data only: 25 medicines (some low-stock, some near e
 | `JWT_SECRET` | Signs session cookies. At least 32 random characters (`openssl rand -base64 48`) |
 | `APP_TIMEZONE` | Timezone for "today", daily reports and the chart (default `Asia/Karachi`) |
 | `POSTGRES_PASSWORD` | Docker Compose only |
+| `PLATFORM_OWNER_EMAIL`, `PLATFORM_OWNER_PASSWORD` | Create the Developer account on the very first start (or `PLATFORM_OWNER_PASSWORD_HASH`, bcrypt). Ignored once it exists |
+| `TOTP_ENCRYPTION_KEY` | Encrypts two-factor secrets at rest; falls back to `JWT_SECRET` |
 | `LOG_LEVEL` | `info` by default (`debug`, `warn`, `error`, `silent`). Logs are JSON lines on stdout |
 | `TRUST_PROXY` | `1` only behind a reverse proxy that sets `X-Forwarded-For` |
 | `ALLOWED_ORIGINS` | Extra origins allowed to send write requests, comma separated |
@@ -147,7 +161,7 @@ npm run typecheck
 npm run lint
 ```
 
-With the app running and seeded: `npm run test:smoke` (59 HTTP checks: login, permissions, validation, sale → cancel flow, reports, page loads).
+With the app running and seeded: `npm run test:smoke` (69 HTTP checks: login, permissions, validation, sale → cancel flow, reports, page loads).
 
 > `npm test` truncates the tables of the database in `.env.test`. Never point it at real data.
 

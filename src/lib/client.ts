@@ -16,7 +16,9 @@ export async function api<T = unknown>(url: string, opts: { method?: string; bod
   });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
-    if (res.status === 401 && typeof window !== "undefined" && !url.includes("/auth/login")) window.location.href = "/login";
+    if (res.status === 401 && typeof window !== "undefined" && !url.includes("/auth/")) {
+      window.location.href = url.startsWith("/api/platform/") ? "/platform/login" : "/login";
+    }
     throw new ApiError(data.error || "Request failed", res.status, data.fields);
   }
   return data as T;

@@ -57,7 +57,8 @@ module.exports = {
       from: {
         pathNot: [
           "^src/modules/platform/",
-          "^src/modules/identity/session\\.ts$",
+          "^src/modules/identity/(session|platform-auth)\\.ts$",
+          "^src/instrumentation\\.ts$",
           "^src/lib/(rate-limit|idempotency|platform-db)\\.ts$",
           "^src/worker\\.ts$",
           "^src/app/api/(auth|platform)/",

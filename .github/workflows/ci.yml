@@ -38,6 +38,8 @@ jobs:
       JWT_SECRET: ci-secret-ci-secret-ci-secret-ci-secret-1234
       APP_TIMEZONE: Asia/Karachi
       NEXT_TELEMETRY_DISABLED: "1"
+      PLATFORM_OWNER_EMAIL: owner@example.com
+      PLATFORM_OWNER_PASSWORD: ci-owner-password-123
 
     steps:
       - uses: actions/checkout@v4

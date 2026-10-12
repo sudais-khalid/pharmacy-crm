@@ -376,17 +376,19 @@ model SaleItem {
 
 // Append-only record of every state change. A trigger blocks UPDATE and DELETE.
 model AuditLog {
-  id         BigInt   @id @default(autoincrement())
-  pharmacyId String?  @default(dbgenerated("current_setting('app.pharmacy_id'::text, true)"))
-  at         DateTime @default(now())
-  actorId    String?
-  action     String // e.g. sale.create, sale.cancel, medicine.price.update
-  entity     String
-  entityId   String
-  before     Json?
-  after      Json?
-  ip         String?
-  userAgent  String?
+  id               BigInt   @id @default(autoincrement())
+  pharmacyId       String?  @default(dbgenerated("current_setting('app.pharmacy_id'::text, true)"))
+  at               DateTime @default(now())
+  realm            Realm    @default(STAFF)
+  actorId          String?
+  supportSessionId String? // set while the Developer works inside a pharmacy
+  action           String // e.g. sale.create, sale.cancel, medicine.price.update
+  entity           String
+  entityId         String
+  before           Json?
+  after            Json?
+  ip               String?
+  userAgent        String?
 
   pharmacy Pharmacy? @relation(fields: [pharmacyId], references: [id])
 
@@ -525,6 +527,7 @@ model PlatformUser {
   passwordHash   String
   totpSecret     String? // AES-256-GCM encrypted
   totpEnabledAt  DateTime?
+  totpLastStep   BigInt? // last accepted time step, so a code cannot be replayed
   recoveryCodes  String[] // SHA-256 hashes
   sessionVersion Int       @default(1)
   lastLoginAt    DateTime?
