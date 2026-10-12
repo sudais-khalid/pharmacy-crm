@@ -5,10 +5,11 @@ Design direction comes from the `ui-ux-pro-max` style and guideline database (qu
 ## 1. Design principles
 
 1. **Speed at the counter beats decoration.** A sale must be possible without touching the mouse.
-2. **Each role sees its own app.** Cashiers get a full-screen POS, pharmacists an operational dashboard, the owner a business dashboard, the developer a system console.
-3. **Status is always visible.** Expiry, low stock, open cash session, pending OCR reviews and sync errors are shown where the user works, not hidden in a report.
-4. **Nothing irreversible without a clear confirmation**, and nothing that touches money without a printed or on-screen record.
-5. **Dense but scannable.** Tables are the main surface; numbers are right-aligned in tabular figures.
+2. **Each role sees its own app.** The Developer gets a platform console, Pharmacy Admins a business dashboard, pharmacists an operational dashboard, cashiers a full-screen POS, and customers a simple mobile shop.
+3. **Every pharmacy feels like its own product.** Its logo, name and brand colour appear on login, header, receipts and the customer portal.
+4. **Status is always visible.** Expiry, low stock, open cash session, pending OCR reviews and sync errors are shown where the user works, not hidden in a report.
+5. **Nothing irreversible without a clear confirmation**, and nothing that touches money without a printed or on-screen record.
+6. **Dense but scannable.** Tables are the main surface; numbers are right-aligned in tabular figures.
 
 ## 2. Visual system
 
@@ -36,6 +37,8 @@ The database proposed a dark slate palette with a green accent. For a pharmacy, 
 | `--info` | `#1D4ED8` | `#60A5FA` | Notices, links |
 | `--ring` | `#1F7F78` | `#FFFFFF` | Focus ring |
 
+**Per-pharmacy brand colour**: a pharmacy's `brandColor` overrides `--primary` (and a derived dark-mode shade) through a style attribute on the app root. Status colours are never overridden, so warnings look the same in every pharmacy.
+
 Status is never conveyed by colour alone: every badge has a text label and an icon (Lucide), for example "Expired" with a circle-x icon.
 
 ### 2.3 Typography
@@ -61,24 +64,37 @@ Subtle only (motion 2): 150 ms for hover and press, 200 ms for dialogs and drawe
 
 ### 3.1 Navigation per role
 
-| Section | Developer | Super Admin | Pharmacist | Cashier |
-|---|:-:|:-:|:-:|:-:|
-| System console (health, jobs, logs, backups, flags) | yes | | | |
-| Owner dashboard (net profit, trends) | yes | yes | | |
-| Pharmacist dashboard (expiry, low stock, orders, reviews) | yes | yes | yes | |
-| POS | yes | yes | yes | yes |
-| Invoices and returns | yes | yes | yes | own only |
-| Cash sessions | yes | all | own | own |
-| Medicines and batches | yes | yes | yes | lookup in POS |
-| Inventory, stock card, expiry | yes | yes | yes | |
-| Purchase orders, purchases, bill intake (OCR) | yes | yes | yes | |
-| Suppliers | yes | yes | yes | |
-| Customers | yes | yes | yes | quick add in POS |
-| Expenses | yes | yes | | |
-| Reports | yes | yes | operational | |
-| Users and roles, settings, audit log | yes | yes | | |
+There are three separate apps, one per identity realm, each with its own layout:
 
-Sidebar groups for back-office roles: **Sell** (POS, Invoices, Returns, Cash), **Stock** (Medicines, Inventory, Expiry), **Buy** (Orders, Bill intake, Purchases, Suppliers), **People** (Customers), **Money** (Expenses, Reports), **Admin** (Users, Roles, Settings, Audit). Groups collapse; badge counts show pending work (for example "Bill intake 3").
+| App | Path | Users | Layout |
+|---|---|---|---|
+| Platform console | `/platform` | Developer | Dark-accented header so it is never confused with a pharmacy, sidebar: Overview, Pharmacies, Accounts, Support sessions, Feature flags, System, Audit |
+| Pharmacy app | `/p/<slug>/...` after login (short paths inside) | Pharmacy Admin, Pharmacist, Cashier, custom roles | Pharmacy logo and name in the header, sidebar groups below, Cashier gets full-screen POS |
+| Customer portal | `/shop/<slug>` | Customers | Mobile-first, bottom navigation: Shop, Cart, Orders, Account |
+
+Pharmacy app sections by role (custom roles see whatever their permissions allow):
+
+| Section | Pharmacy Admin | Pharmacist | Cashier |
+|---|:-:|:-:|:-:|
+| Owner dashboard (net profit, trends) | yes | | |
+| Pharmacist dashboard (expiry, low stock, orders, reviews) | yes | yes | |
+| POS | yes | yes | yes |
+| Online orders (confirm, prepare, hand over) | yes | yes | hand over only |
+| Invoices and returns | yes | yes | own only |
+| Cash sessions | all | own | own |
+| Medicines and batches | yes | yes | lookup in POS |
+| Inventory, stock card, expiry | yes | yes | |
+| Suppliers and supplier catalogs | yes | yes | |
+| Purchase orders, purchases, bill intake (OCR) | yes | yes | |
+| Customers and portal accounts | yes | yes | quick add in POS |
+| Expenses | yes | | |
+| Reports | yes | operational | |
+| Staff, roles, audit log | yes | | |
+| Pharmacy profile and branding, settings | yes | | |
+
+When the Developer opens a pharmacy through support access, they see the Pharmacy Admin view with a fixed amber banner: "Platform support session for <pharmacy>. All actions are logged. End session".
+
+Sidebar groups for the pharmacy app: **Sell** (POS, Online orders, Invoices, Returns, Cash), **Stock** (Medicines, Inventory, Expiry), **Buy** (Orders, Bill intake, Purchases, Suppliers), **People** (Customers, Staff), **Money** (Expenses, Reports), **Admin** (Roles, Profile and branding, Settings, Audit). Groups collapse; badge counts show pending work (for example "Online orders 2", "Bill intake 3").
 
 ### 3.2 Global elements
 
@@ -157,10 +173,11 @@ Review screen (desktop, also usable on tablet):
 
 | Dashboard | Top row KPIs | Main panels |
 |---|---|---|
-| Owner | Today's sales, gross profit, net profit (month to date), receivables, payables | Sales vs last period (line), profit by category (bar), cash sessions with differences, top medicines, expense breakdown |
+| Pharmacy Admin | Today's sales, gross profit, net profit (month to date), receivables, payables | Sales vs last period (line), profit by category (bar), cash sessions with differences, top medicines, expense breakdown |
 | Pharmacist | Expiring in 30 days, expired with stock, low stock, OCR bills to review, orders due today | Expiry list with actions, low stock with "add to order", purchase orders by status, recent stock adjustments |
 | Cashier (inside POS) | Session sales, cash in drawer, invoices today | Recent own invoices with reprint |
-| Developer console | Uptime, DB size, queue depth, failed jobs, last backup | Job list with retry, error log, feature flags, maintenance mode, backup and restore |
+| Platform console (Developer) | Active pharmacies, suspended, subscriptions ending soon, failed jobs, last backup | Pharmacies table, reset requests, support sessions, job list with retry, error log, backups (section 4.7) |
+| Customer portal | Open orders, account balance | Order again list, recent invoices |
 
 Charts follow the chart guidelines: legends and tooltips, accessible colours, numbers available as a table toggle, no colour-only meaning.
 
@@ -175,6 +192,89 @@ One report shell: filter bar (date range presets: Today, Yesterday, This week, T
 | Thermal 80 mm | 72 mm printable | Logo (optional), pharmacy name, address, phone, licence no; invoice no, date, cashier; customer name and phone; lines (name, qty x price, amount, batch and expiry on a second small line); totals; payment and change; balance due if credit; footer; QR with invoice no |
 | Thermal 58 mm | 48 mm printable | Same, names truncated, batch line omitted if the setting says so |
 | A4 | full page | Current invoice layout plus customer details block and signature line |
+
+### 4.7 Platform console (Developer)
+
+**Overview**: count of pharmacies by status, pharmacies with subscriptions ending in 14 days, failed jobs, last backup, newest sign-ups, reset requests waiting.
+
+**Pharmacies list**: table with logo, name, slug, city, status chip, plan, subscription end, staff count, invoices this month, last activity. Row actions: Open, Enter as support, Suspend or Reactivate, Copy login link.
+
+**New pharmacy** (single page form, three sections):
+
+```
++--------------------------------------------------------------------+
+| New pharmacy                                                       |
+|--------------------------------------------------------------------|
+| Pharmacy     Name [ City Care Pharmacy ]   URL slug [ citycare  ]  |
+|              City [ Rawalpindi ]  Phone [ ... ]  Licence [ ... ]   |
+| Plan         Plan [ Standard v ]  Subscription ends [ 2027-10-12 ]|
+|              Max staff [ 10 ]  Features [x] POS [x] OCR [ ] Portal |
+| First admin  Name [ ... ]  Username [ admin ]  Phone [ ... ]       |
+|              Credentials ( ) Invite link  ( ) Temporary password   |
+|--------------------------------------------------------------------|
+|                                   [ Cancel ]  [ Create pharmacy ]  |
++--------------------------------------------------------------------+
+```
+
+After creation a result panel shows the login URL and the invite link (or temporary password) **once**, with "Copy", "Share on WhatsApp" and "Send email" buttons and a warning that it will not be shown again.
+
+**Pharmacy detail** tabs: Profile (read and edit), Status and subscription (status change needs a reason and re-auth), Staff accounts, Customer accounts, Feature flags, Usage, Audit, Danger zone (export data, permanently delete with typed confirmation).
+
+**Accounts** (search across all pharmacies by name, username, phone): status toggle, "Generate reset link", "Force logout", "Unlock". Each action shows a confirmation naming the person and pharmacy.
+
+**System**: health, queue and failed jobs with retry, error log, backups with restore, maintenance mode with message, platform announcement banner.
+
+### 4.8 Pharmacy profile and branding (Pharmacy Admin)
+
+Two-column page: form on the left, live preview on the right showing the app header, the login page card and an 80 mm receipt with the current values.
+
+- Logo upload with crop to square, PNG or JPG up to 2 MB; preview in light and dark headers.
+- Display name, address, phones, WhatsApp, email, licence number, tax number.
+- Receipt header and footer text.
+- Brand colour picker. The chosen colour replaces `--primary` for this pharmacy only. The picker rejects colours that fail 4.5:1 contrast with white text and suggests the nearest passing shade.
+
+### 4.9 Staff, roles and customer accounts (Pharmacy Admin)
+
+**Staff list**: name, username, role, status, last login, 2FA. Actions: Edit, Change role, Deactivate or Activate, Set temporary password, Generate reset link, Force logout. "Add staff" uses the same invite-or-temporary-password choice as the platform form. A seat counter shows "6 of 10 staff" from the plan limit.
+
+**Roles**: list of templates (locked icon) and custom roles. Role editor groups permissions by area (Sell, Stock, Buy, People, Money, Admin) with a plain-language line under each checkbox ("Can see purchase cost and profit"). Sensitive permissions are marked. A "Compare with template" toggle shows differences. Saving a role that is in use asks for confirmation and logs out affected users.
+
+**Customer portal accounts** (from the customer page): "Create portal login" with the customer's phone pre-filled, then invite link or temporary password; status toggle; reset link. The customer list shows a "Portal" badge for customers with a login.
+
+**Forgot password requests** appear in the notification drawer for Pharmacy Admins with a one-click "Generate reset link".
+
+### 4.10 Customer portal
+
+Mobile first, branded with the pharmacy logo, name and colour. Large touch targets, bottom navigation with four items.
+
+```
++-----------------------------+     +-----------------------------+
+| [logo] City Care Pharmacy   |     | Order ORD-...0042           |
+| [ Search medicines       ]  |     | Status: Ready for pickup    |
+| Categories: Pain  Cold  ... |     | o Placed        10:02       |
+|-----------------------------|     | o Confirmed     10:15       |
+| Panadol 500mg   Rs 3.50     |     | o Ready         10:40       |
+| In stock        [ Add ]     |     |-----------------------------|
+| Augmentin 625   Rx          |     | Panadol 500 x 20     70.00  |
+| Prescription needed [ Add ] |     | Total                70.00  |
+|-----------------------------|     | Pay at pickup               |
+| Shop | Cart(2) | Orders | Me|     | Shop | Cart | Orders | Me   |
++-----------------------------+     +-----------------------------+
+```
+
+- **Shop**: search, categories, "Order again" from past purchases (most useful for chronic medicines).
+- **Cart**: quantities, Rx items ask for a prescription photo (camera or file), pickup or delivery, payment choice (pay at pickup, cash on delivery, add to my account if allowed), note to pharmacist.
+- **Orders**: list and status timeline; cancel while not yet ready.
+- **Me**: profile, invoices (view and download), account balance and ledger, change password, log out.
+- Empty, loading and error states for every step; the order button shows a progress state and cannot be pressed twice (idempotency key).
+
+### 4.11 Online orders (staff)
+
+Kanban-style board with columns Placed, Needs prescription, Confirmed, Ready, Out for delivery, and a list view toggle. New orders play a short sound and show a badge in POS. Opening an order shows lines with live availability, prescription images with Approve and Reject, and buttons for the next status. "Hand over" opens the POS with the order loaded and the locked prices, so payment and receipt work exactly like a normal sale.
+
+### 4.12 Supplier catalog (Pharmacist)
+
+On the supplier page, tab "Catalog": table of linked medicines with supplier code, pack, last price, bonus rule, lead time, preferred star. "Add medicines" opens a searchable picker with multi-select; "New medicine" opens an inline form and links the new medicine on save. "Import price list" accepts CSV or Excel, shows a preview with matched, new and error rows, and imports only after confirmation.
 
 ## 5. Interaction patterns
 
