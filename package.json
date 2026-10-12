@@ -6,6 +6,7 @@
     "dev": "next dev",
     "build": "next build && npm run build:worker",
     "build:worker": "node scripts/build-worker.mjs",
+    "build:desktop": "node scripts/build-standalone.mjs",
     "start": "next start",
     "worker": "node dist/worker.js",
     "lint": "next lint",

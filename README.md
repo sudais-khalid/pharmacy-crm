@@ -49,6 +49,10 @@ For production: `npm run build && npm start`, plus the background worker in a se
 
 The worker (`src/worker.ts`, bundled to `dist/worker.js`) delivers outbox events and runs scheduled maintenance through pg-boss, which keeps its queue in the same PostgreSQL database (schema `pgboss`). It stops gracefully on SIGTERM, SIGINT or an IPC `"shutdown"` message.
 
+## Desktop (Windows) proof of concept
+
+`npm run build:desktop`, then `cd desktop && npm install && npm run poc`. Electron starts an embedded PostgreSQL, the server and the worker, captures the login page and writes `desktop/poc-report.json`. The full installer is roadmap Phase 2; see `docs/plan/06-desktop-poc.md`.
+
 ## Docker
 
 ```bash

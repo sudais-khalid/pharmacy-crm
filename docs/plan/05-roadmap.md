@@ -72,7 +72,7 @@ Tasks:
 - [x] 0.9 Worker entry point with pg-boss and the outbox dispatcher; `worker` service in `docker-compose.yml`
 - [x] 0.10 Design tokens as CSS variables, Fira Sans and Fira Code through `next/font`, split `components/ui.tsx` into one file per component
 - [x] 0.11 Structured logging (pino) and `/api/health` (database, queue, disk)
-- [ ] 0.12 Desktop proof of concept: Next.js standalone build and embedded PostgreSQL started from an Electron main process on Windows; record start time, installed size and native module issues (Prisma engines, `pg`, OCR)
+- [x] 0.12 Desktop proof of concept (results in [06-desktop-poc.md](06-desktop-poc.md)): Next.js standalone build and embedded PostgreSQL started from an Electron main process on Windows; record start time, installed size and native module issues (Prisma engines, `pg`, OCR)
 
 Acceptance criteria:
 
@@ -125,13 +125,14 @@ Tasks:
 - [ ] 2.1 `desktop/` Electron main process: single-instance lock, splash screen with start-up progress, tray icon, main window, crash and log handling (logs in `%PROGRAMDATA%\PharmacyCRM\logs`)
 - [ ] 2.2 Embedded PostgreSQL 16 lifecycle: initialise data directory, DPAPI-protected superuser password, create `app_owner`, `app_user`, `platform_user`, start, stop, restart on crash, free port selection, bind to `127.0.0.1` only
 - [ ] 2.3 Next.js `output: "standalone"` build and a bundled worker, both started as child processes with Electron's Node; wait for `/api/health` before showing the window
-- [ ] 2.4 Migrations on every start, with an automatic backup before any pending migration runs
+- [ ] 2.4 Migrations on every start through a built-in runner compatible with `_prisma_migrations` (PoC finding 1), with an automatic backup before any pending migration runs
 - [ ] 2.5 Owner bootstrap from build-time secrets (email and password hash), forced TOTP enrolment, `PharmacyCRM.exe --recover-owner` for Windows administrators
 - [ ] 2.6 electron-builder NSIS installer: install folder, Start menu and desktop shortcuts, private-network firewall rule, uninstall that keeps data unless the user ticks "remove data"
 - [ ] 2.7 Client mode: "Connect to a pharmacy server" by LAN address or cloud URL, remembered per device
 - [ ] 2.8 LAN access toggle for Pharmacy Admin with the address shown as a QR code for tablets
-- [ ] 2.9 Local backup target (folder, USB drive, synced cloud folder) using the bundled `pg_dump`, with restore from the platform console
+- [ ] 2.9 Local backup target (folder, USB drive, synced cloud folder) using `pg_dump` and `pg_restore` shipped from the official PostgreSQL 16 Windows binaries (PoC finding 2), with restore from the platform console
 - [ ] 2.10 Release pipeline: GitHub Actions Windows runner builds and code-signs the installer, publishes it to the update feed; `electron-updater` checks on start and installs after a backup
+- [ ] 2.11 CI matrix with Node 24 (Electron runtime) next to Node 22 (PoC finding 5); fixed web port per installation (finding 7)
 
 Acceptance criteria:
 

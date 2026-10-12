@@ -11,6 +11,7 @@ This folder is the plan for taking the current Pharmacy CRM from a working first
 | 03 | [Data model changes](03-data-model.md) | You are writing a migration or a service |
 | 04 | [UI and UX plan](04-ui-ux.md) | You are building or changing a screen |
 | 05 | [Implementation roadmap](05-roadmap.md) | You are planning the next piece of work; each phase has tasks and acceptance criteria |
+| 06 | [Desktop proof of concept](06-desktop-poc.md) | You are working on the Windows installer; it records what was proven and what Phase 2 must solve |
 
 ## Summary
 

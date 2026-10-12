@@ -1,0 +1,19 @@
+{
+  "name": "pharmacy-crm-desktop",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Windows desktop shell: Electron supervisor with embedded PostgreSQL (Phase 0 proof of concept)",
+  "main": "src/main.mjs",
+  "scripts": {
+    "poc": "node scripts/run-electron.mjs --poc --fresh"
+  },
+  "dependencies": {
+    "embedded-postgres": "16.14.0-beta.17"
+  },
+  "devDependencies": {
+    "electron": "44.7.0"
+  },
+  "allowScripts": {
+    "@embedded-postgres/windows-x64@16.14.0-beta.17": true
+  }
+}
