@@ -32,6 +32,6 @@ export const POST = route("pos.use", async ({ req, svc }) => {
   const input = saleSchema.parse(await readJson(req));
   const sale = await createSale(svc, { ...input, customerId: input.customerId || null });
   return { id: sale.id, invoiceNo: sale.invoiceNo, total: sale.total, amountPaid: sale.amountPaid };
-});
+}, { idempotent: true });
 
 export const dynamic = "force-dynamic";

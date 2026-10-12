@@ -1,5 +1,6 @@
 import { runInTx } from "@/lib/db";
 import type { ServiceContext } from "@/modules/identity";
+import { audit, emit } from "@/modules/platform";
 import { AppError } from "@/lib/errors";
 import { todayStr, dateOnly } from "@/lib/dates";
 import { D, ZERO } from "@/lib/money";
@@ -77,6 +78,11 @@ export async function createPurchase(ctx: ServiceContext, input: PurchaseInput) 
     if (paid.gt(0)) {
       await tx.supplierLedger.create({ data: { supplierId: supplier.id, kind: "PAYMENT", credit: paid, description: `Payment on ${number}`, purchaseId: purchase.id, method: input.paymentMethod, userId } });
     }
+    await audit(tx, ctx, {
+      action: "purchase.create", entity: "Purchase", entityId: purchase.id,
+      after: { number, supplierId: supplier.id, supplierInvoice: input.supplierInvoice ?? null, total, paid, lines: lines.length },
+    });
+    await emit(tx, "PurchasePosted", { purchaseId: purchase.id, number, supplierId: supplier.id, medicineIds: [...new Set(lines.map((l) => l.medicineId))] });
     return purchase;
   });
 }
@@ -90,9 +96,11 @@ export async function paySupplier(ctx: ServiceContext, supplierId: string, input
     const amount = D(input.amount).toDecimalPlaces(2);
     const balance = await supplierBalance(tx, supplierId);
     if (amount.gt(balance)) throw new AppError(409, `Payment (${amount.toFixed(2)}) is more than the outstanding payable (${balance.toFixed(2)}).`);
-    await tx.supplierLedger.create({
+    const entry = await tx.supplierLedger.create({
       data: { supplierId, kind: "PAYMENT", credit: amount, description: input.note ? `Payment made – ${input.note}` : "Payment made", method: input.method, userId },
     });
+    await audit(tx, ctx, { action: "supplier.payment", entity: "Supplier", entityId: supplierId, after: { ledgerId: entry.id, amount, method: input.method } });
+    await emit(tx, "SupplierPaid", { supplierId, amount: amount.toFixed(2) });
     return { balance: balance.minus(amount) };
   });
 }

@@ -102,3 +102,85 @@ describe("audit log and outbox", () => {
     expect(await prisma.outboxEvent.count()).toBe(0);
   });
 });
+
+describe("write paths are audited and emit events", () => {
+  const rows = async () => ({
+    audit: await prisma.auditLog.findMany({ orderBy: { id: "asc" } }),
+    events: await prisma.outboxEvent.findMany({ orderBy: { id: "asc" } }),
+  });
+
+  it("a sale writes exactly one audit row and one outbox event; a failed sale writes none", async () => {
+    const u = await makeUser();
+    const m = await makeMedicine();
+    await makeBatch(m.id, "A", 90, 5);
+    const sale = await createSale(ctxOf(u), saleBody(m.id, 2));
+    let r = await rows();
+    expect(r.audit.map((a) => a.action)).toEqual(["sale.create"]);
+    expect(r.audit[0]).toMatchObject({ actorId: u.id, entity: "Sale", entityId: sale.id });
+    expect(r.events.map((e) => e.type)).toEqual(["SaleCompleted"]);
+    expect(r.events[0].payload).toMatchObject({ saleId: sale.id, medicineIds: [m.id] });
+
+    await expect(createSale(ctxOf(u), saleBody(m.id, 99))).rejects.toThrow(/Insufficient/);
+    r = await rows();
+    expect(r.audit).toHaveLength(1);
+    expect(r.events).toHaveLength(1);
+  });
+
+  it("cancel, purchase, adjustment and payments are audited", async () => {
+    const { cancelSale } = await import("@/modules/sales");
+    const { createPurchase, paySupplier } = await import("@/modules/procurement");
+    const { adjustStock } = await import("@/modules/inventory");
+    const { receiveCustomerPayment } = await import("@/modules/customers");
+    const { makeSupplier, makeCustomer, inDays } = await import("./helpers");
+
+    const u = await makeUser("ADMIN");
+    const m = await makeMedicine();
+    const b = await makeBatch(m.id, "A", 90, 20);
+    const s = await makeSupplier();
+    const c = await makeCustomer(5000);
+
+    const sale = await createSale(ctxOf(u), { ...saleBody(m.id, 2), paymentMethod: "CREDIT", customerId: c.id });
+    await receiveCustomerPayment(ctxOf(u), c.id, { amount: 50, method: "CASH" });
+    await cancelSale(ctxOf(u), sale.id, "entered by mistake");
+    await createPurchase(ctxOf(u), {
+      supplierId: s.id, purchaseDate: inDays(0), discount: 0, paid: 0, paymentMethod: "CASH",
+      items: [{ medicineId: m.id, batchNumber: "P1", expiryDate: inDays(300), quantity: 10, purchasePrice: 30, salePrice: 50 }],
+    });
+    await paySupplier(ctxOf(u), s.id, { amount: 100, method: "CASH" });
+    await adjustStock(ctxOf(u), { batchId: b.id, kind: "DAMAGE", quantity: 1, note: "broken bottle" });
+
+    const r = await rows();
+    expect(r.audit.map((a) => a.action)).toEqual(["sale.create", "customer.payment", "sale.cancel", "purchase.create", "supplier.payment", "stock.adjust"]);
+    expect(r.events.map((e) => e.type)).toEqual(["SaleCompleted", "CustomerPaymentReceived", "SaleCancelled", "PurchasePosted", "SupplierPaid", "StockAdjusted"]);
+    expect(r.audit.find((a) => a.action === "stock.adjust")).toMatchObject({ before: { quantity: 20 }, after: { quantity: 19, kind: "DAMAGE" } });
+  });
+
+  it("a price change records the old and new price", async () => {
+    const { updateMedicine } = await import("@/modules/catalog");
+    const u = await makeUser("PHARMACIST");
+    const m = await makeMedicine("Brufen", { salePrice: 50 });
+    const input = {
+      name: "Brufen", genericName: null, categoryId: null, barcode: null, sku: null, unit: "Pack",
+      purchasePrice: 40, salePrice: 65, minStock: 10, prescriptionRequired: false, description: null, active: true,
+    };
+    await updateMedicine(ctxOf(u), m.id, input);
+    await updateMedicine(ctxOf(u), m.id, input); // no change: no audit row
+    const r = await rows();
+    expect(r.audit).toHaveLength(1);
+    expect(r.audit[0]).toMatchObject({ action: "medicine.price.update", before: { salePrice: "50" }, after: { salePrice: "65" } });
+  });
+
+  it("user changes are audited without the password hash", async () => {
+    const { createUser, updateUser } = await import("@/modules/identity");
+    const admin = await makeUser("ADMIN");
+    const created = await createUser(ctxOf(admin), { name: "Ali", email: "ali@t.test", password: "Secret@1234", role: "CASHIER" });
+    await updateUser(ctxOf(admin), created.id, { password: "NewSecret@1234" });
+    await updateUser(ctxOf(admin), created.id, { active: false });
+    const r = await rows();
+    expect(r.audit.map((a) => a.action)).toEqual(["user.create", "user.password.reset", "user.deactivate"]);
+    const text = JSON.stringify(r.audit.map((a) => [a.before, a.after]));
+    expect(text).not.toMatch(/passwordHash|\$2[aby]\$/);
+    expect(r.audit[1].after).toEqual({ passwordChanged: true });
+    await expect(updateUser(ctxOf(admin), admin.id, { active: false })).rejects.toThrow(/own account/);
+  });
+});

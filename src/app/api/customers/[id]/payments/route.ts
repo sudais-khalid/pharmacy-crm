@@ -4,6 +4,7 @@ import { receiveCustomerPayment } from "@/modules/customers";
 
 export const POST = route("customers.payments", async ({ req, params, svc }) =>
   receiveCustomerPayment(svc, params.id, paymentSchema.parse(await readJson(req))),
+  { idempotent: true },
 );
 
 export const dynamic = "force-dynamic";

@@ -137,13 +137,17 @@ npm run typecheck
 npm run lint
 ```
 
-With the app running and seeded: `npm run test:smoke` (50 HTTP checks: login, permissions, validation, sale → cancel flow, reports, page loads).
+With the app running and seeded: `npm run test:smoke` (54 HTTP checks: login, permissions, validation, sale → cancel flow, reports, page loads).
 
 > `npm test` truncates the tables of the database in `.env.test`. Never point it at real data.
 
 ## API overview
 
 All endpoints return JSON; errors look like `{ "error": "message", "fields": { ... } }`. Authentication is a cookie set by `POST /api/auth/login`.
+
+Writes that move money or stock (`POST /api/sales`, `/api/purchases`, `/api/inventory/adjust`, customer and supplier payments) accept an `Idempotency-Key` header (8 to 200 letters, digits, `-` or `_`). Retrying with the same key returns the first response with `Idempotent-Replayed: true` instead of writing again; reusing a key with a different body returns 422.
+
+Every state change writes an append-only `AuditLog` row and an `OutboxEvent` in the same transaction.
 
 | Endpoint | Notes |
 |---|---|

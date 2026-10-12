@@ -1,6 +1,7 @@
 import { MovementType } from "@prisma/client";
 import { runInTx, dbOf, type DbContext } from "@/lib/db";
 import type { ServiceContext } from "@/modules/identity";
+import { audit, emit } from "@/modules/platform";
 import { AppError } from "@/lib/errors";
 import { todayStr, dateOnly } from "@/lib/dates";
 
@@ -40,6 +41,11 @@ export async function adjustStock(ctx: ServiceContext, input: AdjustInput) {
     await tx.stockMovement.create({
       data: { medicineId: batch.medicineId, batchId: batch.id, type, quantity: delta, balanceAfter: newQty, note: input.note, userId },
     });
+    await audit(tx, ctx, {
+      action: "stock.adjust", entity: "Batch", entityId: batch.id,
+      before: { quantity: batch.quantity }, after: { quantity: newQty, kind: input.kind, note: input.note },
+    });
+    await emit(tx, "StockAdjusted", { batchId: batch.id, medicineId: batch.medicineId, quantity: delta, type });
     return { batchId: batch.id, quantity: newQty };
   });
 }

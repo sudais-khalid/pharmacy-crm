@@ -42,6 +42,15 @@ SID=$(echo "$SALE" | js "d['id']")
 ok "Cashier cannot cancel sale" "$(code -b /tmp/smoke_cashier.jar -X POST $B/api/sales/$SID/cancel -H 'content-type: application/json' -d '{"reason":"test"}')" 403
 ok "Pharmacist cancels sale" "$(code -b /tmp/smoke_pharmacist.jar -X POST $B/api/sales/$SID/cancel -H 'content-type: application/json' -d '{"reason":"smoke test"}')" 200
 ok "Stock restored after cancel" "$(curl -s -b /tmp/smoke_cashier.jar "$B/api/pos/search?q=$BC" | js "d[0]['stock']")" 10
+# idempotent retry: same Idempotency-Key twice sells once and replays the first response
+IKEY="smoke-retry-$(date +%s)"
+IBODY="{\"items\":[{\"medicineId\":\"$NID\",\"quantity\":1}],\"paymentMethod\":\"CASH\"}"
+R1=$(curl -s -b /tmp/smoke_cashier.jar -X POST $B/api/sales -H 'content-type: application/json' -H "Idempotency-Key: $IKEY" -d "$IBODY")
+R2H=$(curl -s -D - -o /tmp/smoke_r2.json -b /tmp/smoke_cashier.jar -X POST $B/api/sales -H 'content-type: application/json' -H "Idempotency-Key: $IKEY" -d "$IBODY")
+ok "Idempotent retry returns the same invoice" "$(js "d['invoiceNo']" < /tmp/smoke_r2.json)" "$(echo "$R1" | js "d['invoiceNo']")"
+ok "Idempotent retry is marked as replayed" "$(echo "$R2H" | grep -ci '^idempotent-replayed: true')" 1
+ok "Idempotent retry sold only once" "$(curl -s -b /tmp/smoke_cashier.jar "$B/api/pos/search?q=$BC" | js "d[0]['stock']")" 9
+ok "Idempotency key reused with a different body is rejected" "$(code -b /tmp/smoke_cashier.jar -X POST $B/api/sales -H 'content-type: application/json' -H "Idempotency-Key: $IKEY" -d "{\"items\":[{\"medicineId\":\"$NID\",\"quantity\":2}],\"paymentMethod\":\"CASH\"}")" 422
 ok "Double cancel rejected" "$(code -b /tmp/smoke_pharmacist.jar -X POST $B/api/sales/$SID/cancel -H 'content-type: application/json' -d '{"reason":"again"}')" 409
 ok "Invoice loads" "$(code -b /tmp/smoke_cashier.jar $B/api/sales/$SID)" 200
 ok "Archive instead of delete (has history)" "$(curl -s -b /tmp/smoke_admin.jar -X DELETE $B/api/medicines/$NID | js "d['archived']")" True

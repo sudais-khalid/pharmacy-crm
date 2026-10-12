@@ -5,6 +5,7 @@ import { todayStr } from "@/lib/dates";
 import { D, ZERO } from "@/lib/money";
 import { customerBalance } from "@/modules/customers";
 import { can, type ServiceContext } from "@/modules/identity";
+import { audit, emit } from "@/modules/platform";
 
 export type SaleInput = {
   customerId?: string | null;
@@ -119,6 +120,12 @@ export async function createSale(ctx: ServiceContext, input: SaleInput, opts: { 
         });
       }
     }
+
+    await audit(tx, ctx, {
+      action: "sale.create", entity: "Sale", entityId: sale.id,
+      after: { invoiceNo, total, amountPaid: paid, discount, paymentMethod: input.paymentMethod, customerId: customer?.id ?? null, lines: lines.length },
+    });
+    await emit(tx, "SaleCompleted", { saleId: sale.id, invoiceNo, medicineIds, customerId: customer?.id ?? null });
     return sale;
   });
 }
@@ -144,6 +151,11 @@ export async function cancelSale(ctx: ServiceContext, saleId: string, reason: st
         await tx.customerLedger.create({ data: { customerId: sale.customerId, kind: "CANCELLATION", debit: sale.amountPaid, description: `Refund of payment on ${sale.invoiceNo}`, saleId: sale.id, userId } });
       }
     }
+    await audit(tx, ctx, {
+      action: "sale.cancel", entity: "Sale", entityId: sale.id,
+      before: { status: "COMPLETED" }, after: { status: "CANCELLED", reason, total: sale.total },
+    });
+    await emit(tx, "SaleCancelled", { saleId: sale.id, invoiceNo: sale.invoiceNo, medicineIds: [...new Set(sale.items.map((i) => i.medicineId))] });
     return tx.sale.findUnique({ where: { id: saleId } });
   });
 }

@@ -1,6 +1,6 @@
 import { route, readJson, AppError } from "@/lib/api";
 import { prisma } from "@/lib/prisma";
-import { medicineSchema, deleteOrArchiveMedicine } from "@/modules/catalog";
+import { medicineSchema, updateMedicine, deleteOrArchiveMedicine } from "@/modules/catalog";
 import { sellableStock } from "@/modules/inventory";
 
 export const GET = route("medicines.view", async ({ params, svc }) => {
@@ -13,10 +13,9 @@ export const GET = route("medicines.view", async ({ params, svc }) => {
   return { ...med, stock };
 });
 
-export const PUT = route("medicines.manage", async ({ req, params }) => {
-  const { opening: _opening, ...data } = medicineSchema.parse(await readJson(req));
-  return prisma.medicine.update({ where: { id: params.id }, data: { ...data, categoryId: data.categoryId || null } });
-});
+export const PUT = route("medicines.manage", async ({ req, params, svc }) =>
+  updateMedicine(svc, params.id, medicineSchema.parse(await readJson(req))),
+);
 
 export const DELETE = route("medicines.delete", async ({ params, svc }) => deleteOrArchiveMedicine(svc, params.id));
 
