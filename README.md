@@ -45,7 +45,9 @@ npm run db:seed
 npm run dev                 # http://localhost:3000
 ```
 
-For production: `npm run build && npm start`.
+For production: `npm run build && npm start`, plus the background worker in a second process: `npm run worker`.
+
+The worker (`src/worker.ts`, bundled to `dist/worker.js`) delivers outbox events and runs scheduled maintenance through pg-boss, which keeps its queue in the same PostgreSQL database (schema `pgboss`). It stops gracefully on SIGTERM, SIGINT or an IPC `"shutdown"` message.
 
 ## Docker
 

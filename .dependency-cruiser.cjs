@@ -18,7 +18,7 @@ module.exports = {
       name: "module-internals-from-outside",
       severity: "error",
       comment: "Code outside a module may only import that module's index.ts.",
-      from: { path: "^(src/(app|components|lib|middleware\\.ts)|tests|prisma|desktop)" },
+      from: { path: "^(src/(app|components|lib|middleware\\.ts|worker\\.ts)|tests|prisma|desktop|scripts)" },
       to: { path: "^src/modules/[^/]+/", pathNot: "^src/modules/[^/]+/index\\.ts$" },
     },
     {
