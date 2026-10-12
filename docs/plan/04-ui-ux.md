@@ -1,6 +1,6 @@
 # 04. UI and UX Plan
 
-Design direction was generated with the `ui-ux-pro-max` design intelligence tool (query: pharmacy healthcare POS admin dashboard, density 8, variance 3, motion 2) and then adapted to a pharmacy counter context.
+Design direction comes from the `ui-ux-pro-max` style and guideline database (query: pharmacy healthcare POS admin dashboard, density 8, variance 3, motion 2), adapted to a pharmacy counter context.
 
 ## 1. Design principles
 
@@ -14,11 +14,11 @@ Design direction was generated with the `ui-ux-pro-max` design intelligence tool
 
 ### 2.1 Style
 
-**Minimalism and Swiss style** (tool recommendation): grid based, high contrast, functional, sans-serif, sharp hierarchy, subtle hover transitions of 150 to 250 ms, no decorative motion. Best fit for enterprise dashboards and professional tools, low performance cost, low accessibility risk.
+**Minimalism and Swiss style** (database recommendation): grid based, high contrast, functional, sans-serif, sharp hierarchy, subtle hover transitions of 150 to 250 ms, no decorative motion. Best fit for enterprise dashboards and professional tools, low performance cost, low accessibility risk.
 
 ### 2.2 Colour tokens
 
-The tool proposed a dark slate palette with a green accent. For a pharmacy, light mode is the daily default (bright shops, printed-paper feel) and the existing teal brand signals health and trust, so the palette keeps teal as primary and adopts the tool's slate neutrals and status colours. All values become CSS variables consumed by Tailwind, replacing raw colour classes in components.
+The database proposed a dark slate palette with a green accent. For a pharmacy, light mode is the daily default (bright shops, printed-paper feel) and the existing teal brand signals health and trust, so the palette keeps teal as primary and adopts its slate neutrals and status colours. All values become CSS variables consumed by Tailwind, replacing raw colour classes in components.
 
 | Token | Light | Dark | Use |
 |---|---|---|---|
@@ -42,7 +42,7 @@ Status is never conveyed by colour alone: every badge has a text label and an ic
 
 | Role | Font | Notes |
 |---|---|---|
-| UI text | **Fira Sans** 400/500/600 | Tool pairing for dashboards and data; good legibility at small sizes, Latin and numbers |
+| UI text | **Fira Sans** 400/500/600 | Recommended pairing for dashboards and data; good legibility at small sizes, Latin and numbers |
 | Numbers, codes, batch numbers, invoice numbers | **Fira Code** 500 or Fira Sans with `font-variant-numeric: tabular-nums` | Columns of money line up |
 | Base size | 14 px for back-office tables, 16 px for forms and POS | Never below 12 px |
 | Line height | 1.5 body, 1.25 headings | |
@@ -51,11 +51,11 @@ Fonts are self-hosted through `next/font` so the app works offline on a LAN.
 
 ### 2.4 Spacing and density
 
-Dense dashboard scale (tool density 8): 4, 8, 12, 16, 24, 32 px. Table rows 40 px (compact) or 48 px (comfortable, user toggle). Touch targets on POS and mobile at least 44 x 44 px.
+Dense dashboard scale (density 8): 4, 8, 12, 16, 24, 32 px. Table rows 40 px (compact) or 48 px (comfortable, user toggle). Touch targets on POS and mobile at least 44 x 44 px.
 
 ### 2.5 Motion
 
-Subtle only (tool motion 2): 150 ms for hover and press, 200 ms for dialogs and drawers, exit faster than enter. `prefers-reduced-motion` disables all non-essential transitions. No scroll animations in the app.
+Subtle only (motion 2): 150 ms for hover and press, 200 ms for dialogs and drawers, exit faster than enter. `prefers-reduced-motion` disables all non-essential transitions. No scroll animations in the app.
 
 ## 3. Information architecture
 
@@ -162,7 +162,7 @@ Review screen (desktop, also usable on tablet):
 | Cashier (inside POS) | Session sales, cash in drawer, invoices today | Recent own invoices with reprint |
 | Developer console | Uptime, DB size, queue depth, failed jobs, last backup | Job list with retry, error log, feature flags, maintenance mode, backup and restore |
 
-Charts follow the `dataviz` and tool chart rules: legends and tooltips, accessible colours, numbers available as a table toggle, no colour-only meaning.
+Charts follow the chart guidelines: legends and tooltips, accessible colours, numbers available as a table toggle, no colour-only meaning.
 
 ### 4.5 Reports
 
