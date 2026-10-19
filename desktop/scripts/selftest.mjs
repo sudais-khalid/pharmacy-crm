@@ -1,0 +1,99 @@
+// End-to-end check of the desktop supervisor against a throwaway data folder (never %PROGRAMDATA%).
+// Needs `npm run build:desktop` in the repository root first. Usage: node scripts/selftest.mjs
+import { execFileSync, spawn } from "node:child_process";
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { createRequire } from "node:module";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
+const here = path.dirname(fileURLToPath(import.meta.url));
+const desktop = path.resolve(here, "..");
+const repo = path.resolve(desktop, "..");
+const electron = createRequire(import.meta.url)("electron");
+const pgBin = path.join(desktop, "node_modules", "@embedded-postgres", "windows-x64", "native", "bin");
+const root = mkdtempSync(path.join(tmpdir(), "pcrm-desktop-"));
+const dataDir = path.join(root, "PharmacyCRM");
+let failures = 0;
+
+function check(name, ok, detail = "") {
+  console.log(`${ok ? "PASS" : "FAIL"}  ${name}${ok || !detail ? "" : `: ${detail}`}`);
+  if (!ok) failures++;
+}
+
+function runApp(extraEnv = {}) {
+  const env = { ...process.env, PCRM_DATA_DIR: dataDir, ...extraEnv };
+  delete env.ELECTRON_RUN_AS_NODE;
+  return new Promise((resolve) => {
+    const started = Date.now();
+    const p = spawn(electron, [desktop, "--selftest"], { env, stdio: ["ignore", "pipe", "pipe"] });
+    let out = "";
+    p.stdout.on("data", (d) => (out += d));
+    p.stderr.on("data", (d) => (out += d));
+    p.on("exit", (code) => {
+      const file = path.join(dataDir, "logs", "selftest.json");
+      const report = existsSync(file) ? JSON.parse(readFileSync(file, "utf8")) : null;
+      rmSync(file, { force: true });
+      resolve({ code, report, out, seconds: Math.round((Date.now() - started) / 100) / 10 });
+    });
+  });
+}
+
+const pgRunning = () => {
+  try {
+    execFileSync(path.join(pgBin, "pg_ctl.exe"), ["status", "-D", path.join(dataDir, "data")], { stdio: "ignore" });
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+try {
+  // 1. first start on an empty PC
+  const first = await runApp();
+  check("first start succeeds", first.code === 0 && first.report?.ok, first.out.slice(-1500));
+  console.log(`      first start took ${first.seconds}s`);
+  check("first start creates the database and the backup key", ["database-created", "backup-key-created"].every((e) => first.report?.events.includes(e)), JSON.stringify(first.report?.events));
+  check("PostgreSQL listens on loopback only", first.report?.listenAddresses === "127.0.0.1", first.report?.listenAddresses);
+  check("PostgreSQL is stopped after quitting", !pgRunning());
+  const keys = JSON.parse(readFileSync(path.join(dataDir, "keys.json"), "utf8"));
+  // Electron safeStorage output on Windows: "v10" followed by AES-GCM data under a DPAPI-protected key
+  const sealed = ["dbPassword", "backupKey", "jwtSecret", "totpKey"].map((k) => Buffer.from(keys.secrets[k] ?? "", "base64"));
+  check("secrets are stored DPAPI-protected", sealed.every((b) => b.subarray(0, 3).toString() === "v10" && b.length > 30), sealed.map((b) => b.subarray(0, 8).toString("hex")).join(" "));
+  const config = JSON.parse(readFileSync(path.join(dataDir, "config.json"), "utf8"));
+  check("ports are stored for the installation", config.pgPort > 0 && config.webPort > 0, JSON.stringify(config));
+  const acl = execFileSync("icacls", [dataDir], { encoding: "utf8" });
+  check("data folder is not open to other users", !/(Everyone|Users|Authenticated Users):/i.test(acl) && /S-1-5-18|SYSTEM/i.test(acl), acl);
+
+  // 2. restart keeps the data and the ports
+  const second = await runApp();
+  check("restart succeeds and keeps data", second.code === 0 && second.report?.selftestRuns === 2 && !second.report.events.includes("database-created"), JSON.stringify(second.report));
+  check("restart uses the same ports", second.report?.pgPort === config.pgPort && second.report?.baseUrl.endsWith(`:${config.webPort}`));
+
+  // 3. the database password is lost (another Windows account, profile reset)
+  delete keys.secrets.dbPassword;
+  writeFileSync(path.join(dataDir, "keys.json"), JSON.stringify(keys, null, 2));
+  const third = await runApp();
+  check("a lost database password is reset locally", third.code === 0 && third.report?.events.includes("database-password-reset") && third.report.selftestRuns === 3, third.out.slice(-1500));
+  check("no temporary trust rules are left behind", !existsSync(path.join(dataDir, "data", "pcrm_reset_hba.conf")));
+
+  // 4. PostgreSQL left running by a crashed session
+  execFileSync(path.join(pgBin, "pg_ctl.exe"), ["start", "-w", "-D", path.join(dataDir, "data"), "-o", `-p ${config.pgPort} -c listen_addresses=127.0.0.1`, "-l", path.join(root, "orphan.log")], { stdio: "ignore" });
+  const fourth = await runApp();
+  check("a PostgreSQL left running is taken over", fourth.code === 0 && fourth.report?.selftestRuns === 4, fourth.out.slice(-1500));
+
+  // 5. an update with a new migration backs up first
+  const migrations = path.join(root, "migrations");
+  cpSync(path.join(repo, "prisma", "migrations"), migrations, { recursive: true });
+  mkdirSync(path.join(migrations, "29990101000000_selftest"));
+  writeFileSync(path.join(migrations, "29990101000000_selftest", "migration.sql"), "SELECT 1;\n");
+  const fifth = await runApp({ PCRM_MIGRATIONS_DIR: migrations });
+  const backups = readdirSync(path.join(dataDir, "backups"));
+  check("pending migrations run after an automatic backup", fifth.code === 0 && backups.some((f) => f.endsWith("-pre-update.pcrmbak")), `${fifth.out.slice(-1500)} ${backups}`);
+} finally {
+  if (pgRunning()) execFileSync(path.join(pgBin, "pg_ctl.exe"), ["stop", "-D", path.join(dataDir, "data"), "-m", "fast"], { stdio: "ignore" });
+  if (failures) console.log(`kept ${root} for inspection`);
+  else rmSync(root, { recursive: true, force: true });
+}
+console.log(failures ? `${failures} check(s) failed` : "all desktop checks passed");
+process.exit(failures ? 1 : 0);

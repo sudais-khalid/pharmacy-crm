@@ -1,218 +1,158 @@
 /**
- * Phase 0 proof of concept (roadmap task 0.12): the Electron main process acts as a supervisor that
- *   1. initialises and starts an embedded PostgreSQL 16 bound to 127.0.0.1,
- *   2. applies the Prisma migrations,
- *   3. starts the Next.js standalone server and the background worker with Electron's own Node,
- *   4. opens the app window once /api/health answers,
- *   5. shuts everything down gracefully.
- * With --poc it runs hidden, captures the login page, writes a timing report and quits.
- * Production hardening (DPAPI secrets, app_user roles, PROGRAMDATA paths, bundled migrations) is Phase 2.
+ * Electron main process: one instance per PC, a splash while the supervisor starts everything, then the
+ * app window and a tray icon. Closing the window quits the app, which stops the worker, the web server
+ * and PostgreSQL in that order.
+ *
+ *   --selftest   start hidden, check health, write logs\selftest.json and quit (used by tests and CI)
  */
-import { app, BrowserWindow } from "electron";
-import { spawn, fork } from "node:child_process";
-import { randomBytes } from "node:crypto";
-import { existsSync, mkdirSync, rmSync, writeFileSync, statSync, readdirSync } from "node:fs";
-import net from "node:net";
+import { app, BrowserWindow, Menu, Tray, dialog, shell } from "electron";
+import { writeFileSync } from "node:fs";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
-import EmbeddedPostgres from "embedded-postgres";
+import { appIcon, showSplash } from "./splash.mjs";
+import { Supervisor } from "./supervisor.mjs";
 
-const here = path.dirname(fileURLToPath(import.meta.url));
-const repo = path.resolve(here, "..", "..");
-const POC = process.argv.includes("--poc");
-const FRESH = process.argv.includes("--fresh");
-const DB_NAME = "pharmacy_crm";
+const SELFTEST = process.argv.includes("--selftest");
 
-const t0 = Date.now();
-const timings = {};
-const mark = (name) => (timings[name] = Date.now() - t0);
-const log = (msg, extra = {}) => console.log(JSON.stringify({ at: new Date().toISOString(), svc: "desktop", msg, ...extra }));
+let supervisor;
+let win = null;
+let tray = null;
+let quitting = false;
 
-function freePort() {
-  return new Promise((resolve, reject) => {
-    const srv = net.createServer();
-    srv.unref();
-    srv.on("error", reject);
-    srv.listen(0, "127.0.0.1", () => {
-      const { port } = srv.address();
-      srv.close(() => resolve(port));
-    });
+function openWindow(baseUrl) {
+  win = new BrowserWindow({
+    width: 1366,
+    height: 860,
+    minWidth: 1024,
+    minHeight: 640,
+    show: false,
+    title: "Pharmacy CRM",
+    icon: appIcon(64),
+    autoHideMenuBar: true,
+    webPreferences: { contextIsolation: true, sandbox: true, nodeIntegration: false, spellcheck: false },
   });
-}
-
-/** Electron's executable doubles as a plain Node runtime for child processes. */
-const nodeEnv = (extra) => ({ ...process.env, ELECTRON_RUN_AS_NODE: "1", NODE_ENV: "production", ...extra });
-
-function run(cmd, args, opts) {
-  return new Promise((resolve, reject) => {
-    const p = spawn(cmd, args, { ...opts, shell: process.platform === "win32" });
-    let out = "";
-    p.stdout?.on("data", (d) => (out += d));
-    p.stderr?.on("data", (d) => (out += d));
-    p.on("exit", (code) => (code === 0 ? resolve(out) : reject(new Error(`${cmd} ${args.join(" ")} exited ${code}\n${out}`))));
-  });
-}
-
-async function waitForHealth(url, timeoutMs = 60_000) {
-  const start = Date.now();
-  let last = "no response";
-  for (;;) {
+  const sameOrigin = (url) => {
     try {
-      const r = await fetch(url);
-      if (r.ok) return r.json();
-      last = `${r.status} ${await r.text()}`;
-    } catch (e) {
-      last = String(e?.cause ?? e);
+      return new URL(url).origin === baseUrl;
+    } catch {
+      return false;
     }
-    if (Date.now() - start > timeoutMs) throw new Error(`no healthy answer from ${url}: ${last.slice(0, 800)}`);
-    await new Promise((r) => setTimeout(r, 300));
-  }
-}
-
-function dirSize(p) {
-  let total = 0;
-  for (const e of readdirSync(p, { withFileTypes: true })) {
-    const full = path.join(p, e.name);
-    total += e.isDirectory() ? dirSize(full) : statSync(full).size;
-  }
-  return total;
-}
-
-let pg, server, worker, win;
-
-async function start() {
-  const dataRoot = path.join(app.getPath("userData"), "poc-data");
-  const pgDir = path.join(dataRoot, "pgdata");
-  if (FRESH) rmSync(dataRoot, { recursive: true, force: true });
-  mkdirSync(dataRoot, { recursive: true });
-  const firstRun = !existsSync(path.join(pgDir, "PG_VERSION"));
-
-  const pgPort = await freePort();
-  const password = randomBytes(18).toString("base64url");
-  pg = new EmbeddedPostgres({
-    databaseDir: pgDir,
-    user: "postgres",
-    password,
-    port: pgPort,
-    persistent: true,
-    authMethod: "scram-sha-256",
-    initdbFlags: ["--encoding=UTF8", "--locale=C"],
-    postgresFlags: ["-c", "listen_addresses=127.0.0.1", "-c", "timezone=UTC"],
-    onLog: () => {},
-  });
-  if (firstRun) {
-    await pg.initialise();
-    mark("pgInitialised");
-  } else {
-    // PoC only: a fresh random password needs a fresh cluster. Phase 2 keeps it in DPAPI storage.
-    throw new Error("existing PoC data found; run with --fresh");
-  }
-  await pg.start();
-  mark("pgStarted");
-  await pg.createDatabase(DB_NAME).catch(() => {});
-  const probe = pg.getPgClient();
-  await probe.connect();
-  const settings = {
-    listenAddresses: (await probe.query("SHOW listen_addresses")).rows[0].listen_addresses,
-    timezone: (await probe.query("SHOW timezone")).rows[0].TimeZone,
-    serverVersion: (await probe.query("SHOW server_version")).rows[0].server_version,
   };
-  await probe.end();
-  const databaseUrl = `postgresql://postgres:${encodeURIComponent(password)}@127.0.0.1:${pgPort}/${DB_NAME}?schema=public`;
-
-  await run("npx", ["prisma", "migrate", "deploy"], { cwd: repo, env: { ...process.env, DATABASE_URL: databaseUrl } });
-  mark("migrated");
-
-  const webPort = await freePort();
-  const standalone = path.join(repo, ".next", "standalone");
-  const jwtSecret = randomBytes(48).toString("base64url");
-  server = spawn(process.execPath, [path.join(standalone, "server.js")], {
-    cwd: standalone,
-    env: nodeEnv({ PORT: String(webPort), HOSTNAME: "127.0.0.1", DATABASE_URL: databaseUrl, JWT_SECRET: jwtSecret, APP_TIMEZONE: "Asia/Karachi" }),
-    stdio: ["ignore", "pipe", "pipe"],
-    windowsHide: true,
+  // Pages of the app (bills to print, for example) may open in a window; anything else opens in the browser.
+  win.webContents.setWindowOpenHandler(({ url }) => {
+    if (sameOrigin(url)) return { action: "allow", overrideBrowserWindowOptions: { autoHideMenuBar: true, icon: appIcon(64) } };
+    if (/^https?:/.test(url)) void shell.openExternal(url);
+    return { action: "deny" };
   });
-  const serverLog = [];
-  server.stdout.on("data", (d) => serverLog.push(String(d)));
-  server.stderr.on("data", (d) => serverLog.push(String(d)));
-  server.on("exit", (code) => log("web server exited", { code, output: serverLog.join("").slice(-3000) }));
-  const base = `http://127.0.0.1:${webPort}`;
-  const health = await waitForHealth(`${base}/api/health`);
-  mark("webHealthy");
-
-  worker = fork(path.join(repo, "dist", "worker.js"), [], {
-    cwd: repo,
-    execPath: process.execPath,
-    env: nodeEnv({ DATABASE_URL: databaseUrl, APP_TIMEZONE: "Asia/Karachi", LOG_SERVICE: "worker" }),
-    stdio: ["ignore", "pipe", "pipe", "ipc"],
+  win.webContents.on("will-navigate", (event, url) => {
+    if (!sameOrigin(url)) event.preventDefault();
   });
-  await new Promise((resolve, reject) => {
-    const timer = setTimeout(() => reject(new Error("worker did not start")), 30_000);
-    worker.stdout.on("data", (d) => {
-      if (String(d).includes("worker started")) {
-        clearTimeout(timer);
-        resolve();
-      }
-    });
-    worker.on("exit", (code) => reject(new Error(`worker exited ${code}`)));
+  win.once("ready-to-show", () => {
+    if (!SELFTEST) {
+      win.maximize();
+      win.show();
+    }
   });
-  mark("workerStarted");
-
-  win = new BrowserWindow({ width: 1280, height: 800, show: !POC, title: "Pharmacy CRM", webPreferences: { contextIsolation: true, sandbox: true } });
-  await win.loadURL(`${base}/login`);
-  mark("windowLoaded");
-
-  if (POC) {
-    await new Promise((r) => setTimeout(r, 1500));
-    const image = await win.webContents.capturePage();
-    const shot = path.join(here, "..", "poc-login.png");
-    writeFileSync(shot, image.toPNG());
-    const report = {
-      firstRun,
-      postgres: settings,
-      timingsMs: timings,
-      health,
-      versions: { electron: process.versions.electron, node: process.versions.node, chrome: process.versions.chrome },
-      sizesMB: {
-        electronDist: Math.round(dirSize(path.join(here, "..", "node_modules", "electron", "dist")) / 1e6),
-        postgresBinaries: Math.round(dirSize(path.join(here, "..", "node_modules", "@embedded-postgres", "windows-x64")) / 1e6),
-        nextStandalone: Math.round(dirSize(standalone) / 1e6),
-        emptyDatabaseAfterMigrations: Math.round(dirSize(pgDir) / 1e6),
-      },
-      screenshot: shot,
-    };
-    await stop();
-    report.timingsMs.shutdown = Date.now() - t0 - report.timingsMs.windowLoaded;
-    writeFileSync(path.join(here, "..", "poc-report.json"), JSON.stringify(report, null, 2));
-    log("poc report", report);
-    app.exit(0);
-  }
+  win.on("closed", () => (win = null));
+  return win.loadURL(baseUrl);
 }
 
-let stopping = false;
-async function stop() {
-  if (stopping) return;
-  stopping = true;
-  if (worker && worker.exitCode === null) {
-    worker.send("shutdown");
-    await Promise.race([new Promise((r) => worker.once("exit", r)), new Promise((r) => setTimeout(r, 15_000))]);
+function createTray() {
+  tray = new Tray(appIcon(32));
+  tray.setToolTip("Pharmacy CRM");
+  const show = () => {
+    if (!win) return;
+    if (win.isMinimized()) win.restore();
+    win.show();
+    win.focus();
+  };
+  tray.on("click", show);
+  tray.setContextMenu(
+    Menu.buildFromTemplate([
+      { label: "Open Pharmacy CRM", click: show },
+      { type: "separator" },
+      { label: "Open data folder", click: () => void shell.openPath(supervisor.paths.root) },
+      { label: "Open logs folder", click: () => void shell.openPath(supervisor.paths.logs) },
+      { type: "separator" },
+      { label: "Quit", click: () => app.quit() },
+    ]),
+  );
+}
+
+async function selftest(baseUrl) {
+  const health = await (await fetch(`${baseUrl}/api/health`)).json();
+  const listen = await supervisor.db.withClient(supervisor.secrets.get("dbPassword"), "postgres", async (c) => (await c.query("SHOW listen_addresses")).rows[0].listen_addresses);
+  // counts self-test runs in a setting of the maintenance database, to prove data survives restarts
+  const runs = await supervisor.db.withClient(supervisor.secrets.get("dbPassword"), "postgres", async (c) => {
+    const n = Number((await c.query("SELECT coalesce(current_setting('pcrm.selftest_runs', true), '0') AS n")).rows[0].n) + 1;
+    await c.query(`ALTER DATABASE postgres SET pcrm.selftest_runs = '${n}'`);
+    return n;
+  });
+  const login = await fetch(`${baseUrl}/login`);
+  const report = {
+    // low disk space only makes health "degraded"; the self-test is about the app itself
+    ok: health.checks?.database?.ok === true && health.checks?.worker?.ok === true && login.ok,
+    events: supervisor.events,
+    baseUrl,
+    pgPort: supervisor.db.port,
+    listenAddresses: listen,
+    selftestRuns: runs,
+    health,
+    loginStatus: login.status,
+    windowTitle: win?.getTitle(),
+  };
+  writeFileSync(path.join(supervisor.paths.logs, "selftest.json"), JSON.stringify(report, null, 2));
+  return report.ok;
+}
+
+async function boot() {
+  if (app.isPackaged) Menu.setApplicationMenu(null);
+  const splash = await showSplash({ show: !SELFTEST });
+  supervisor = new Supervisor({ status: (t) => splash.status(t), echoLogs: !app.isPackaged });
+  supervisor.onFailure = (e) => {
+    dialog.showErrorBox("Pharmacy CRM stopped working", `${e.message}\n\nClose and open the app again. If this keeps happening, send the logs folder to support.`);
+    app.quit();
+  };
+  try {
+    const baseUrl = await supervisor.start();
+    splash.status("Opening");
+    await openWindow(baseUrl);
+    splash.close();
+    if (SELFTEST) {
+      const ok = await selftest(baseUrl).catch((e) => {
+        supervisor.log.error("selftest failed", { error: String(e?.stack ?? e) });
+        return false;
+      });
+      process.exitCode = ok ? 0 : 1;
+      app.quit();
+      return;
+    }
+    createTray();
+  } catch (e) {
+    splash.close();
+    supervisor.log?.error("start failed", { error: String(e?.stack ?? e) });
+    if (!SELFTEST) dialog.showErrorBox("Pharmacy CRM could not start", `${e.message}\n\nLogs: ${supervisor.paths.logs}`);
+    else console.error(e);
+    process.exitCode = 1;
+    app.quit();
   }
-  if (server && server.exitCode === null) server.kill();
-  if (pg) await pg.stop().catch((e) => log("postgres stop failed", { error: String(e) }));
 }
 
 if (!app.requestSingleInstanceLock()) {
   app.quit();
 } else {
-  app.whenReady().then(start).catch(async (e) => {
-    log("start failed", { error: String(e?.stack ?? e) });
-    await stop();
-    app.exit(1);
+  app.on("second-instance", () => {
+    if (!win) return;
+    if (win.isMinimized()) win.restore();
+    win.show();
+    win.focus();
   });
-  app.on("before-quit", async (event) => {
-    if (stopping) return;
+  app.whenReady().then(boot);
+  app.on("window-all-closed", () => app.quit());
+  app.on("before-quit", (event) => {
+    if (quitting) return;
     event.preventDefault();
-    await stop();
-    app.exit(0);
+    quitting = true;
+    tray?.destroy();
+    (supervisor?.stop() ?? Promise.resolve()).finally(() => app.exit(process.exitCode ?? 0));
   });
 }

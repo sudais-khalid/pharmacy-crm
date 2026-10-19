@@ -1,6 +1,7 @@
 // Bundles the Node entry points into dist/ (CommonJS, Node 22):
 //   src/worker.ts  -> dist/worker.js  (background jobs)
 //   src/ops-cli.ts -> dist/ops.js     (migrate, backup, verify, restore)
+//   src/ops-lib.ts -> dist/ops-lib.js (the same operations as a library for the desktop supervisor)
 // Prisma stays external: it loads its generated client and query compiler from node_modules at run time.
 import { readFileSync } from "node:fs";
 import { build } from "esbuild";
@@ -21,4 +22,5 @@ const common = {
 
 await build({ ...common, entryPoints: ["src/worker.ts"], outfile: "dist/worker.js" });
 await build({ ...common, entryPoints: ["src/ops-cli.ts"], outfile: "dist/ops.js" });
-console.log("built dist/worker.js and dist/ops.js");
+await build({ ...common, entryPoints: ["src/ops-lib.ts"], outfile: "dist/ops-lib.js" });
+console.log("built dist/worker.js, dist/ops.js and dist/ops-lib.js");
