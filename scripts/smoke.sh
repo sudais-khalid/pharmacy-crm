@@ -87,6 +87,25 @@ ok "Idempotent retry sold only once" "$(curl -s -b /tmp/smoke_cashier.jar "$B/ap
 ok "Idempotency key reused with a different body is rejected" "$(code -b /tmp/smoke_cashier.jar -X POST $B/api/sales -H 'content-type: application/json' -H "Idempotency-Key: $IKEY" -d "{\"items\":[{\"medicineId\":\"$NID\",\"quantity\":2}],\"paymentMethod\":\"CASH\"}")" 422
 ok "Double cancel rejected" "$(code -b /tmp/smoke_pharmacist.jar -X POST $B/api/sales/$SID/cancel -H 'content-type: application/json' -d '{"reason":"again"}')" 409
 ok "Invoice loads" "$(code -b /tmp/smoke_cashier.jar $B/api/sales/$SID)" 200
+# stock entry: drafts, posting a stock list, photo upload
+ok "Cashier cannot open stock entry" "$(code -b /tmp/smoke_cashier.jar $B/api/stock-entry)" 403
+SE=$(curl -s -b /tmp/smoke_pharmacist.jar -X POST $B/api/stock-entry -H 'content-type: application/json' -d '{"kind":"STOCK_LIST"}' | js "d['id']")
+ok "Stock entry draft autosaves" "$(code -b /tmp/smoke_pharmacist.jar -X PUT $B/api/stock-entry/$SE -H 'content-type: application/json' -d "{\"lines\":[{\"name\":\"Smoke Test Syrup\",\"medicineId\":\"$NID\",\"batchNumber\":\"SE1\",\"expiryDate\":\"2030-06-30\",\"quantity\":5}]}")" 200
+ok "Draft changes no stock" "$(curl -s -b /tmp/smoke_cashier.jar "$B/api/pos/search?q=$BC" | js "d[0]['stock']")" 9
+ok "Stock list posts" "$(code -b /tmp/smoke_pharmacist.jar -X POST $B/api/stock-entry/$SE/post)" 200
+ok "Posted stock list adds the batch" "$(curl -s -b /tmp/smoke_cashier.jar "$B/api/pos/search?q=$BC" | js "d[0]['stock']")" 14
+ok "Posting twice is rejected" "$(code -b /tmp/smoke_pharmacist.jar -X POST $B/api/stock-entry/$SE/post)" 409
+python3 -c "import zlib,struct,sys;c=lambda t,d:struct.pack('>I',len(d))+t+d+struct.pack('>I',zlib.crc32(t+d)&0xffffffff);sys.stdout.buffer.write(b'\x89PNG\r\n\x1a\n'+c(b'IHDR',struct.pack('>IIBBBBB',8,8,8,0,0,0,0))+c(b'IDAT',zlib.compress(b'\x00'*72+sys.argv[1].encode()))+c(b'IEND',b''))" "$(date +%s%N)" > /tmp/smoke_bill.png
+printf '%%PDF-1.7 not a photo' > /tmp/smoke_bill.pdf
+# curl -F needs a native path on Windows (Git Bash does not convert paths inside a form field)
+PNG=/tmp/smoke_bill.png; PDF=/tmp/smoke_bill.pdf
+if command -v cygpath >/dev/null; then PNG=$(cygpath -m $PNG); PDF=$(cygpath -m $PDF); fi
+UP=$(curl -s -b /tmp/smoke_pharmacist.jar -X POST $B/api/stock-entry/upload -H "Origin: $B" -F kind=PURCHASE_BILL -F "page=@$PNG;type=image/png")
+ok "Bill photo upload queues reading" "$(curl -s -b /tmp/smoke_pharmacist.jar $B/api/stock-entry/$(echo "$UP" | js "d['id']") | js "d['status'] in ('UPLOADED','PROCESSING','NEEDS_REVIEW','FAILED')")" True
+ok "The same photo twice opens the same entry" "$(curl -s -b /tmp/smoke_pharmacist.jar -X POST $B/api/stock-entry/upload -H "Origin: $B" -F kind=PURCHASE_BILL -F "page=@$PNG;type=image/png" | js "d['duplicate']")" True
+ok "A file that is not a photo is refused" "$(code -b /tmp/smoke_pharmacist.jar -X POST $B/api/stock-entry/upload -H "Origin: $B" -F kind=PURCHASE_BILL -F "page=@$PDF;type=image/png")" 400
+ok "Cashier cannot upload bill photos" "$(code -b /tmp/smoke_cashier.jar -X POST $B/api/stock-entry/upload -H "Origin: $B" -F kind=PURCHASE_BILL -F "page=@$PNG;type=image/png")" 403
+ok "Old new-purchase page sends people to stock entry" "$(curl -s -o /dev/null -w '%{redirect_url}' -b /tmp/smoke_admin.jar $B/purchases/new | sed 's#.*//[^/]*##')" "/stock-entry?new=PURCHASE_BILL"
 ok "Archive instead of delete (has history)" "$(curl -s -b /tmp/smoke_admin.jar -X DELETE $B/api/medicines/$NID | js "d['archived']")" True
 for t in sales profit purchases lowStock expired customerBalances supplierBalances; do ok "Report: $t" "$(code -b /tmp/smoke_admin.jar "$B/api/reports?type=$t&from=2020-01-01&to=2030-01-01")" 200; done
 ok "Report rejects bad range" "$(code -b /tmp/smoke_admin.jar "$B/api/reports?type=sales&from=2030-01-01&to=2020-01-01")" 400
@@ -154,5 +173,5 @@ if [ -n "$PLATFORM_OWNER_EMAIL" ] && [ -n "$PLATFORM_OWNER_PASSWORD" ]; then
   ok "Developer switches a feature off" "$(curl -s -b /tmp/smoke_dev.jar -X POST $B/api/platform/pharmacies/$PID/features -H 'content-type: application/json' -d '{"key":"ocr","enabled":false}' | js "d['enabled']")" False
   ok "Developer updates plan limits" "$(curl -s -b /tmp/smoke_dev.jar -X PUT $B/api/platform/pharmacies/$PID/plan -H 'content-type: application/json' -d '{"plan":"PREMIUM","maxUsers":4,"ocrMonthlyLimit":50}' | js "d['maxUsers']")" 4
 fi
-for p in /dashboard /pos /medicines /inventory /customers /suppliers /purchases /purchases/new /sales /reports /users /settings; do ok "Page $p renders" "$(code -b /tmp/smoke_admin.jar $B$p)" 200; done
+for p in /dashboard /pos /medicines /inventory /customers /suppliers /purchases /stock-entry /stock-entry/upload /stock-entry/import /stock-entry/$SE /sales /reports /users /settings; do ok "Page $p renders" "$(code -b /tmp/smoke_admin.jar $B$p)" 200; done
 exit $fail

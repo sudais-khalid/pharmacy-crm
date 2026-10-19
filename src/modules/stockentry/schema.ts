@@ -37,7 +37,7 @@ export const intakeDraftSchema = z.object({
   paid: z.number().min(0).max(100_000_000).default(0),
   paymentMethod: z.enum(["CASH", "CARD"]).optional().nullable().transform((v) => v ?? null),
   note: optText(500),
-  lines: z.array(intakeLineSchema).max(500),
+  lines: z.array(intakeLineSchema).max(2000),
 });
 export type IntakeDraftInput = z.infer<typeof intakeDraftSchema>;
 

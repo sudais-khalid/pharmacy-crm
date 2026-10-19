@@ -39,10 +39,14 @@ async function main() {
     items: [{ medicineId: medicine.id, batchNumber: "BRAVO-2", expiryDate: addDays(todayStr(), 400), quantity: 10, purchasePrice: 60, salePrice: 90 }],
   });
 
+  const { createIntake, saveDraft, intakeDraftSchema } = await import("../src/modules/stockentry");
+  const intake = await createIntake(ctx, { kind: "STOCK_LIST", source: "MANUAL" });
+  await saveDraft(ctx, intake.id, intakeDraftSchema.parse({ lines: [{ name: medicine.name, medicineId: medicine.id, batchNumber: "BRAVO-3", expiryDate: addDays(todayStr(), 500), quantity: 5 }] }));
+
   console.log(JSON.stringify({
     pharmacy: slug,
     admin: { username: "badmin", password },
-    ids: { medicine: medicine.id, batch: batch.id, customer: customer.id, supplier: supplier.id, sale: sale.id, purchase: purchase.id, user: admin.id, role: role.id, file: logo.logoFileId },
+    ids: { medicine: medicine.id, batch: batch.id, customer: customer.id, supplier: supplier.id, sale: sale.id, purchase: purchase.id, user: admin.id, role: role.id, file: logo.logoFileId, intake: intake.id },
     names: { medicine: medicine.name, customer: customer.name, supplier: supplier.name, invoice: sale.invoiceNo, purchase: purchase.number },
   }));
   process.exit(0);
