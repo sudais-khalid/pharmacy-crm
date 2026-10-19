@@ -11,12 +11,31 @@ export type PurchaseInput = {
   supplierId: string;
   supplierInvoice?: string | null;
   purchaseDate: string;
-  items: { medicineId: string; batchNumber: string; expiryDate: string; quantity: number; purchasePrice: number; salePrice: number }[];
+  items: {
+    medicineId: string; batchNumber: string; expiryDate: string; quantity: number; purchasePrice: number; salePrice: number;
+    /** Free units on the bill (stock, no charge), trade discount percent and line tax (data model 4.3). */
+    bonusQty?: number; discountPercent?: number; taxAmount?: number;
+  }[];
   discount: number;
   paid: number;
   paymentMethod: "CASH" | "CARD";
   note?: string | null;
+  /** The stock entry this purchase is posted from. */
+  intakeId?: string | null;
 };
+
+/**
+ * One bill line: rate times quantity, less the trade discount, plus tax. Its effective cost spreads the
+ * line total over every unit received, bonus included, so profit reflects what the stock really cost.
+ */
+export function purchaseLine(i: PurchaseInput["items"][number]) {
+  const bonus = i.bonusQty ?? 0;
+  const net = D(i.purchasePrice).mul(i.quantity).mul(D(100).minus(i.discountPercent ?? 0)).div(100).toDecimalPlaces(2);
+  const tax = D(i.taxAmount ?? 0).toDecimalPlaces(2);
+  const lineTotal = net.plus(tax);
+  const units = i.quantity + bonus;
+  return { net, tax, lineTotal, units, bonus, effectiveCost: units > 0 ? lineTotal.div(units).toDecimalPlaces(4) : D(i.purchasePrice) };
+}
 
 /** Records a purchase invoice: creates/updates batches, increases stock, writes movements and the supplier ledger. */
 export async function createPurchase(ctx: ServiceContext, input: PurchaseInput) {
@@ -27,12 +46,17 @@ export async function createPurchase(ctx: ServiceContext, input: PurchaseInput) 
     if (!supplier) throw new AppError(404, "Supplier not found.");
     if (!supplier.active) throw new AppError(409, "This supplier is inactive.");
 
-    const lines = input.items.map((i) => ({ ...i, lineTotal: D(i.purchasePrice).mul(i.quantity).toDecimalPlaces(2) }));
+    const lines = input.items.map((i) => ({ ...i, ...purchaseLine(i) }));
     for (const l of lines) if (l.expiryDate < today) throw new AppError(400, `Batch ${l.batchNumber} is already expired (${l.expiryDate}).`);
-    const subtotal = lines.reduce((s, l) => s.plus(l.lineTotal), ZERO);
+    const subtotal = lines.reduce((s, l) => s.plus(l.net), ZERO);
+    const taxTotal = lines.reduce((s, l) => s.plus(l.tax), ZERO);
     const discount = D(input.discount).toDecimalPlaces(2);
     if (discount.gt(subtotal)) throw new AppError(400, "Discount cannot be more than the subtotal.");
-    const total = subtotal.minus(discount);
+    const total = subtotal.plus(taxTotal).minus(discount);
+    if (input.supplierInvoice) {
+      const twice = await tx.purchase.findFirst({ where: { supplierId: supplier.id, supplierInvoice: input.supplierInvoice }, select: { number: true } });
+      if (twice) throw new AppError(409, `Invoice ${input.supplierInvoice} from ${supplier.name} is already recorded as ${twice.number}.`, { fields: { supplierInvoice: "Already recorded" } });
+    }
     const paid = D(input.paid).toDecimalPlaces(2);
     if (paid.gt(total)) throw new AppError(400, "Paid amount cannot exceed the invoice total.");
 
@@ -42,7 +66,7 @@ export async function createPurchase(ctx: ServiceContext, input: PurchaseInput) 
     const purchase = await tx.purchase.create({
       data: {
         number, supplierInvoice: input.supplierInvoice ?? null, supplierId: supplier.id, userId, purchaseDate: dateOnly(input.purchaseDate),
-        subtotal, discount, total, paid, paymentMethod: paid.gt(0) ? input.paymentMethod : null, note: input.note ?? null,
+        subtotal, discount, taxTotal, total, paid, paymentMethod: paid.gt(0) ? input.paymentMethod : null, note: input.note ?? null, intakeId: input.intakeId ?? null,
       },
     });
 
@@ -56,18 +80,22 @@ export async function createPurchase(ctx: ServiceContext, input: PurchaseInput) 
         }
         batch = await tx.batch.update({
           where: { id: batch.id },
-          data: { quantity: { increment: l.quantity }, purchasePrice: l.purchasePrice, salePrice: l.salePrice },
+          data: { quantity: { increment: l.units }, purchasePrice: l.effectiveCost, salePrice: l.salePrice },
         });
       } else {
         batch = await tx.batch.create({
-          data: { medicineId: l.medicineId, batchNumber: l.batchNumber, expiryDate: dateOnly(l.expiryDate), quantity: l.quantity, purchasePrice: l.purchasePrice, salePrice: l.salePrice },
+          data: { medicineId: l.medicineId, batchNumber: l.batchNumber, expiryDate: dateOnly(l.expiryDate), quantity: l.units, purchasePrice: l.effectiveCost, salePrice: l.salePrice },
         });
       }
       await tx.purchaseItem.create({
-        data: { purchaseId: purchase.id, medicineId: l.medicineId, batchId: batch.id, batchNumber: l.batchNumber, expiryDate: dateOnly(l.expiryDate), quantity: l.quantity, purchasePrice: l.purchasePrice, salePrice: l.salePrice, lineTotal: l.lineTotal },
+        data: {
+          purchaseId: purchase.id, medicineId: l.medicineId, batchId: batch.id, batchNumber: l.batchNumber, expiryDate: dateOnly(l.expiryDate),
+          quantity: l.quantity, bonusQty: l.bonus, purchasePrice: l.purchasePrice, discountPercent: l.discountPercent ?? 0, taxAmount: l.tax,
+          effectiveCost: l.effectiveCost, salePrice: l.salePrice, lineTotal: l.lineTotal,
+        },
       });
       await tx.stockMovement.create({
-        data: { medicineId: l.medicineId, batchId: batch.id, type: "PURCHASE", quantity: l.quantity, balanceAfter: batch.quantity, reference: number, userId },
+        data: { medicineId: l.medicineId, batchId: batch.id, type: "PURCHASE", quantity: l.units, balanceAfter: batch.quantity, reference: number, userId },
       });
       await tx.medicine.update({ where: { id: l.medicineId }, data: { purchasePrice: l.purchasePrice, salePrice: l.salePrice } });
     }
@@ -80,7 +108,7 @@ export async function createPurchase(ctx: ServiceContext, input: PurchaseInput) 
     }
     await audit(tx, ctx, {
       action: "purchase.create", entity: "Purchase", entityId: purchase.id,
-      after: { number, supplierId: supplier.id, supplierInvoice: input.supplierInvoice ?? null, total, paid, lines: lines.length },
+      after: { number, supplierId: supplier.id, supplierInvoice: input.supplierInvoice ?? null, total, taxTotal, paid, lines: lines.length, intakeId: input.intakeId ?? null },
     });
     await emit(tx, "PurchasePosted", { purchaseId: purchase.id, number, supplierId: supplier.id, medicineIds: [...new Set(lines.map((l) => l.medicineId))] });
     return purchase;

@@ -180,10 +180,10 @@ Acceptance criteria:
 
 Tasks, part A: manual entry and the shared draft (days 1 to 4):
 
-- [ ] 4.1 Purchase line additions: bonus quantity, trade discount, tax, effective cost; unique supplier invoice number per supplier (data model, section 4.3)
-- [ ] 4.2 `StockIntake`, `StockIntakePage`, `StockIntakeLine` and the `SE` counter (data model, section 4.5)
+- [x] 4.1 Purchase line additions: bonus quantity, trade discount, tax, effective cost; unique supplier invoice number per supplier (data model, section 4.3)
+- [x] 4.2 `StockIntake`, `StockIntakePage`, `StockIntakeLine` and the `SE` counter (data model, section 4.5)
 - [ ] 4.3 Stock entry list (drafts, needs review, posted) and the manual keyboard grid with autosave, inline "new medicine", warnings and blocking rules (architecture, section 6.1.1; UI plan, section 4.2)
-- [ ] 4.4 Posting: `PURCHASE_BILL` through `createPurchase`; `STOCK_LIST` as opening batches with `OPENING` movements; one transaction; idempotency key
+- [x] 4.4 Posting: `PURCHASE_BILL` through `createPurchase`; `STOCK_LIST` as opening batches with `OPENING` movements; one transaction; idempotency key
 - [ ] 4.5 File import (Excel or CSV) into a draft, with a column mapping step, for opening stock and supplier price lists
 - [ ] 4.6 Replace the old "New purchase" page with stock entry; keep the purchases list and detail pages
 

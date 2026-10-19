@@ -25,6 +25,9 @@ export const purchaseSchema = z.object({
         quantity: z.coerce.number().int().min(1, "Quantity must be at least 1"),
         purchasePrice: money,
         salePrice: money,
+        bonusQty: z.coerce.number().int().min(0).max(1_000_000).default(0),
+        discountPercent: z.coerce.number().min(0).max(100).default(0),
+        taxAmount: money.default(0),
       }),
     )
     .min(1, "Add at least one item"),

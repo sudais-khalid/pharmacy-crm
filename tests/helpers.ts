@@ -11,7 +11,7 @@ export let pharmacyId = "";
 export async function resetDb() {
   await platformDb.$executeRawUnsafe(
     `TRUNCATE "AuditLog","OutboxEvent","IdempotencyKey","RateLimitHit","StockMovement","SaleItem","PurchaseItem","CustomerLedger","SupplierLedger","Sale","Purchase","Batch","Medicine","Category","Customer","Supplier","User",
-              "AuthToken","SupportSession","FeatureFlag","TenantCounter","PharmacySettings","PlatformUser","Role","StoredFile","NotificationRead","Notification","Pharmacy" RESTART IDENTITY CASCADE`,
+              "AuthToken","SupportSession","FeatureFlag","TenantCounter","PharmacySettings","PlatformUser","Role","StoredFile","NotificationRead","Notification","StockIntakeLine","StockIntakePage","StockIntake","SupplierItemAlias","Pharmacy" RESTART IDENTITY CASCADE`,
   );
   await ensureSystemRoles(platformDb);
   pharmacyId = (await makePharmacy("test")).id;
