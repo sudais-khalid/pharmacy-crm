@@ -78,6 +78,28 @@ const pgRunning = () => {
 };
 
 try {
+  // 0. the server folder carries the local photo reader: Tesseract loads its engine and English model
+  // from there, the way the worker does (src/modules/stockentry/ocr/local.ts), with no download
+  {
+    const server = exe ? path.join(path.dirname(exe), "resources", "server") : path.join(repo, ".next", "standalone");
+    const probe = [
+      "const { createRequire } = require('node:module'); const path = require('node:path');",
+      "const req = createRequire(path.join(process.cwd(), 'index.js'));",
+      "const langPath = path.join(path.dirname(req.resolve('@tesseract.js-data/eng/package.json')), '4.0.0_best_int');",
+      "const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAgAAAAICAAAAADhZOFiAAAAEklEQVR4nGP4z8DAwMDAwMAAAA8ABf5W6TIAAAAASUVORK5CYII=', 'base64');",
+      "req('tesseract.js').createWorker('eng', 1, { langPath, gzip: true, cachePath: require('node:os').tmpdir(), logger: () => {} })",
+      "  .then(async (w) => { await w.recognize(png); await w.terminate(); console.log('ocr-ok'); process.exit(0); })",
+      "  .catch((e) => { console.error(e); process.exit(1); });",
+    ].join("\n");
+    let out = "";
+    try {
+      out = execFileSync(exe ?? electron, ["-e", probe], { cwd: server, env: { ...process.env, ELECTRON_RUN_AS_NODE: "1" }, encoding: "utf8", timeout: 120_000 });
+    } catch (e) {
+      out = `${e.stdout ?? ""}${e.stderr ?? ""}${e.message}`;
+    }
+    check("the photo reader and its model are in the server folder", /ocr-ok/.test(out), out.slice(-800));
+  }
+
   // 1. first start on an empty PC
   const first = await runApp();
   check("first start succeeds", first.code === 0 && first.report?.ok, first.out.slice(-1500));
