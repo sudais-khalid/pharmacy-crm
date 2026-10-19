@@ -7,16 +7,22 @@
   "scripts": {
     "start": "node scripts/run-electron.mjs",
     "selftest": "node scripts/selftest.mjs",
-    "test": "node --test \"test/*.test.mjs\""
+    "test": "node --test \"test/*.test.mjs\"",
+    "package": "node scripts/package.mjs",
+    "package:dir": "node scripts/package.mjs --dir",
+    "owner": "node scripts/owner.mjs"
   },
   "dependencies": {
-    "@embedded-postgres/windows-x64": "16.14.0-beta.17",
     "pg": "8.23.1"
   },
   "devDependencies": {
-    "electron": "44.7.0"
+    "@embedded-postgres/windows-x64": "16.14.0-beta.17",
+    "electron": "44.7.0",
+    "electron-builder": "26.15.3"
   },
   "allowScripts": {
     "@embedded-postgres/windows-x64@16.14.0-beta.17": true
-  }
+  },
+  "productName": "Pharmacy CRM",
+  "author": "Sudais Khalid"
 }

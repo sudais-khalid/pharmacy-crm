@@ -3,8 +3,7 @@
  * needs no image files at run time.
  */
 import { BrowserWindow, nativeImage } from "electron";
-
-const TEAL = { r: 0x1f, g: 0x7f, b: 0x78 };
+import { TEAL, iconPixels } from "./icon-pixels.mjs";
 
 const page = `<!doctype html><html><head><meta charset="utf-8"><title>Pharmacy CRM</title>
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'">
@@ -47,27 +46,9 @@ export async function showSplash({ show = true } = {}) {
   };
 }
 
-/** A teal rounded square with a white cross, drawn pixel by pixel (BGRA). */
+/** The app icon at the given size (see icon-pixels.mjs); Electron bitmaps are BGRA. */
 export function appIcon(size = 32) {
-  const buf = Buffer.alloc(size * size * 4);
-  const radius = size * 0.2;
-  const arm = size * 0.14;
-  const reach = size * 0.3;
-  const c = (size - 1) / 2;
-  for (let y = 0; y < size; y++) {
-    for (let x = 0; x < size; x++) {
-      const dx = Math.max(0, Math.abs(x - c) - (c - radius));
-      const dy = Math.max(0, Math.abs(y - c) - (c - radius));
-      const inside = dx * dx + dy * dy <= radius * radius;
-      const cross = (Math.abs(x - c) <= arm && Math.abs(y - c) <= reach) || (Math.abs(y - c) <= arm && Math.abs(x - c) <= reach);
-      const i = (y * size + x) * 4;
-      if (!inside) continue;
-      const [r, g, b] = cross ? [255, 255, 255] : [TEAL.r, TEAL.g, TEAL.b];
-      buf[i] = b;
-      buf[i + 1] = g;
-      buf[i + 2] = r;
-      buf[i + 3] = 255;
-    }
-  }
-  return nativeImage.createFromBitmap(buf, { width: size, height: size });
+  const rgba = iconPixels(size);
+  for (let i = 0; i < rgba.length; i += 4) [rgba[i], rgba[i + 2]] = [rgba[i + 2], rgba[i]];
+  return nativeImage.createFromBitmap(rgba, { width: size, height: size });
 }

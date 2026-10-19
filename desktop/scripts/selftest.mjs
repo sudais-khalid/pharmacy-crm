@@ -1,5 +1,9 @@
 // End-to-end check of the desktop supervisor against a throwaway data folder (never %PROGRAMDATA%).
-// Needs `npm run build:desktop` in the repository root first. Usage: node scripts/selftest.mjs
+// Needs `npm run build:desktop` in the repository root first.
+//
+//   node scripts/selftest.mjs                                      the app from source
+//   node scripts/selftest.mjs --exe dist/win-unpacked/PharmacyCRM.exe   a packaged build (skips the checks
+//                                                                  that need a test migrations folder)
 import { execFileSync, spawn } from "node:child_process";
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
@@ -14,6 +18,12 @@ const electron = createRequire(import.meta.url)("electron");
 const pgBin = path.join(desktop, "node_modules", "@embedded-postgres", "windows-x64", "native", "bin");
 const root = mkdtempSync(path.join(tmpdir(), "pcrm-desktop-"));
 const dataDir = path.join(root, "PharmacyCRM");
+const exeArg = process.argv.indexOf("--exe");
+const exe = exeArg > 0 ? path.resolve(process.argv[exeArg + 1]) : null;
+// one test Developer for every run, so a build's owner.json is never used here
+const owner = { PLATFORM_OWNER_EMAIL: "owner@selftest.example", PLATFORM_OWNER_PASSWORD: "Selftest-Owner-2026" };
+let migrations = null;
+const withMigrations = () => (migrations ? { PCRM_MIGRATIONS_DIR: migrations } : {});
 let failures = 0;
 
 function check(name, ok, detail = "") {
@@ -22,11 +32,11 @@ function check(name, ok, detail = "") {
 }
 
 function runApp(extraEnv = {}, args = []) {
-  const env = { ...process.env, PCRM_DATA_DIR: dataDir, ...extraEnv };
+  const env = { ...process.env, PCRM_DATA_DIR: dataDir, ...owner, ...extraEnv };
   delete env.ELECTRON_RUN_AS_NODE;
   return new Promise((resolve) => {
     const started = Date.now();
-    const p = spawn(electron, [desktop, "--selftest", ...args], { env, stdio: ["ignore", "pipe", "pipe"] });
+    const p = exe ? spawn(exe, ["--selftest", ...args], { env, stdio: ["ignore", "pipe", "pipe"] }) : spawn(electron, [desktop, "--selftest", ...args], { env, stdio: ["ignore", "pipe", "pipe"] });
     let out = "";
     p.stdout.on("data", (d) => (out += d));
     p.stderr.on("data", (d) => (out += d));
@@ -89,42 +99,43 @@ try {
   const fourth = await runApp();
   check("a PostgreSQL left running is taken over", fourth.code === 0 && fourth.report?.selftestRuns === 4, fourth.out.slice(-1500));
 
-  // 5. an update with a new migration backs up first
-  const migrations = path.join(root, "migrations");
-  cpSync(path.join(repo, "prisma", "migrations"), migrations, { recursive: true });
-  mkdirSync(path.join(migrations, "29990101000000_selftest"));
-  writeFileSync(path.join(migrations, "29990101000000_selftest", "migration.sql"), "SELECT 1;\n");
-  const fifth = await runApp({ PCRM_MIGRATIONS_DIR: migrations });
-  const backups = readdirSync(path.join(dataDir, "backups"));
-  check("pending migrations run after an automatic backup", fifth.code === 0 && backups.some((f) => f.endsWith("-pre-update.pcrmbak")), `${fifth.out.slice(-1500)} ${backups}`);
+  if (!exe) {
+    // 5. an update with a new migration backs up first
+    migrations = path.join(root, "migrations");
+    cpSync(path.join(repo, "prisma", "migrations"), migrations, { recursive: true });
+    mkdirSync(path.join(migrations, "29990101000000_selftest"));
+    writeFileSync(path.join(migrations, "29990101000000_selftest", "migration.sql"), "SELECT 1;\n");
+    const fifth = await runApp({ PCRM_MIGRATIONS_DIR: migrations });
+    const backups = readdirSync(path.join(dataDir, "backups"));
+    check("pending migrations run after an automatic backup", fifth.code === 0 && backups.some((f) => f.endsWith("-pre-update.pcrmbak")), `${fifth.out.slice(-1500)} ${backups}`);
 
-  // the backups now carry the update's migration, so the following runs are that version of the app
-  // (an older app refuses them: "made by a newer version")
-  const older = await runApp();
-  check("an older app refuses data a newer version has updated", older.code !== 0 && /updated by a newer version/.test(older.out), older.out.slice(-800));
+    // the backups now carry the update's migration, so the following runs are that version of the app
+    // (an older app refuses them: "made by a newer version")
+    const older = await runApp();
+    check("an older app refuses data a newer version has updated", older.code !== 0 && /updated by a newer version/.test(older.out), older.out.slice(-800));
 
-  // 6. the database folder is lost, keys.json and the backups remain: restore the newest backup, no key needed
-  const markers5 = fifth.report?.auditMarkers;
-  rmSync(path.join(dataDir, "data"), { recursive: true, force: true });
-  const sixth = await runApp({ PCRM_MIGRATIONS_DIR: migrations, PCRM_SELFTEST_FIRST_START: "latest" });
-  check("a lost database folder is restored from the newest backup", sixth.code === 0 && sixth.report?.events.includes("restored") && sixth.report.auditMarkers === markers5 + 1, `${markers5} -> ${sixth.report?.auditMarkers} ${sixth.out.slice(-1500)}`);
+    // 6. the database folder is lost, keys.json and the backups remain: restore the newest backup, no key needed
+    const markers5 = fifth.report?.auditMarkers;
+    rmSync(path.join(dataDir, "data"), { recursive: true, force: true });
+    const sixth = await runApp({ PCRM_MIGRATIONS_DIR: migrations, PCRM_SELFTEST_FIRST_START: "latest" });
+    check("a lost database folder is restored from the newest backup", sixth.code === 0 && sixth.report?.events.includes("restored") && sixth.report.auditMarkers === markers5 + 1, `${markers5} -> ${sixth.report?.auditMarkers} ${sixth.out.slice(-1500)}`);
 
-  // 7. a new computer: only the backups and the recovery key
-  const recoveryKey = sixth.report?.recoveryKey;
-  rmSync(path.join(dataDir, "data"), { recursive: true, force: true });
-  rmSync(path.join(dataDir, "keys.json"), { force: true });
-  const otherKey = execFileSync(process.execPath, [path.join(repo, "dist", "ops.js"), "new-key"], { encoding: "utf8" }).trim();
-  const wrong = await runApp({ PCRM_MIGRATIONS_DIR: migrations, PCRM_SELFTEST_FIRST_START: "latest", PCRM_SELFTEST_RECOVERY_KEY: otherKey });
-  check("a wrong recovery key is refused", wrong.code !== 0 && /does not belong to this backup/.test(wrong.out), wrong.out.slice(-800));
-  const missing = await runApp({ PCRM_MIGRATIONS_DIR: migrations, PCRM_SELFTEST_FIRST_START: "latest" });
-  check("without the recovery key the restore asks for it", missing.code !== 0 && /Enter its recovery key/.test(missing.out), missing.out.slice(-800));
-  const seventh = await runApp({ PCRM_MIGRATIONS_DIR: migrations, PCRM_SELFTEST_FIRST_START: "latest", PCRM_SELFTEST_RECOVERY_KEY: recoveryKey?.toLowerCase().replace(/-/g, " ") });
-  check("the recovery key restores everything on a new computer", seventh.code === 0 && seventh.report?.events.includes("restored") && seventh.report.auditMarkers === sixth.report.auditMarkers + 1, seventh.out.slice(-1500));
-  check("the same recovery key stays valid afterwards", seventh.report?.recoveryKey === recoveryKey);
+    // 7. a new computer: only the backups and the recovery key
+    const recoveryKey = sixth.report?.recoveryKey;
+    rmSync(path.join(dataDir, "data"), { recursive: true, force: true });
+    rmSync(path.join(dataDir, "keys.json"), { force: true });
+    const otherKey = execFileSync(process.execPath, [path.join(repo, "dist", "ops.js"), "new-key"], { encoding: "utf8" }).trim();
+    const wrong = await runApp({ PCRM_MIGRATIONS_DIR: migrations, PCRM_SELFTEST_FIRST_START: "latest", PCRM_SELFTEST_RECOVERY_KEY: otherKey });
+    check("a wrong recovery key is refused", wrong.code !== 0 && /does not belong to this backup/.test(wrong.out), wrong.out.slice(-800));
+    const missing = await runApp({ PCRM_MIGRATIONS_DIR: migrations, PCRM_SELFTEST_FIRST_START: "latest" });
+    check("without the recovery key the restore asks for it", missing.code !== 0 && /Enter its recovery key/.test(missing.out), missing.out.slice(-800));
+    const seventh = await runApp({ PCRM_MIGRATIONS_DIR: migrations, PCRM_SELFTEST_FIRST_START: "latest", PCRM_SELFTEST_RECOVERY_KEY: recoveryKey?.toLowerCase().replace(/-/g, " ") });
+    check("the recovery key restores everything on a new computer", seventh.code === 0 && seventh.report?.events.includes("restored") && seventh.report.auditMarkers === sixth.report.auditMarkers + 1, seventh.out.slice(-1500));
+    check("the same recovery key stays valid afterwards", seventh.report?.recoveryKey === recoveryKey);
+  }
 
   // 8. the Developer console's desktop controls, through the app window
-  const owner = { PLATFORM_OWNER_EMAIL: "owner@selftest.example", PLATFORM_OWNER_PASSWORD: "Selftest-Owner-2026" };
-  const eighth = await runApp({ PCRM_MIGRATIONS_DIR: migrations, PCRM_SELFTEST_CONSOLE: "1", ...owner });
+  const eighth = await runApp({ ...withMigrations(), PCRM_SELFTEST_CONSOLE: "1" });
   const c = eighth.report?.console ?? {};
   check("console: the controls refuse staff pages and signed-out visitors", c.refusedOnStaffPage === true && c.refusedBeforeSignIn === true, JSON.stringify(c));
   check("console: the Developer signs in and enrols", c.login === 200 && c.enrol === 200, JSON.stringify(c));
@@ -143,13 +154,13 @@ try {
     elevated = false;
   }
   if (!elevated) {
-    const refused = await runApp({ PCRM_MIGRATIONS_DIR: migrations }, ["--recover-owner"]);
+    const refused = await runApp(withMigrations(), ["--recover-owner"]);
     check("recovery is refused without administrator rights", refused.code !== 0 && !refused.report);
   }
-  const recovered = await runApp({ PCRM_MIGRATIONS_DIR: migrations, PCRM_SELFTEST_ASSUME_ADMIN: "1" }, ["--recover-owner"]);
+  const recovered = await runApp({ ...withMigrations(), PCRM_SELFTEST_ASSUME_ADMIN: "1" }, ["--recover-owner"]);
   const fresh = recovered.report?.recovered;
   check("recovery sets a new password for the Developer", recovered.code === 0 && fresh?.email === owner.PLATFORM_OWNER_EMAIL && fresh.password.length >= 12, recovered.out.slice(-1500));
-  const tenth = await runApp({ PCRM_MIGRATIONS_DIR: migrations, PCRM_SELFTEST_CONSOLE: "1", PLATFORM_OWNER_EMAIL: owner.PLATFORM_OWNER_EMAIL, PLATFORM_OWNER_PASSWORD: fresh?.password ?? "x" });
+  const tenth = await runApp({ ...withMigrations(), PCRM_SELFTEST_CONSOLE: "1", PLATFORM_OWNER_PASSWORD: fresh?.password ?? "x" });
   const c2 = tenth.report?.console ?? {};
   check("after recovery the new password signs in and two-factor is set up again", c2.login === 200 && c2.enrol === 200 && c2.restore === "ok", JSON.stringify(c2));
 } finally {
