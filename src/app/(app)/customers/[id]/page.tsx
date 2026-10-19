@@ -58,7 +58,7 @@ export default function CustomerDetail() {
       {c.notes && <p className="mt-3 text-sm text-slate-600 dark:text-slate-300">Notes: {c.notes}</p>}
       <div className="mt-6 no-print"><Tabs tabs={[{ id: "timeline", label: "Timeline" }, { id: "ledger", label: "Ledger" }, { id: "sales", label: "Purchase history" }, { id: "payments", label: "Payment history" }, ...(canAudit ? [{ id: "history" as const, label: "History" }] : [])]} value={tab} onChange={setTab} /></div>
       <Card className="print-area">
-        <div className="hidden p-4 print:block"><h2 className="text-lg font-bold">{settings.pharmacyName} – statement for {c.name}</h2></div>
+        <div className="hidden p-4 print:block"><h2 className="text-lg font-bold">{settings.pharmacyName}: statement for {c.name}</h2></div>
         {tab === "timeline" && (data.timeline.length === 0 ? <EmptyState title="Nothing yet" hint="Purchases, returns and payments appear here." /> : (
           <ol className="divide-y divide-border">
             {data.timeline.map((t, i) => (
@@ -79,7 +79,7 @@ export default function CustomerDetail() {
             <tbody>{data.sales.map((s) => (<tr key={s.id} className="border-b border-slate-100 dark:border-slate-800/60"><td className="td"><Link className="text-brand-700 hover:underline dark:text-brand-300" href={`/invoice/${s.id}`}>{s.invoiceNo}</Link></td><td className="td">{formatDateTime(s.createdAt)}</td><td className="td capitalize">{s.paymentMethod.toLowerCase()}</td><td className="td text-right">{money(s.total)}</td><td className="td text-right">{money(s.amountPaid)}</td><td className="td">{s.status === "COMPLETED" ? <Badge tone="green">Completed</Badge> : <Badge tone="red">Cancelled</Badge>}</td></tr>))}</tbody></TableWrap>))}
         {tab === "payments" && (payments.length === 0 ? <EmptyState title="No payments yet" /> : (
           <TableWrap><thead><tr className="border-b border-slate-200 dark:border-slate-800"><th className="th">Date</th><th className="th">Description</th><th className="th">Method</th><th className="th text-right">Amount</th></tr></thead>
-            <tbody>{payments.map((l) => (<tr key={l.id} className="border-b border-slate-100 dark:border-slate-800/60"><td className="td">{formatDateTime(l.createdAt)}</td><td className="td">{l.description}</td><td className="td capitalize">{l.method?.toLowerCase() ?? "—"}</td><td className="td text-right">{money(l.credit)}</td></tr>))}</tbody></TableWrap>))}
+            <tbody>{payments.map((l) => (<tr key={l.id} className="border-b border-slate-100 dark:border-slate-800/60"><td className="td">{formatDateTime(l.createdAt)}</td><td className="td">{l.description}</td><td className="td capitalize">{l.method?.toLowerCase() ?? "-"}</td><td className="td text-right">{money(l.credit)}</td></tr>))}</tbody></TableWrap>))}
         {tab === "history" && <HistoryList entity="Customer" entityId={c.id} />}
       </Card>
 

@@ -16,7 +16,7 @@ export async function receiveCustomerPayment(ctx: ServiceContext, customerId: st
     const balance = await customerBalance(tx, customerId);
     if (amount.gt(balance)) throw new AppError(409, `Payment (${amount.toFixed(2)}) is more than the outstanding balance (${balance.toFixed(2)}).`);
     const entry = await tx.customerLedger.create({
-      data: { customerId, kind: "PAYMENT", credit: amount, description: input.note ? `Payment received – ${input.note}` : "Payment received", method: input.method, userId },
+      data: { customerId, kind: "PAYMENT", credit: amount, description: input.note ? `Payment received: ${input.note}` : "Payment received", method: input.method, userId },
     });
     await audit(tx, ctx, { action: "customer.payment", entity: "Customer", entityId: customerId, after: { ledgerId: entry.id, amount, method: input.method } });
     await emit(tx, "CustomerPaymentReceived", { customerId, amount: amount.toFixed(2) });

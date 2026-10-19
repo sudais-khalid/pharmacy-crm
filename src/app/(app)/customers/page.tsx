@@ -22,7 +22,7 @@ export default function CustomersPage() {
           <><TableWrap><thead><tr className="border-b border-slate-200 dark:border-slate-800"><th className="th">Name</th><th className="th">Phone</th><th className="th text-right">Credit limit</th><th className="th text-right">Balance owed</th><th className="th">Status</th></tr></thead>
             <tbody>{data.items.map((c) => (
               <tr key={c.id} className="border-b border-slate-100 hover:bg-slate-50 dark:border-slate-800/60 dark:hover:bg-slate-800/40">
-                <td className="td font-medium"><Link className="text-brand-700 hover:underline dark:text-brand-300" href={`/customers/${c.id}`}>{c.name}</Link></td><td className="td">{c.phone ?? "—"}</td><td className="td text-right">{money(c.creditLimit)}</td>
+                <td className="td font-medium"><Link className="text-brand-700 hover:underline dark:text-brand-300" href={`/customers/${c.id}`}>{c.name}</Link></td><td className="td">{c.phone ?? "-"}</td><td className="td text-right">{money(c.creditLimit)}</td>
                 <td className="td text-right">{Number(c.balance) > 0 ? <Badge tone="amber">{money(c.balance)}</Badge> : money(0)}</td><td className="td">{c.active ? <Badge tone="green">Active</Badge> : <Badge>Inactive</Badge>}</td></tr>))}</tbody></TableWrap>
           <Pagination page={data.page} pageSize={data.pageSize} total={data.total} onPage={setPage} /></>
         )}

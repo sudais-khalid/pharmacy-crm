@@ -82,8 +82,8 @@ function MedicinesInner() {
                 {data.items.map((m) => (
                   <tr key={m.id} className="border-b border-slate-100 hover:bg-slate-50 dark:border-slate-800/60 dark:hover:bg-slate-800/40">
                     <td className="td"><div className="font-medium">{m.name} {m.prescriptionRequired && <Badge tone="blue">Rx</Badge>} {!m.active && <Badge>Archived</Badge>}</div><div className="text-xs text-slate-500">{m.genericName}</div></td>
-                    <td className="td">{m.category?.name ?? "—"}</td>
-                    <td className="td font-mono text-xs">{m.barcode ?? "—"}</td>
+                    <td className="td">{m.category?.name ?? "-"}</td>
+                    <td className="td font-mono text-xs">{m.barcode ?? "-"}</td>
                     {seesCost && <td className="td text-right">{money(m.purchasePrice)}</td>}
                     <td className="td text-right">{money(m.salePrice)}</td>
                     <td className="td text-right">
@@ -128,12 +128,12 @@ function MedicineDetail({ id, onClose }: { id: string | null; onClose: () => voi
         <div className="space-y-4 text-sm">
           <dl className="grid grid-cols-2 gap-x-6 gap-y-2 sm:grid-cols-3">
             {[["Generic", data.genericName], ["Category", data.category?.name], ["Barcode", data.barcode], ["SKU", data.sku], ["Unit", data.unit], ["Min. stock", data.minStock], ["Cost price", money(data.purchasePrice)], ["Sale price", money(data.salePrice)], ["Sellable stock", data.stock]].map(([k, v]) => (
-              <div key={k as string}><dt className="text-xs text-slate-500">{k}</dt><dd className="font-medium">{(v as string) || "—"}</dd></div>
+              <div key={k as string}><dt className="text-xs text-slate-500">{k}</dt><dd className="font-medium">{(v as string) || "-"}</dd></div>
             ))}
           </dl>
           {data.description && <p className="text-slate-600 dark:text-slate-300">{data.description}</p>}
           <h3 className="font-semibold">Batches (earliest expiry sells first)</h3>
-          {data.batches.length === 0 ? <p className="text-slate-500">No batches yet – add stock through Purchases.</p> : (
+          {data.batches.length === 0 ? <p className="text-slate-500">No batches yet: add stock through Purchases.</p> : (
             <TableWrap><thead><tr className="border-b border-slate-200 dark:border-slate-800"><th className="th">Batch</th><th className="th">Expiry</th><th className="th text-right">Qty</th>{seesCost && <th className="th text-right">Cost</th>}<th className="th text-right">Price</th></tr></thead>
               <tbody>{data.batches.map((b) => (
                 <tr key={b.id} className="border-b border-slate-100 dark:border-slate-800/60"><td className="td">{b.batchNumber}</td>
@@ -188,7 +188,7 @@ function MedicineForm({ med, categories, reloadCats, onClose, onSaved }: { med: 
         <Field label="Medicine name *" error={errors.name} className="sm:col-span-2"><Input value={f.name} onChange={(e) => set("name", e.target.value)} required data-autofocus /></Field>
         <Field label="Generic name"><Input value={f.genericName} onChange={(e) => set("genericName", e.target.value)} /></Field>
         <div>
-          <Field label="Category"><Select value={f.categoryId} onChange={(e) => set("categoryId", e.target.value)}><option value="">— None —</option>{categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</Select></Field>
+          <Field label="Category"><Select value={f.categoryId} onChange={(e) => set("categoryId", e.target.value)}><option value="">None</option>{categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</Select></Field>
           <div className="mt-1.5 flex gap-2"><Input aria-label="New category name" placeholder="New category…" value={newCat} onChange={(e) => setNewCat(e.target.value)} /><Button size="sm" variant="secondary" onClick={addCategory}>Add</Button></div>
         </div>
         <Field label="Barcode" error={errors.barcode} hint="Scan with a USB scanner"><Input value={f.barcode} onChange={(e) => set("barcode", e.target.value)} /></Field>

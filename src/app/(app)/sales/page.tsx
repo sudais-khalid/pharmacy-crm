@@ -23,7 +23,7 @@ export default function SalesPage() {
   async function cancel() {
     if (!cancelling) return;
     setBusy(true);
-    try { await api(`/api/sales/${cancelling.id}/cancel`, { body: { reason } }); toast.success(`${cancelling.invoiceNo} cancelled – stock restored`); setCancelling(null); setReason(""); reload(); }
+    try { await api(`/api/sales/${cancelling.id}/cancel`, { body: { reason } }); toast.success(`${cancelling.invoiceNo} cancelled: stock restored`); setCancelling(null); setReason(""); reload(); }
     catch (e) { toast.error((e as Error).message); } finally { setBusy(false); }
   }
 
@@ -46,7 +46,7 @@ export default function SalesPage() {
                   <td className="td font-medium"><Link href={`/invoice/${s.id}`} className="text-brand-700 hover:underline dark:text-brand-300">{s.invoiceNo}</Link></td>
                   <td className="td whitespace-nowrap">{formatDateTime(s.createdAt)}</td><td className="td">{s.customer?.name ?? s.customerName ?? "Walk-in"}</td><td className="td">{s.user.name}</td>
                   <td className="td capitalize">{s.paymentMethod.toLowerCase()}</td><td className="td text-right">{money(s.total)}</td>
-                  <td className="td text-right">{Number(s.total) - Number(s.amountPaid) > 0 ? <Badge tone="amber">{money(Number(s.total) - Number(s.amountPaid))}</Badge> : "—"}</td>
+                  <td className="td text-right">{Number(s.total) - Number(s.amountPaid) > 0 ? <Badge tone="amber">{money(Number(s.total) - Number(s.amountPaid))}</Badge> : "-"}</td>
                   <td className="td">{s.status === "COMPLETED" ? <Badge tone="green">Completed</Badge> : <Badge tone="red">Cancelled</Badge>} {s._count.returns > 0 && <Badge tone="amber">Returns</Badge>}</td>
                   <td className="td"><div className="flex justify-end gap-1">
                     <Button size="sm" variant="ghost" aria-label={`Print ${s.invoiceNo}`} onClick={() => window.open(`/invoice/${s.id}?print=1`, "_blank")}><Printer className="h-4 w-4" /></Button>

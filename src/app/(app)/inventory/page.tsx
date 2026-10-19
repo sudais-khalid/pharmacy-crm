@@ -97,10 +97,10 @@ function ExpiryTab() {
       <div className="flex flex-wrap gap-2 border-b border-slate-200 p-4 dark:border-slate-800" role="group" aria-label="Expiry range">
         {ranges.map(([v, l]) => <Button key={v} size="sm" variant={range === v ? "primary" : "secondary"} aria-pressed={range === v} onClick={() => setRange(v)}>{l}</Button>)}
       </div>
-      {error ? <ErrorBox message={error} onRetry={reload} /> : loading && !data ? <TableSkeleton /> : !data?.items.length ? <EmptyState title="Nothing here 🎉" hint="No batches with stock fall in this range." /> : (
+      {error ? <ErrorBox message={error} onRetry={reload} /> : loading && !data ? <TableSkeleton /> : !data?.items.length ? <EmptyState title="Nothing here" hint="No batches with stock fall in this range." /> : (
         <><BatchTable rows={data.items} showValues /><Pagination page={data.page} pageSize={data.pageSize} total={data.total} onPage={setPage} /></>
       )}
-      {range === "expired" && !!data?.items.length && <p className="border-t border-slate-200 p-3 text-xs text-slate-500 dark:border-slate-800">Expired stock can never be sold. Remove it from the Batches tab using Adjust → Expired.</p>}
+      {range === "expired" && !!data?.items.length && <p className="border-t border-slate-200 p-3 text-xs text-slate-500 dark:border-slate-800">Expired stock can never be sold. Remove it from the Batches tab using Adjust, then Expired.</p>}
     </Card>
   );
 }
@@ -115,7 +115,7 @@ function LowStockTab() {
         <>
           <TableWrap><thead><tr className="border-b border-slate-200 dark:border-slate-800"><th className="th">Medicine</th><th className="th">Category</th><th className="th text-right">In stock</th><th className="th text-right">Minimum</th></tr></thead>
             <tbody>{data.items.map((m) => (
-              <tr key={m.id} className="border-b border-slate-100 dark:border-slate-800/60"><td className="td"><div className="font-medium">{m.name}</div><div className="text-xs text-slate-500">{m.genericName}</div></td><td className="td">{m.category?.name ?? "—"}</td>
+              <tr key={m.id} className="border-b border-slate-100 dark:border-slate-800/60"><td className="td"><div className="font-medium">{m.name}</div><div className="text-xs text-slate-500">{m.genericName}</div></td><td className="td">{m.category?.name ?? "-"}</td>
                 <td className="td text-right">{m.stock === 0 ? <Badge tone="red">Out of stock</Badge> : <Badge tone="amber">{m.stock}</Badge>}</td><td className="td text-right">{m.minStock}</td></tr>))}</tbody></TableWrap>
           <Pagination page={data.page} pageSize={data.pageSize} total={data.total} onPage={setPage} />
           {canCreate && <div className="border-t border-slate-200 p-3 dark:border-slate-800"><Link href="/purchases/new" className="text-sm font-medium text-brand-700 hover:underline dark:text-brand-300">Create a purchase to restock →</Link></div>}
@@ -143,7 +143,7 @@ function MovementsTab() {
           <tbody>{data.items.map((m) => (
             <tr key={m.id} className="border-b border-slate-100 dark:border-slate-800/60"><td className="td whitespace-nowrap">{formatDateTime(m.createdAt)}</td><td className="td"><Badge tone={tone(m.type)}>{m.type.replace("_", " ")}</Badge></td><td className="td">{m.medicine.name}</td><td className="td">{m.batch.batchNumber}</td>
               <td className={`td text-right font-medium ${m.quantity < 0 ? "text-red-600" : "text-emerald-600"}`}>{m.quantity > 0 ? "+" : ""}{m.quantity}</td><td className="td text-right">{m.balanceAfter}</td>
-              <td className="td">{m.reference ?? m.note ?? "—"}</td><td className="td">{m.user?.name ?? "—"}</td></tr>))}</tbody></TableWrap>
+              <td className="td">{m.reference ?? m.note ?? "-"}</td><td className="td">{m.user?.name ?? "-"}</td></tr>))}</tbody></TableWrap>
           <Pagination page={data.page} pageSize={data.pageSize} total={data.total} onPage={setPage} /></>
       )}
     </Card>
@@ -162,7 +162,7 @@ function AdjustModal({ batch, onClose, onDone }: { batch: Batch; onClose: () => 
     <Modal open onClose={onClose} title="Adjust stock" footer={<><Button variant="secondary" onClick={onClose}>Cancel</Button><Button type="submit" form="adj-form" loading={saving}>Apply</Button></>}>
       <p className="mb-4 text-sm"><b>{batch.medicine.name}</b> · batch {batch.batchNumber} · currently <b>{batch.quantity}</b> units</p>
       <form id="adj-form" onSubmit={submit} className="space-y-4">
-        <Field label="Type"><Select value={kind} onChange={(e) => setKind(e.target.value)}><option value="ADD">Add stock (count correction)</option><option value="REMOVE">Remove stock (count correction)</option><option value="DAMAGE">Damaged</option><option value="EXPIRY">Expired – write off</option></Select></Field>
+        <Field label="Type"><Select value={kind} onChange={(e) => setKind(e.target.value)}><option value="ADD">Add stock (count correction)</option><option value="REMOVE">Remove stock (count correction)</option><option value="DAMAGE">Damaged</option><option value="EXPIRY">Expired: write off</option></Select></Field>
         <Field label="Quantity"><Input type="number" min="1" value={quantity} onChange={(e) => setQuantity(e.target.value)} required data-autofocus /></Field>
         <Field label="Reason" hint="Recorded in the stock movement history"><Textarea value={note} onChange={(e) => setNote(e.target.value)} required minLength={3} /></Field>
       </form>

@@ -66,7 +66,7 @@ export const GET = route("reports.view", async ({ req, db, user }) => {
     }
     case "lowStock": {
       const rows = await db.$queryRaw<Record<string, unknown>[]>`
-        SELECT m.name AS medicine, COALESCE(c.name,'—') AS category, COALESCE(SUM(b.quantity) FILTER (WHERE b."expiryDate" >= ${today}::date),0)::int AS stock,
+        SELECT m.name AS medicine, COALESCE(c.name,'-') AS category, COALESCE(SUM(b.quantity) FILTER (WHERE b."expiryDate" >= ${today}::date),0)::int AS stock,
                m."minStock" AS "minStock", (m."minStock" - COALESCE(SUM(b.quantity) FILTER (WHERE b."expiryDate" >= ${today}::date),0))::int AS shortfall
         FROM "Medicine" m LEFT JOIN "Category" c ON c.id = m."categoryId" LEFT JOIN "Batch" b ON b."medicineId" = m.id
         WHERE m.active GROUP BY m.id, c.name

@@ -73,14 +73,14 @@ export function formatNum(v: unknown) {
 
 /** Date-only values (expiry etc.) → DD/MM/YYYY without timezone shifts. */
 export function formatDate(v: string | Date | null | undefined) {
-  if (!v) return "—";
+  if (!v) return "-";
   const s = typeof v === "string" ? v : v.toISOString();
   const [y, m, d] = s.slice(0, 10).split("-");
   return `${d}/${m}/${y}`;
 }
 
 export function formatDateTime(v: string | Date | null | undefined) {
-  if (!v) return "—";
+  if (!v) return "-";
   return new Date(v).toLocaleString("en-GB", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
 }
 

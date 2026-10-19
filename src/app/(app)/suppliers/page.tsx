@@ -21,7 +21,7 @@ export default function SuppliersPage() {
         {error ? <ErrorBox message={error} onRetry={reload} /> : loading && !data ? <TableSkeleton /> : !data?.items.length ? <EmptyState title="No suppliers yet" action={canManage && <Button onClick={() => setAdding(true)}>Add supplier</Button>} /> : (
           <><TableWrap><thead><tr className="border-b border-slate-200 dark:border-slate-800"><th className="th">Supplier</th><th className="th">Contact</th><th className="th">Phone</th><th className="th">Terms</th><th className="th text-right">We owe</th><th className="th">Status</th></tr></thead>
             <tbody>{data.items.map((s) => (<tr key={s.id} className="border-b border-slate-100 hover:bg-slate-50 dark:border-slate-800/60 dark:hover:bg-slate-800/40">
-              <td className="td font-medium"><Link className="text-brand-700 hover:underline dark:text-brand-300" href={`/suppliers/${s.id}`}>{s.name}</Link></td><td className="td">{s.contactPerson ?? "—"}</td><td className="td">{s.phone ?? "—"}</td><td className="td">{s.paymentTerms ?? "—"}</td>
+              <td className="td font-medium"><Link className="text-brand-700 hover:underline dark:text-brand-300" href={`/suppliers/${s.id}`}>{s.name}</Link></td><td className="td">{s.contactPerson ?? "-"}</td><td className="td">{s.phone ?? "-"}</td><td className="td">{s.paymentTerms ?? "-"}</td>
               <td className="td text-right">{Number(s.balance) > 0 ? <Badge tone="amber">{money(s.balance)}</Badge> : money(0)}</td><td className="td">{s.active ? <Badge tone="green">Active</Badge> : <Badge>Inactive</Badge>}</td></tr>))}</tbody></TableWrap>
           <Pagination page={data.page} pageSize={data.pageSize} total={data.total} onPage={setPage} /></>
         )}

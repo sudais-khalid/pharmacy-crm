@@ -22,7 +22,7 @@ export default function ReportsPage() {
   const ranged = TYPES.find((t) => t[0] === type)![2];
   const { data, error, loading, reload } = useApi<Report>(`/api/reports?${qs({ type, from, to, group })}`);
   const fmt = (col: Col, v: unknown) => {
-    if (v === null || v === undefined || v === "") return "—";
+    if (v === null || v === undefined || v === "") return "-";
     if (col.format === "money") return `${settings.currency} ${Number(v).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
     if (col.format === "int") return formatNum(v);
     if (col.format === "date") return formatDate(String(v));
@@ -44,7 +44,7 @@ export default function ReportsPage() {
         {error ? <ErrorBox message={error} onRetry={reload} /> : loading && !data ? <TableSkeleton /> : data && (
           <>
             <div className="border-b border-slate-200 p-4 dark:border-slate-800"><h2 className="text-lg font-semibold">{data.title}</h2>
-              <p className="text-sm text-slate-500">{ranged ? `${formatDate(data.from)} – ${formatDate(data.to)} · ` : ""}{data.description}</p></div>
+              <p className="text-sm text-slate-500">{ranged ? `${formatDate(data.from)} to ${formatDate(data.to)}, ` : ""}{data.description}</p></div>
             {data.rows.length === 0 ? <EmptyState title="No data for this report" hint="Try a wider date range." /> : (
               <TableWrap><thead><tr className="border-b border-slate-200 dark:border-slate-800">{data.columns.map((c) => <th key={c.key} className={`th ${c.format === "money" || c.format === "int" ? "text-right" : ""}`}>{c.label}</th>)}</tr></thead>
                 <tbody>{data.rows.map((r, i) => <tr key={i} className="border-b border-slate-100 dark:border-slate-800/60">{data.columns.map((c) => <td key={c.key} className={`td ${c.format === "money" || c.format === "int" ? "text-right" : ""}`}>{fmt(c, r[c.key])}</td>)}</tr>)}</tbody>

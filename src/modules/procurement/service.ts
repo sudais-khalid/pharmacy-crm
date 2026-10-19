@@ -125,7 +125,7 @@ export async function paySupplier(ctx: ServiceContext, supplierId: string, input
     const balance = await supplierBalance(tx, supplierId);
     if (amount.gt(balance)) throw new AppError(409, `Payment (${amount.toFixed(2)}) is more than the outstanding payable (${balance.toFixed(2)}).`);
     const entry = await tx.supplierLedger.create({
-      data: { supplierId, kind: "PAYMENT", credit: amount, description: input.note ? `Payment made – ${input.note}` : "Payment made", method: input.method, userId },
+      data: { supplierId, kind: "PAYMENT", credit: amount, description: input.note ? `Payment made: ${input.note}` : "Payment made", method: input.method, userId },
     });
     await audit(tx, ctx, { action: "supplier.payment", entity: "Supplier", entityId: supplierId, after: { ledgerId: entry.id, amount, method: input.method } });
     await emit(tx, "SupplierPaid", { supplierId, amount: amount.toFixed(2) });

@@ -50,7 +50,7 @@ export default function Dashboard() {
 
       <div className="mt-6 grid gap-4 xl:grid-cols-3">
         <Card className="p-4 xl:col-span-2">
-          <h2 className="mb-3 font-semibold">Sales – last 14 days</h2>
+          <h2 className="mb-3 font-semibold">Sales: last 14 days</h2>
           <div className="h-64" role="img" aria-label="Bar chart of daily sales for the last 14 days">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={chart} margin={{ left: 0, right: 8, top: 4 }}>
