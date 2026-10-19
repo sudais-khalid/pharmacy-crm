@@ -145,6 +145,13 @@ try {
   check("console: restore works and the window returns to the console", c.restore === "ok" && c.restoredEvent && c.afterRestoreUrl === "/platform/desktop" && c.preRestoreBackup, JSON.stringify(c));
   check("console: backup and restore are in the audit log after the restore", c.audit?.["desktop.backup"] === 1 && c.audit?.["desktop.restore"] === 1, JSON.stringify(c.audit));
   check("console: the app is healthy after the restore", eighth.code === 0 && eighth.report?.ok, eighth.out.slice(-1500));
+  const k = c.shortcuts ?? {};
+  check("shortcuts: Alt+P and Alt+N work in the Developer console", k.consoleAltP === "/platform/pharmacies" && k.consoleAltN === "/platform/pharmacies/new", JSON.stringify(k));
+  check("shortcuts: every menu letter is underlined", k.underlined?.toUpperCase() === "BPIMVHSCRUT", JSON.stringify(k));
+  check("shortcuts: Alt+M opens Medicines and Alt+N its new-medicine dialog", JSON.stringify(k.staffLogin) === "[200,200,200]" && k.altM === "/medicines" && k.altNOpensDialog === true, JSON.stringify(k));
+  check("shortcuts: Alt+letter does nothing behind an open dialog", k.altVBlockedByDialog === "/medicines", JSON.stringify(k));
+  check("shortcuts: / focuses the search box and ? lists the shortcuts", k.slashFocusesSearch === true && /Keyboard shortcuts/.test(k.helpOpens ?? "") && /Go to/.test(k.helpOpens ?? ""), JSON.stringify(k));
+  check("shortcuts: Alt+V opens Inventory", k.altV === "/inventory", JSON.stringify(k));
 
   // 9. the Developer lost the password and the authenticator: a Windows administrator recovers the account
   let elevated = true;

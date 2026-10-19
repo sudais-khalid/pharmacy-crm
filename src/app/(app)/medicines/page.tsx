@@ -55,7 +55,7 @@ function MedicinesInner() {
 
   return (
     <>
-      <PageHeader title="Medicines" subtitle="Catalogue of everything you sell. Stock is tracked per batch." actions={canManage && <Button onClick={() => setEditing("new")}><Plus className="h-4 w-4" /> Add medicine</Button>} />
+      <PageHeader title="Medicines" subtitle="Catalogue of everything you sell. Stock is tracked per batch." actions={canManage && <Button onClick={() => setEditing("new")} data-shortcut="new" aria-keyshortcuts="Alt+N" title="Alt+N"><Plus className="h-4 w-4" /> Add medicine</Button>} />
       <Card>
         <div className="flex flex-wrap gap-3 border-b border-slate-200 p-4 dark:border-slate-800">
           <SearchInput value={q} onChange={setQ} placeholder="Search name, generic, barcode, SKU" className="min-w-[220px] flex-1" />

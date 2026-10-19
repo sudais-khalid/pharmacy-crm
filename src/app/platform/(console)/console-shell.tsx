@@ -2,17 +2,12 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { Building2, LayoutDashboard, LogOut, Monitor, ShieldCheck, Users } from "lucide-react";
+import { LogOut, ShieldCheck } from "lucide-react";
+import { MnemonicLabel, ShortcutHelpButton, ShortcutProvider } from "@/components/shortcuts";
 import { cn } from "@/components/ui";
 import { api } from "@/lib/client";
 import { getDesktop } from "@/lib/desktop-bridge";
-
-const NAV = [
-  { href: "/platform", label: "Overview", icon: LayoutDashboard, exact: true },
-  { href: "/platform/pharmacies", label: "Pharmacies", icon: Building2 },
-  { href: "/platform/accounts", label: "Accounts", icon: Users },
-];
-const DESKTOP_NAV = { href: "/platform/desktop", label: "This computer", icon: Monitor };
+import { CONSOLE_DESKTOP_NAV, CONSOLE_NAV } from "@/lib/navigation";
 
 /** Developer console frame: dark header so it is never mistaken for a pharmacy's own app. */
 export function ConsoleShell({ dev, children }: { dev: { name: string; email: string }; children: React.ReactNode }) {
@@ -21,7 +16,7 @@ export function ConsoleShell({ dev, children }: { dev: { name: string; email: st
   // known only in the browser, after the first render
   const [inDesktopApp, setInDesktopApp] = useState(false);
   useEffect(() => setInDesktopApp(getDesktop() !== null), []);
-  const nav = inDesktopApp ? [...NAV, DESKTOP_NAV] : NAV;
+  const nav = inDesktopApp ? [...CONSOLE_NAV, CONSOLE_DESKTOP_NAV] : CONSOLE_NAV;
 
   async function logout() {
     await api("/api/platform/auth/logout", { body: {} }).catch(() => {});
@@ -30,6 +25,7 @@ export function ConsoleShell({ dev, children }: { dev: { name: string; email: st
   }
 
   return (
+    <ShortcutProvider nav={[...nav]}>
     <div className="min-h-screen">
       <header className="no-print sticky top-0 z-30 border-b border-slate-800 bg-slate-900 text-slate-100">
         <div className="mx-auto flex h-14 max-w-7xl items-center gap-6 px-4">
@@ -38,13 +34,14 @@ export function ConsoleShell({ dev, children }: { dev: { name: string; email: st
             {nav.map((n) => {
               const active = "exact" in n && n.exact ? pathname === n.href : pathname.startsWith(n.href);
               return (
-                <Link key={n.href} href={n.href} aria-current={active ? "page" : undefined}
+                <Link key={n.href} href={n.href} aria-current={active ? "page" : undefined} aria-keyshortcuts={`Alt+${n.key}`} title={`Alt+${n.key}`}
                   className={cn("flex items-center gap-2 whitespace-nowrap rounded-lg px-3 py-1.5 text-sm", active ? "bg-slate-700 text-white" : "text-slate-300 hover:bg-slate-800")}>
-                  <n.icon className="h-4 w-4" aria-hidden /> {n.label}
+                  <n.icon className="h-4 w-4" aria-hidden /> <MnemonicLabel label={n.label} k={n.key} />
                 </Link>
               );
             })}
           </nav>
+          <ShortcutHelpButton className="hidden rounded-lg p-2 text-slate-300 hover:bg-slate-800 sm:block" />
           <span className="hidden text-right text-xs sm:block"><span className="block font-medium text-slate-100">{dev.name}</span><span className="text-slate-400">{dev.email}</span></span>
           <button onClick={logout} className="flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-sm text-slate-300 hover:bg-slate-800" aria-label="Sign out">
             <LogOut className="h-4 w-4" aria-hidden /> <span className="hidden sm:inline">Sign out</span>
@@ -53,5 +50,6 @@ export function ConsoleShell({ dev, children }: { dev: { name: string; email: st
       </header>
       <main id="main" className="mx-auto max-w-7xl p-4 sm:p-6">{children}</main>
     </div>
+    </ShortcutProvider>
   );
 }

@@ -17,7 +17,7 @@ export default function PurchasesPage() {
   const detail = useApi<Detail>(view ? `/api/purchases/${view}` : null);
   return (
     <>
-      <PageHeader title="Purchases" subtitle="Purchase invoices. Completing one adds stock by batch and updates the supplier ledger." actions={canCreate && <Link href="/purchases/new"><Button><Plus className="h-4 w-4" /> New purchase</Button></Link>} />
+      <PageHeader title="Purchases" subtitle="Purchase invoices. Completing one adds stock by batch and updates the supplier ledger." actions={canCreate && <Link href="/purchases/new" data-shortcut="new" aria-keyshortcuts="Alt+N" title="Alt+N"><Button><Plus className="h-4 w-4" /> New purchase</Button></Link>} />
       <Card>
         <div className="border-b border-slate-200 p-4 dark:border-slate-800"><SearchInput value={q} onChange={setQ} placeholder="Search purchase no., supplier invoice or supplier" className="max-w-md" /></div>
         {error ? <ErrorBox message={error} onRetry={reload} /> : loading && !data ? <TableSkeleton /> : !data?.items.length ? <EmptyState title="No purchases yet" hint="Record a supplier invoice to add stock." /> : (

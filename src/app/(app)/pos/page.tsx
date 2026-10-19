@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AlertTriangle, CheckCircle2, Minus, Plus, Printer, ShoppingCart, Trash2, UserRound, X } from "lucide-react";
 import { Badge, Button, Card, Checkbox, EmptyState, Input, Modal, Select, useToast, cn } from "@/components/ui";
 import { useMoney } from "@/components/app-context";
+import { useShortcutHelp } from "@/components/shortcuts";
 import { api, formatDate, qs, useApi, useDebounce } from "@/lib/client";
 
 type Result = { id: string; name: string; genericName: string | null; barcode: string | null; unit: string; prescriptionRequired: boolean; stock: number; price: string; nextExpiry: string | null; exactBarcode: boolean };
@@ -94,10 +95,16 @@ export default function PosPage() {
     setTimeout(() => searchRef.current?.focus(), 50);
   }
 
+  useShortcutHelp([
+    { keys: "F2", label: "Search or scan a barcode" },
+    { keys: "Enter", label: "Add the scanned medicine (or the only match)" },
+    { keys: "F9", label: "Complete the sale" },
+  ]);
+
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (done) return;
-      if (e.key === "F2" || (e.key === "/" && document.activeElement?.tagName !== "INPUT" && document.activeElement?.tagName !== "TEXTAREA")) { e.preventDefault(); searchRef.current?.focus(); }
+      if (e.key === "F2") { e.preventDefault(); searchRef.current?.focus(); } // "/" comes from the shortcut provider
       if (e.key === "F9") { e.preventDefault(); complete(); }
     };
     window.addEventListener("keydown", onKey);
@@ -110,7 +117,7 @@ export default function PosPage() {
       <div>
         <h1 className="mb-3 text-2xl font-semibold tracking-tight">Point of sale</h1>
         <Card className="p-3">
-          <Input ref={searchRef} autoFocus aria-label="Search medicine or scan barcode" placeholder="Search by name, generic, SKU – or scan a barcode  (F2)" value={q} onChange={(e) => setQ(e.target.value)}
+          <Input ref={searchRef} autoFocus data-shortcut="search" aria-keyshortcuts="F2 /" aria-label="Search medicine or scan barcode" placeholder="Search by name, generic, SKU – or scan a barcode  (F2)" value={q} onChange={(e) => setQ(e.target.value)}
             onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); onSearchEnter(); } }} className="py-3 text-base" />
           <p className="mt-1.5 text-xs text-slate-500">USB scanners work like a keyboard – scan and the item is added. Stock is sold earliest-expiry first (FEFO); expired batches are never sold.</p>
         </Card>

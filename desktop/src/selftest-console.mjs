@@ -82,5 +82,65 @@ export async function consoleScenario({ win, baseUrl, supervisor }) {
     Object.fromEntries((await c.query(`SELECT action, count(*)::int AS n FROM "AuditLog" WHERE action LIKE 'desktop.%' GROUP BY action`)).rows.map((x) => [x.action, x.n])),
   );
   r.preRestoreBackup = supervisor.availableBackups().some((b) => b.reason === "pre-restore");
+  r.shortcuts = await shortcutScenario({ win, baseUrl, page, request });
   return r;
+}
+
+/** Letter shortcuts with real key presses, in the console and in a pharmacy's staff app. */
+async function shortcutScenario({ win, baseUrl, page, request }) {
+  const wait = (ms) => new Promise((ok) => setTimeout(ok, ms));
+  const at = () => new URL(win.webContents.getURL()).pathname;
+  const press = async (keyCode, modifiers = []) => {
+    win.webContents.focus();
+    win.webContents.sendInputEvent({ type: "keyDown", keyCode, modifiers });
+    win.webContents.sendInputEvent({ type: "keyUp", keyCode, modifiers });
+    await wait(1200);
+  };
+  const shot = async (name) => {
+    if (process.env.PCRM_SELFTEST_SHOTS) writeFileSync(path.join(process.env.PCRM_SELFTEST_SHOTS, name), (await win.webContents.capturePage()).toPNG());
+  };
+  const s = {};
+
+  // console
+  await win.loadURL(`${baseUrl}/platform/desktop`);
+  await wait(800);
+  await press("P", ["alt"]);
+  s.consoleAltP = at();
+  await press("N", ["alt"]);
+  s.consoleAltN = at();
+
+  // a pharmacy and its admin
+  const made = await request("POST", "/api/platform/pharmacies", {
+    pharmacy: { name: "Shortcut Pharmacy", slug: "shortcuts" }, plan: {}, features: [],
+    admin: { name: "Shortcut Admin", username: "admin", email: "admin@shortcuts.example" }, credentials: "password",
+  });
+  await win.loadURL(`${baseUrl}/p/shortcuts/login`);
+  const login = await request("POST", "/api/auth/login", { pharmacy: "shortcuts", username: "admin", password: made.body?.credentials?.password });
+  const changed = await request("POST", "/api/auth/password", { currentPassword: made.body?.credentials?.password, newPassword: "Counter-Keys-2026!" });
+  s.staffLogin = [made.status, login.status, changed.status];
+
+  // staff app
+  win.setSize(1366, 860);
+  await win.loadURL(`${baseUrl}/dashboard`);
+  await wait(1500);
+  s.underlined = await page(`[...document.querySelectorAll('nav[aria-label="Main"] a')].map((a) => a.querySelector("span.underline")?.textContent ?? "").join("")`);
+  await press("M", ["alt"]);
+  s.altM = at();
+  await press("N", ["alt"]);
+  s.altNOpensDialog = await page(`document.querySelector('[role="dialog"][aria-modal="true"]') !== null`);
+  await press("V", ["alt"]);
+  s.altVBlockedByDialog = at();
+  await press("Escape");
+  await press("/");
+  s.slashFocusesSearch = await page(`document.activeElement?.dataset?.shortcut === "search"`);
+  await press("Escape");
+  await page(`document.activeElement?.blur()`);
+  await press("/", ["shift"]); // "?" on a US keyboard
+  s.helpOpens = await page(`[...document.querySelectorAll('[role="dialog"] h2, [role="dialog"] h3')].map((h) => h.textContent).join("|")`);
+  await shot("shortcuts-help.png");
+  await press("Escape");
+  await press("V", ["alt"]);
+  s.altV = at();
+  await shot("shortcuts-inventory.png");
+  return s;
 }

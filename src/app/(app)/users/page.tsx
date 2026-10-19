@@ -32,7 +32,7 @@ export default function UsersPage() {
 
   return (
     <>
-      <PageHeader title="Users" subtitle="Staff accounts and their roles." actions={<Button onClick={() => open("new")}><Plus className="h-4 w-4" /> Add user</Button>} />
+      <PageHeader title="Users" subtitle="Staff accounts and their roles." actions={<Button onClick={() => open("new")} data-shortcut="new" aria-keyshortcuts="Alt+N" title="Alt+N"><Plus className="h-4 w-4" /> Add user</Button>} />
       <Card>
         {error ? <ErrorBox message={error} onRetry={reload} /> : loading && !data ? <TableSkeleton /> : !data?.length ? <EmptyState title="No users" /> : (
           <TableWrap><thead><tr className="border-b border-slate-200 dark:border-slate-800"><th className="th">Name</th><th className="th">Email</th><th className="th">Role</th><th className="th">Status</th><th className="th">Created</th><th className="th text-right">Actions</th></tr></thead>

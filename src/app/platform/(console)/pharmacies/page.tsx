@@ -21,7 +21,7 @@ export default function PharmaciesPage() {
       <PageHeader
         title="Pharmacies"
         subtitle="Every pharmacy on this installation"
-        actions={<Link href="/platform/pharmacies/new" className="inline-flex items-center gap-2 rounded-lg bg-primary px-3.5 py-2 text-sm font-medium text-on-primary hover:bg-primary/90"><Plus className="h-4 w-4" aria-hidden /> New pharmacy</Link>}
+        actions={<Link href="/platform/pharmacies/new" data-shortcut="new" aria-keyshortcuts="Alt+N" title="Alt+N" className="inline-flex items-center gap-2 rounded-lg bg-primary px-3.5 py-2 text-sm font-medium text-on-primary hover:bg-primary/90"><Plus className="h-4 w-4" aria-hidden /> New pharmacy</Link>}
       />
       <Card>
         <div className="flex flex-wrap gap-3 border-b border-border p-4">

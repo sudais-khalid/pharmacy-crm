@@ -3,24 +3,12 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { useTheme } from "next-themes";
-import { BarChart3, Boxes, ClipboardList, LayoutDashboard, LogOut, Menu, Moon, Pill, Receipt, Settings, ShoppingCart, Sun, Truck, UserCog, Users, X } from "lucide-react";
+import { LogOut, Menu, Moon, Pill, Sun, X } from "lucide-react";
 import { AppContext, type AppCtx } from "./app-context";
+import { MnemonicLabel, ShortcutHelpButton, ShortcutProvider } from "./shortcuts";
 import { cn } from "./ui";
 import { api } from "@/lib/client";
-
-const NAV = [
-  { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard, perm: "dashboard.view" },
-  { href: "/pos", label: "POS / Sales", icon: ShoppingCart, perm: "pos.use" },
-  { href: "/sales", label: "Invoices", icon: Receipt, perm: "sales.view" },
-  { href: "/medicines", label: "Medicines", icon: Pill, perm: "medicines.view" },
-  { href: "/inventory", label: "Inventory", icon: Boxes, perm: "inventory.view" },
-  { href: "/purchases", label: "Purchases", icon: ClipboardList, perm: "purchases.view" },
-  { href: "/suppliers", label: "Suppliers", icon: Truck, perm: "suppliers.view" },
-  { href: "/customers", label: "Customers", icon: Users, perm: "customers.view" },
-  { href: "/reports", label: "Reports", icon: BarChart3, perm: "reports.view" },
-  { href: "/users", label: "Users", icon: UserCog, perm: "users.manage" },
-  { href: "/settings", label: "Settings", icon: Settings, perm: "settings.manage" },
-];
+import { STAFF_NAV } from "@/lib/navigation";
 
 export function Shell({ ctx, children }: { ctx: AppCtx; children: React.ReactNode }) {
   const pathname = usePathname();
@@ -31,7 +19,7 @@ export function Shell({ ctx, children }: { ctx: AppCtx; children: React.ReactNod
   useEffect(() => setMounted(true), []);
   useEffect(() => setOpen(false), [pathname]);
 
-  const items = NAV.filter((n) => ctx.permissions.includes(n.perm));
+  const items = STAFF_NAV.filter((n) => ctx.permissions.includes(n.perm));
 
   async function logout() {
     await api("/api/auth/logout", { method: "POST", body: {} }).catch(() => {});
@@ -49,9 +37,9 @@ export function Shell({ ctx, children }: { ctx: AppCtx; children: React.ReactNod
       {items.map((n) => {
         const active = pathname === n.href || pathname.startsWith(n.href + "/");
         return (
-          <Link key={n.href} href={n.href} aria-current={active ? "page" : undefined}
+          <Link key={n.href} href={n.href} aria-current={active ? "page" : undefined} aria-keyshortcuts={`Alt+${n.key}`} title={`Alt+${n.key}`}
             className={cn("flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium", active ? "bg-brand-600 text-white" : "text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800")}>
-            <n.icon className="h-[18px] w-[18px]" aria-hidden /> {n.label}
+            <n.icon className="h-[18px] w-[18px]" aria-hidden /> <MnemonicLabel label={n.label} k={n.key} />
           </Link>
         );
       })}
@@ -60,6 +48,7 @@ export function Shell({ ctx, children }: { ctx: AppCtx; children: React.ReactNod
 
   return (
     <AppContext.Provider value={ctx}>
+    <ShortcutProvider nav={items}>
       <a href="#main" className="sr-only focus:not-sr-only focus:absolute focus:left-2 focus:top-2 focus:z-[70] focus:rounded focus:bg-white focus:px-3 focus:py-2">Skip to content</a>
       <div className="no-print fixed inset-y-0 left-0 z-30 hidden w-60 flex-col border-r border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900 lg:flex">
         <div className="flex h-14 items-center gap-2 border-b border-slate-200 px-5 dark:border-slate-800">
@@ -87,6 +76,7 @@ export function Shell({ ctx, children }: { ctx: AppCtx; children: React.ReactNod
           <button onClick={() => setOpen(true)} aria-label="Open menu" className="rounded p-2 hover:bg-slate-100 dark:hover:bg-slate-800 lg:hidden"><Menu className="h-5 w-5" /></button>
           <div className="hidden text-sm text-slate-500 lg:block">{new Date().toLocaleDateString("en-GB", { weekday: "long", day: "2-digit", month: "long", year: "numeric" })}</div>
           <div className="flex items-center gap-2">
+            <ShortcutHelpButton className="hidden rounded-lg p-2 text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800 sm:block" />
             <button onClick={() => setTheme(resolvedTheme === "dark" ? "light" : "dark")} aria-label="Toggle dark mode" className="rounded-lg p-2 text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800">
               {mounted && resolvedTheme === "dark" ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
             </button>
@@ -112,6 +102,7 @@ export function Shell({ ctx, children }: { ctx: AppCtx; children: React.ReactNod
         )}
         <main id="main" className="mx-auto max-w-[1400px] p-4 sm:p-6">{children}</main>
       </div>
+    </ShortcutProvider>
     </AppContext.Provider>
   );
 }

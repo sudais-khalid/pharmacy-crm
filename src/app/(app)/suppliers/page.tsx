@@ -15,7 +15,7 @@ export default function SuppliersPage() {
   const [adding, setAdding] = useState(false);
   return (
     <>
-      <PageHeader title="Suppliers" subtitle="Who you buy from and what you owe them." actions={canManage && <Button onClick={() => setAdding(true)}><Plus className="h-4 w-4" /> Add supplier</Button>} />
+      <PageHeader title="Suppliers" subtitle="Who you buy from and what you owe them." actions={canManage && <Button onClick={() => setAdding(true)} data-shortcut="new" aria-keyshortcuts="Alt+N" title="Alt+N"><Plus className="h-4 w-4" /> Add supplier</Button>} />
       <Card>
         <div className="border-b border-slate-200 p-4 dark:border-slate-800"><SearchInput value={q} onChange={setQ} placeholder="Search supplier, contact or phone" className="max-w-md" /></div>
         {error ? <ErrorBox message={error} onRetry={reload} /> : loading && !data ? <TableSkeleton /> : !data?.items.length ? <EmptyState title="No suppliers yet" action={canManage && <Button onClick={() => setAdding(true)}>Add supplier</Button>} /> : (
