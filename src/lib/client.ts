@@ -7,10 +7,14 @@ export class ApiError extends Error {
   }
 }
 
-export async function api<T = unknown>(url: string, opts: { method?: string; body?: unknown } = {}): Promise<T> {
+/** JSON request. `idempotencyKey` makes a retried write (a lost response, a double click) happen once on the server. */
+export async function api<T = unknown>(url: string, opts: { method?: string; body?: unknown; idempotencyKey?: string } = {}): Promise<T> {
+  const headers: Record<string, string> = {};
+  if (opts.body !== undefined) headers["Content-Type"] = "application/json";
+  if (opts.idempotencyKey) headers["Idempotency-Key"] = opts.idempotencyKey;
   const res = await fetch(url, {
     method: opts.method ?? (opts.body !== undefined ? "POST" : "GET"),
-    headers: opts.body !== undefined ? { "Content-Type": "application/json" } : undefined,
+    headers,
     body: opts.body !== undefined ? JSON.stringify(opts.body) : undefined,
     credentials: "same-origin",
   });

@@ -1,4 +1,4 @@
-import { BarChart3, Boxes, PackagePlus, Building2, ClipboardList, History, LayoutDashboard, Monitor, Palette, Pill, Receipt, Settings, ShieldCheck, ShoppingCart, Truck, UserCog, Users } from "lucide-react";
+import { BarChart3, Boxes, PackagePlus, Building2, ClipboardList, History, LayoutDashboard, Monitor, Palette, Pill, Receipt, Settings, ShieldCheck, ShoppingCart, Truck, Undo2, UserCog, Users, Wallet } from "lucide-react";
 
 /**
  * The menus and their Alt+letter shortcuts. Each key is a letter of the label (it is underlined there);
@@ -11,6 +11,8 @@ export const STAFF_NAV = [
   { href: "/dashboard", label: "Dashboard", key: "B", icon: LayoutDashboard, perm: "dashboard.view", group: null },
   { href: "/pos", label: "POS / Sales", key: "P", icon: ShoppingCart, perm: "pos.use", group: "Sell" },
   { href: "/sales", label: "Invoices", key: "I", icon: Receipt, perm: "sales.view", group: "Sell" },
+  { href: "/returns", label: "Sales returns", key: "L", icon: Undo2, perm: "sales.view", group: "Sell" },
+  { href: "/cash", label: "Cash drawer", key: "W", icon: Wallet, perm: "pos.use", group: "Sell" },
   { href: "/medicines", label: "Medicines", key: "M", icon: Pill, perm: "medicines.view", group: "Stock" },
   { href: "/inventory", label: "Inventory", key: "V", icon: Boxes, perm: "inventory.view", group: "Stock" },
   { href: "/stock-entry", label: "Stock entry", key: "K", icon: PackagePlus, perm: "stockEntry.create", group: "Stock" },

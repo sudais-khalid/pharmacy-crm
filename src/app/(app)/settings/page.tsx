@@ -1,12 +1,19 @@
 "use client";
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { Button, Card, ErrorBox, Field, Input, PageHeader, Spinner, useToast } from "@/components/ui";
+import { Button, Card, Checkbox, ErrorBox, Field, Input, PageHeader, Select, Spinner, useToast } from "@/components/ui";
 import { useCan } from "@/components/app-context";
 import { ApiError, api, useApi } from "@/lib/client";
 
-type S = { expiryWarningDays: number; currency: string; ocrProvider: string };
-type Loaded = S & { ocrProviders: string[]; ocrMonthlyLimit: number; ocrUsedThisMonth: number };
+type S = {
+  expiryWarningDays: number; currency: string; ocrProvider: string;
+  receiptFormat: string; autoPrintReceipt: boolean; receiptBatchLines: boolean; requireCashSession: boolean; cashDiffThreshold: number;
+};
+type Loaded = S & { ocrProviders: string[]; ocrMonthlyLimit: number; ocrUsedThisMonth: number; cashSessionsOn: boolean };
+const pickS = (d: Loaded): S => ({
+  expiryWarningDays: d.expiryWarningDays, currency: d.currency, ocrProvider: d.ocrProvider, receiptFormat: d.receiptFormat, autoPrintReceipt: d.autoPrintReceipt,
+  receiptBatchLines: d.receiptBatchLines, requireCashSession: d.requireCashSession, cashDiffThreshold: d.cashDiffThreshold,
+});
 
 /** Operational settings. The pharmacy's name, contacts, logo and receipt texts are on Profile & branding. */
 export default function SettingsPage() {
@@ -16,7 +23,7 @@ export default function SettingsPage() {
   const [f, setF] = useState<S | null>(null);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
-  useEffect(() => { if (data) setF({ expiryWarningDays: data.expiryWarningDays, currency: data.currency, ocrProvider: data.ocrProvider }); }, [data]);
+  useEffect(() => { if (data) setF(pickS(data)); }, [data]);
   if (error) return <ErrorBox message={error} onRetry={reload} />;
   if (!f || !data) return <Spinner />;
 
@@ -37,7 +44,7 @@ export default function SettingsPage() {
 
   return (
     <>
-      <PageHeader title="Settings" subtitle="Inventory alerts, how amounts are shown and how bill photos are read." />
+      <PageHeader title="Settings" subtitle="Inventory alerts, receipts, the cash drawer, how amounts are shown and how bill photos are read." />
       <form onSubmit={submit} className="max-w-3xl space-y-4">
         <Card className="grid gap-4 p-5 sm:grid-cols-2">
           <Field label="Expiry warning period (days)" error={errors.expiryWarningDays} hint="Used by the dashboard and the Expiry tab">
@@ -47,6 +54,27 @@ export default function SettingsPage() {
             <Input value={f.currency} onChange={(e) => setF({ ...f, currency: e.target.value })} required maxLength={8} />
           </Field>
         </Card>
+        <Card className="grid gap-4 p-5 sm:grid-cols-2">
+          <h2 className="font-semibold sm:col-span-2">Receipts</h2>
+          <Field label="Receipt printer" hint="Reprints keep the format used at the sale">
+            <Select value={f.receiptFormat} onChange={(e) => setF({ ...f, receiptFormat: e.target.value })}>
+              <option value="THERMAL_80">80 mm thermal roll</option><option value="THERMAL_58">58 mm thermal roll</option><option value="A4">A4 page</option>
+            </Select>
+          </Field>
+          <div className="space-y-2 pt-6">
+            <Checkbox label="Print the receipt as soon as a sale is completed" checked={f.autoPrintReceipt} onChange={(e) => setF({ ...f, autoPrintReceipt: e.target.checked })} />
+            <Checkbox label="Print batch and expiry under each line" checked={f.receiptBatchLines} onChange={(e) => setF({ ...f, receiptBatchLines: e.target.checked })} />
+          </div>
+        </Card>
+        {data.cashSessionsOn && (
+          <Card className="grid gap-4 p-5 sm:grid-cols-2">
+            <h2 className="font-semibold sm:col-span-2">Cash drawer</h2>
+            <div className="pt-1"><Checkbox label="No cash sales without an open drawer" checked={f.requireCashSession} onChange={(e) => setF({ ...f, requireCashSession: e.target.checked })} /></div>
+            <Field label="Difference that needs a note at closing" error={errors.cashDiffThreshold}>
+              <Input type="number" min="0" step="1" value={f.cashDiffThreshold} onChange={(e) => setF({ ...f, cashDiffThreshold: Number(e.target.value) })} />
+            </Field>
+          </Card>
+        )}
         <Card className="space-y-3 p-5">
           <div>
             <h2 className="font-semibold">Reading bill photos</h2>

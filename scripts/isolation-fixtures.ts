@@ -43,10 +43,15 @@ async function main() {
   const intake = await createIntake(ctx, { kind: "STOCK_LIST", source: "MANUAL" });
   await saveDraft(ctx, intake.id, intakeDraftSchema.parse({ lines: [{ name: medicine.name, medicineId: medicine.id, batchNumber: "BRAVO-3", expiryDate: addDays(todayStr(), 500), quantity: 5 }] }));
 
+  const { createReturn } = await import("../src/modules/sales");
+  const [saleItem] = await platformDb.saleItem.findMany({ where: { saleId: sale.id } });
+  const saleReturn = await createReturn(ctx, { saleId: sale.id, refundMethod: "CREDIT", reason: "Bravo return", items: [{ saleItemId: saleItem.id, quantity: 1, restock: true }] });
+  const cashSession = await platformDb.cashSession.create({ data: { pharmacyId, userId: admin.id, openingFloat: 100 } });
+
   console.log(JSON.stringify({
     pharmacy: slug,
     admin: { username: "badmin", password },
-    ids: { medicine: medicine.id, batch: batch.id, customer: customer.id, supplier: supplier.id, sale: sale.id, purchase: purchase.id, user: admin.id, role: role.id, file: logo.logoFileId, intake: intake.id },
+    ids: { medicine: medicine.id, batch: batch.id, customer: customer.id, supplier: supplier.id, sale: sale.id, purchase: purchase.id, user: admin.id, role: role.id, file: logo.logoFileId, intake: intake.id, saleReturn: saleReturn.id, cashSession: cashSession.id, saleItem: saleItem.id },
     names: { medicine: medicine.name, customer: customer.name, supplier: supplier.name, invoice: sale.invoiceNo, purchase: purchase.number },
   }));
   process.exit(0);

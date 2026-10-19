@@ -5,6 +5,7 @@ import { Archive, Pencil, Plus, RotateCcw, Trash2, Eye } from "lucide-react";
 import { Badge, Button, Card, Checkbox, ConfirmDialog, EmptyState, ErrorBox, Field, Input, Modal, PageHeader, Pagination, SearchInput, Select, TableSkeleton, TableWrap, Textarea, useToast } from "@/components/ui";
 import { useCan, useMoney } from "@/components/app-context";
 import { HistoryList } from "@/components/history";
+import { MedicineSales } from "@/components/medicine-sales";
 import { ApiError, api, formatDate, qs, useApi, useDebounce } from "@/lib/client";
 
 type Category = { id: string; name: string };
@@ -118,6 +119,7 @@ function MedicineDetail({ id, onClose }: { id: string | null; onClose: () => voi
   const money = useMoney();
   const canAudit = useCan("audit.view");
   const seesCost = useCan("cost.view");
+  const seesSales = useCan("sales.view");
   const { data, loading } = useApi<Detail>(id ? `/api/medicines/${id}` : null);
   const today = new Date().toISOString().slice(0, 10);
   return (
@@ -138,6 +140,7 @@ function MedicineDetail({ id, onClose }: { id: string | null; onClose: () => voi
                   <td className="td">{formatDate(b.expiryDate)} {b.expiryDate.slice(0, 10) < today && <Badge tone="red">Expired</Badge>}</td>
                   <td className="td text-right">{b.quantity}</td>{seesCost && <td className="td text-right">{money(b.purchasePrice)}</td>}<td className="td text-right">{money(b.salePrice)}</td></tr>))}</tbody></TableWrap>
           )}
+          {seesSales && <><h3 className="font-semibold">Sales</h3><MedicineSales medicineId={data.id} /></>}
           {canAudit && <><h3 className="font-semibold">History</h3><div className="rounded-lg border border-border"><HistoryList entity="Medicine" entityId={data.id} /></div></>}
         </div>
       )}

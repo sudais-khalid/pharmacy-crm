@@ -1,13 +1,11 @@
-import { getSessionUser } from "@/modules/identity";
-import { tenantTransaction } from "@/lib/db";
-import { getSettings } from "@/modules/platform";
 import { BrandStyle } from "@/components/brand-style";
+import { AppProvider } from "@/components/app-context";
+import { loadAppContext } from "../app-session";
 
 export const dynamic = "force-dynamic";
 
-/** Printed invoices carry the pharmacy's brand colour too. */
+/** Printed invoices and return slips carry the pharmacy's brand colour, and know what the viewer may do. */
 export default async function InvoiceLayout({ children }: { children: React.ReactNode }) {
-  const user = await getSessionUser();
-  const color = user ? (await tenantTransaction(user.pharmacyId, (tx) => getSettings(tx, user.pharmacyId))).brandColor : null;
-  return <><BrandStyle color={color} />{children}</>;
+  const ctx = await loadAppContext();
+  return <AppProvider ctx={ctx}><BrandStyle color={ctx.settings.brandColor} />{children}</AppProvider>;
 }

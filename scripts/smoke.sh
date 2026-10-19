@@ -106,6 +106,24 @@ ok "The same photo twice opens the same entry" "$(curl -s -b /tmp/smoke_pharmaci
 ok "A file that is not a photo is refused" "$(code -b /tmp/smoke_pharmacist.jar -X POST $B/api/stock-entry/upload -H "Origin: $B" -F kind=PURCHASE_BILL -F "page=@$PDF;type=image/png")" 400
 ok "Cashier cannot upload bill photos" "$(code -b /tmp/smoke_cashier.jar -X POST $B/api/stock-entry/upload -H "Origin: $B" -F kind=PURCHASE_BILL -F "page=@$PNG;type=image/png")" 403
 ok "Old new-purchase page sends people to stock entry" "$(curl -s -o /dev/null -w '%{redirect_url}' -b /tmp/smoke_admin.jar $B/purchases/new | sed 's#.*//[^/]*##')" "/stock-entry?new=PURCHASE_BILL"
+# counter: walk-in details, own invoices for cashiers, returns
+PSALE=$(curl -s -b /tmp/smoke_pharmacist.jar -X POST $B/api/sales -H 'content-type: application/json' -H "Idempotency-Key: smoke-ret-$(date +%s%N)" -d "{\"items\":[{\"medicineId\":\"$NID\",\"quantity\":2}],\"paymentMethod\":\"CASH\",\"cashTendered\":500,\"customerName\":\"Walk In Smoke\",\"customerPhone\":\"0300-0000000\"}")
+PS=$(echo "$PSALE" | js "d['id']")
+ok "Change is worked out from the cash received" "$(echo "$PSALE" | js "float(d['changeGiven'])")" 300.0
+ok "Walk-in name is kept on the invoice" "$(curl -s -b /tmp/smoke_pharmacist.jar $B/api/sales/$PS | js "d['customerName']")" "Walk In Smoke"
+ok "A cashier cannot open another cashier's invoice" "$(code -b /tmp/smoke_cashier.jar $B/api/sales/$PS)" 404
+ok "A cashier's invoice list holds only their own" "$(curl -s -b /tmp/smoke_cashier.jar "$B/api/sales?q=Walk%20In%20Smoke" | js "d['total']")" 0
+PITEM=$(curl -s -b /tmp/smoke_pharmacist.jar $B/api/sales/$PS | js "d['items'][0]['id']")
+ok "A cashier cannot take returns" "$(code -b /tmp/smoke_cashier.jar -X POST $B/api/returns -H 'content-type: application/json' -d "{\"saleId\":\"$PS\",\"refundMethod\":\"CASH\",\"reason\":\"smoke\",\"items\":[{\"saleItemId\":\"$PITEM\",\"quantity\":1}]}")" 403
+RET=$(curl -s -b /tmp/smoke_pharmacist.jar -X POST $B/api/returns -H 'content-type: application/json' -d "{\"saleId\":\"$PS\",\"refundMethod\":\"CASH\",\"reason\":\"Doctor changed it\",\"items\":[{\"saleItemId\":\"$PITEM\",\"quantity\":1,\"restock\":true}]}")
+RID=$(echo "$RET" | js "d['id']")
+ok "A return refunds the price paid" "$(echo "$RET" | js "float(d['total'])")" 100.0
+ok "Returning more than was sold is refused" "$(code -b /tmp/smoke_pharmacist.jar -X POST $B/api/returns -H 'content-type: application/json' -d "{\"saleId\":\"$PS\",\"refundMethod\":\"CASH\",\"reason\":\"again\",\"items\":[{\"saleItemId\":\"$PITEM\",\"quantity\":2,\"restock\":true}]}")" 409
+ok "Returned stock is sellable again" "$(curl -s -b /tmp/smoke_cashier.jar "$B/api/pos/search?q=$BC" | js "d[0]['stock']")" 13
+ok "An invoice with returns cannot be cancelled" "$(code -b /tmp/smoke_pharmacist.jar -X POST $B/api/sales/$PS/cancel -H 'content-type: application/json' -d '{"reason":"smoke"}')" 409
+ok "Return slip renders" "$(code -b /tmp/smoke_pharmacist.jar $B/invoice/returns/$RID)" 200
+ok "Cash drawer sessions are off by default" "$(curl -s -b /tmp/smoke_cashier.jar $B/api/cash | js "d['enabled']")" False
+ok "Medicine sales history lists the sale" "$(curl -s -b /tmp/smoke_pharmacist.jar $B/api/medicines/$NID/sales | js "any(i['sale']['id']=='$PS' and i['returnedQty']==1 for i in d['items'])")" True
 ok "Archive instead of delete (has history)" "$(curl -s -b /tmp/smoke_admin.jar -X DELETE $B/api/medicines/$NID | js "d['archived']")" True
 for t in sales profit purchases lowStock expired customerBalances supplierBalances; do ok "Report: $t" "$(code -b /tmp/smoke_admin.jar "$B/api/reports?type=$t&from=2020-01-01&to=2030-01-01")" 200; done
 ok "Report rejects bad range" "$(code -b /tmp/smoke_admin.jar "$B/api/reports?type=sales&from=2030-01-01&to=2020-01-01")" 400
@@ -173,5 +191,5 @@ if [ -n "$PLATFORM_OWNER_EMAIL" ] && [ -n "$PLATFORM_OWNER_PASSWORD" ]; then
   ok "Developer switches a feature off" "$(curl -s -b /tmp/smoke_dev.jar -X POST $B/api/platform/pharmacies/$PID/features -H 'content-type: application/json' -d '{"key":"ocr","enabled":false}' | js "d['enabled']")" False
   ok "Developer updates plan limits" "$(curl -s -b /tmp/smoke_dev.jar -X PUT $B/api/platform/pharmacies/$PID/plan -H 'content-type: application/json' -d '{"plan":"PREMIUM","maxUsers":4,"ocrMonthlyLimit":50}' | js "d['maxUsers']")" 4
 fi
-for p in /dashboard /pos /medicines /inventory /customers /suppliers /purchases /stock-entry /stock-entry/upload /stock-entry/import /stock-entry/$SE /sales /reports /users /settings; do ok "Page $p renders" "$(code -b /tmp/smoke_admin.jar $B$p)" 200; done
+for p in /dashboard /pos /medicines /inventory /customers /suppliers /purchases /stock-entry /stock-entry/upload /stock-entry/import /stock-entry/$SE /sales /returns /returns/new /cash /reports /users /settings; do ok "Page $p renders" "$(code -b /tmp/smoke_admin.jar $B$p)" 200; done
 exit $fail

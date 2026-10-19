@@ -13,6 +13,10 @@ type Detail = {
   customer: Customer; balance: string; totalPurchases: string; totalPayments: string;
   ledger: { id: string; kind: string; debit: string; credit: string; balance: string; description: string; createdAt: string; method: string | null }[];
   sales: { id: string; invoiceNo: string; createdAt: string; total: string; amountPaid: string; status: string; paymentMethod: string }[];
+  timeline: { at: string; kind: "SALE" | "CANCEL" | "RETURN" | "PAYMENT"; title: string; amount: string; link: string | null; cancelled: boolean }[];
+};
+const KIND: Record<Detail["timeline"][number]["kind"], { label: string; tone: "green" | "red" | "amber" | "blue" }> = {
+  SALE: { label: "Purchase", tone: "blue" }, CANCEL: { label: "Cancelled", tone: "red" }, RETURN: { label: "Return", tone: "amber" }, PAYMENT: { label: "Payment", tone: "green" },
 };
 
 export default function CustomerDetail() {
@@ -20,7 +24,7 @@ export default function CustomerDetail() {
   const money = useMoney(); const toast = useToast(); const { settings } = useApp();
   const canPay = useCan("customers.payments"); const canManage = useCan("customers.manage");
   const { data, error, loading, reload } = useApi<Detail>(`/api/customers/${id}`);
-  const [tab, setTab] = useState<"ledger" | "sales" | "payments" | "history">("ledger");
+  const [tab, setTab] = useState<"timeline" | "ledger" | "sales" | "payments" | "history">("timeline");
   const canAudit = useCan("audit.view");
   const [paying, setPaying] = useState(false); const [editing, setEditing] = useState(false);
   const [amount, setAmount] = useState(""); const [method, setMethod] = useState("CASH"); const [note, setNote] = useState(""); const [busy, setBusy] = useState(false);
@@ -52,9 +56,21 @@ export default function CustomerDetail() {
         <StatCard label="Total payments" value={money(data.totalPayments)} icon={<span className="font-bold">−</span>} tone="green" />
       </div>
       {c.notes && <p className="mt-3 text-sm text-slate-600 dark:text-slate-300">Notes: {c.notes}</p>}
-      <div className="mt-6 no-print"><Tabs tabs={[{ id: "ledger", label: "Ledger" }, { id: "sales", label: "Purchase history" }, { id: "payments", label: "Payment history" }, ...(canAudit ? [{ id: "history" as const, label: "History" }] : [])]} value={tab} onChange={setTab} /></div>
+      <div className="mt-6 no-print"><Tabs tabs={[{ id: "timeline", label: "Timeline" }, { id: "ledger", label: "Ledger" }, { id: "sales", label: "Purchase history" }, { id: "payments", label: "Payment history" }, ...(canAudit ? [{ id: "history" as const, label: "History" }] : [])]} value={tab} onChange={setTab} /></div>
       <Card className="print-area">
         <div className="hidden p-4 print:block"><h2 className="text-lg font-bold">{settings.pharmacyName} – statement for {c.name}</h2></div>
+        {tab === "timeline" && (data.timeline.length === 0 ? <EmptyState title="Nothing yet" hint="Purchases, returns and payments appear here." /> : (
+          <ol className="divide-y divide-border">
+            {data.timeline.map((t, i) => (
+              <li key={i} className="flex flex-wrap items-center gap-3 px-4 py-3 text-sm">
+                <span className="w-36 shrink-0 text-fg-muted">{formatDateTime(t.at)}</span>
+                <Badge tone={KIND[t.kind].tone}>{KIND[t.kind].label}</Badge>
+                <span className={t.cancelled ? "flex-1 line-through decoration-fg-muted" : "flex-1"}>{t.link ? <Link className="text-primary hover:underline" href={t.link}>{t.title}</Link> : t.title}</span>
+                <span className="font-medium">{money(t.amount)}</span>
+              </li>
+            ))}
+          </ol>
+        ))}
         {tab === "ledger" && (data.ledger.length === 0 ? <EmptyState title="No ledger entries yet" /> : (
           <TableWrap><thead><tr className="border-b border-slate-200 dark:border-slate-800"><th className="th">Date</th><th className="th">Description</th><th className="th text-right">Debit (owed)</th><th className="th text-right">Credit (paid)</th><th className="th text-right">Balance</th></tr></thead>
             <tbody>{data.ledger.map((l) => (<tr key={l.id} className="border-b border-slate-100 dark:border-slate-800/60"><td className="td whitespace-nowrap">{formatDateTime(l.createdAt)}</td><td className="td">{l.description}</td><td className="td text-right">{Number(l.debit) ? money(l.debit) : ""}</td><td className="td text-right text-emerald-700 dark:text-emerald-400">{Number(l.credit) ? money(l.credit) : ""}</td><td className="td text-right font-medium">{money(l.balance)}</td></tr>))}</tbody></TableWrap>))}

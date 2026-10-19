@@ -2,82 +2,85 @@
 import { Suspense, useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams, useSearchParams } from "next/navigation";
-import { ArrowLeft, Printer } from "lucide-react";
-import { Button, ErrorBox, Spinner } from "@/components/ui";
-import { formatDate, formatDateTime, useApi } from "@/lib/client";
+import { ArrowLeft, Printer, Undo2 } from "lucide-react";
+import { Button, ErrorBox, Select, Spinner } from "@/components/ui";
+import { formatDateTime, useApi } from "@/lib/client";
 import { HistoryList } from "@/components/history";
+import { useCan } from "@/components/app-context";
+import { A4Receipt, FORMATS, PrintStyle, ThermalReceipt, type Format, type ReceiptDoc, type Shop } from "../receipt";
 
 type Sale = {
   id: string; invoiceNo: string; createdAt: string; status: "COMPLETED" | "CANCELLED"; subtotal: string; discount: string; total: string; amountPaid: string; paymentMethod: string; cancelReason: string | null;
+  cashTendered: string | null; changeGiven: string; receiptFormat: Format | null; note: string | null; customerName: string | null; customerPhone: string | null;
   customer: { name: string; phone: string | null; address: string | null } | null; user: { name: string };
-  items: { id: string; quantity: number; unitPrice: string; lineTotal: string; medicine: { name: string; unit: string }; batch: { batchNumber: string; expiryDate: string } }[];
+  items: { id: string; quantity: number; returnedQty: number; unitPrice: string; lineTotal: string; medicine: { name: string; unit: string }; batch: { batchNumber: string; expiryDate: string } }[];
+  returns: { id: string; number: string; total: string; refundMethod: string; createdAt: string }[];
 };
-type Settings = { pharmacyName: string; legalName: string; address: string; city: string; phone: string; whatsapp: string; email: string; licenseNumber: string; taxNumber: string; receiptHeader: string; invoiceFooter: string; currency: string; logoFileId: string | null };
 
 function InvoiceInner() {
   const { id } = useParams<{ id: string }>();
-  const print = useSearchParams().get("print") === "1";
+  const sp = useSearchParams();
+  const print = sp.get("print") === "1";
+  const embed = sp.get("embed") === "1";
+  const canReturn = useCan("returns.create");
   const sale = useApi<Sale>(`/api/sales/${id}`);
-  const settings = useApi<Settings>("/api/branding");
-  const ready = !!sale.data && !!settings.data;
+  const shop = useApi<Shop>("/api/branding");
+  const [format, setFormat] = useState<Format | null>((sp.get("format") as Format) || null);
+  const ready = !!sale.data && !!shop.data;
   // the History section only for people who may see the activity history (audit.view)
   const [history, setHistory] = useState(false);
-  useEffect(() => { fetch(`/api/audit?entity=Sale&entityId=${id}&pageSize=1`, { credentials: "same-origin" }).then((r) => setHistory(r.ok), () => {}); }, [id]);
+  useEffect(() => { if (!embed) fetch(`/api/audit?entity=Sale&entityId=${id}&pageSize=1`, { credentials: "same-origin" }).then((r) => setHistory(r.ok), () => {}); }, [id, embed]);
   useEffect(() => { if (ready && print) setTimeout(() => window.print(), 400); }, [ready, print]);
 
   if (sale.error) return <div className="mx-auto max-w-xl p-6"><ErrorBox message={sale.error} /></div>;
   if (!ready) return <Spinner />;
-  const s = sale.data!, st = settings.data!;
+  const s = sale.data!, st = shop.data!;
+  const fmt: Format = format ?? s.receiptFormat ?? st.receiptFormat;
   const m = (v: unknown) => `${st.currency} ${Number(v).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   const balance = Number(s.total) - Number(s.amountPaid);
+  const returned = s.returns.reduce((n, r) => n + Number(r.total), 0);
+
+  const doc: ReceiptDoc = {
+    title: "Invoice", number: s.invoiceNo, createdAt: s.createdAt, cashier: s.user.name, qr: s.invoiceNo,
+    customer: s.customer ?? (s.customerName || s.customerPhone ? { name: s.customerName ?? "Walk-in customer", phone: s.customerPhone } : null),
+    lines: s.items.map((i) => ({ id: i.id, name: i.medicine.name, quantity: i.quantity, unitPrice: i.unitPrice, lineTotal: i.lineTotal, batchNumber: i.batch.batchNumber, expiryDate: i.batch.expiryDate, note: i.returnedQty ? `${i.returnedQty} returned` : undefined })),
+    totals: [
+      ["Subtotal", m(s.subtotal)],
+      ...(Number(s.discount) > 0 ? [["Discount", `- ${m(s.discount)}`] as [string, string]] : []),
+      ["Total", m(s.total), "strong"],
+      [`Paid (${s.paymentMethod.toLowerCase()})`, m(s.amountPaid)],
+      ...(s.cashTendered ? [["Cash received", m(s.cashTendered)] as [string, string], ["Change", m(s.changeGiven)] as [string, string]] : []),
+      ...(balance > 0 ? [["Balance on account", m(balance), "strong"] as [string, string, "strong"]] : []),
+      ...(returned > 0 ? [["Returned", `- ${m(returned)}`] as [string, string]] : []),
+    ],
+    notes: [
+      ...(s.note ? [s.note] : []),
+      ...(s.status === "CANCELLED" ? [`This invoice was cancelled${s.cancelReason ? `: ${s.cancelReason}` : "."}`] : []),
+    ],
+    stamp: s.status === "CANCELLED" ? "Cancelled" : null,
+  };
 
   return (
-    <div className="min-h-screen bg-slate-100 p-4 dark:bg-slate-950 print:bg-white print:p-0">
-      <div className="no-print mx-auto mb-3 flex max-w-3xl items-center justify-between">
-        <Link href="/sales" className="inline-flex items-center gap-1.5 text-sm text-slate-600 hover:underline dark:text-slate-300"><ArrowLeft className="h-4 w-4" /> Back to invoices</Link>
-        <Button onClick={() => window.print()}><Printer className="h-4 w-4" /> Print / Save as PDF</Button>
-      </div>
-      <article className="print-area relative mx-auto max-w-3xl rounded-xl bg-white p-8 text-slate-900 shadow">
-        {s.status === "CANCELLED" && <div aria-hidden className="pointer-events-none absolute inset-0 flex items-center justify-center text-7xl font-black uppercase tracking-widest text-red-500/20 [transform:rotate(-20deg)]">Cancelled</div>}
-        <header className="flex items-start justify-between gap-4 border-b border-slate-300 pb-4">
-          <div className="flex items-start gap-4">
-            {/* eslint-disable-next-line @next/next/no-img-element -- the pharmacy's logo from our file route */}
-            {st.logoFileId && <img src={`/api/files/${st.logoFileId}`} alt="" className="h-16 w-16 object-contain" />}
-            <div>
-              <h1 className="text-2xl font-bold">{st.pharmacyName}</h1>
-              {st.legalName && st.legalName !== st.pharmacyName && <p className="text-sm text-slate-600">{st.legalName}</p>}
-              {(st.address || st.city) && <p className="text-sm text-slate-600">{[st.address, st.city].filter(Boolean).join(", ")}</p>}
-              <p className="text-sm text-slate-600">{[st.phone, st.whatsapp && `WhatsApp ${st.whatsapp}`, st.email].filter(Boolean).join(" · ")}</p>
-              {(st.licenseNumber || st.taxNumber) && <p className="text-xs text-slate-500">{[st.licenseNumber && `Drug licence ${st.licenseNumber}`, st.taxNumber && `Tax no. ${st.taxNumber}`].filter(Boolean).join(" · ")}</p>}
-              {st.receiptHeader && <p className="mt-1 text-sm font-medium" style={{ color: "rgb(var(--brand-700))" }}>{st.receiptHeader}</p>}
-            </div>
+    <div className={embed ? "bg-white" : "min-h-screen bg-muted p-4 print:bg-white print:p-0"}>
+      <PrintStyle format={fmt} />
+      {!embed && (
+        <div className="no-print mx-auto mb-3 flex max-w-3xl flex-wrap items-center justify-between gap-2">
+          <Link href="/sales" className="inline-flex items-center gap-1.5 text-sm text-fg-muted hover:underline"><ArrowLeft className="h-4 w-4" /> Back to invoices</Link>
+          <div className="flex items-center gap-2">
+            <Select aria-label="Receipt format" value={fmt} onChange={(e) => setFormat(e.target.value as Format)} className="w-36">{FORMATS.map((f) => <option key={f.id} value={f.id}>{f.label}</option>)}</Select>
+            {canReturn && s.status === "COMPLETED" && <Link href={`/returns/new?sale=${s.id}`} className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-surface px-3 py-2 text-sm hover:bg-muted"><Undo2 className="h-4 w-4" aria-hidden /> Return items</Link>}
+            <Button onClick={() => window.print()}><Printer className="h-4 w-4" /> Print</Button>
           </div>
-          <div className="text-right">
-            <p className="text-xs uppercase tracking-wider text-slate-500">Invoice</p>
-            <p className="text-lg font-semibold">{s.invoiceNo}</p>
-            <p className="text-sm text-slate-600">{formatDateTime(s.createdAt)}</p>
-          </div>
-        </header>
-        <section className="grid grid-cols-2 gap-4 py-4 text-sm">
-          <div><p className="text-xs uppercase text-slate-500">Billed to</p><p className="font-medium">{s.customer?.name ?? "Walk-in customer"}</p>{s.customer?.phone && <p>{s.customer.phone}</p>}{s.customer?.address && <p>{s.customer.address}</p>}</div>
-          <div className="text-right"><p className="text-xs uppercase text-slate-500">Cashier</p><p className="font-medium">{s.user.name}</p><p className="text-xs uppercase text-slate-500 mt-2">Payment</p><p className="font-medium capitalize">{s.paymentMethod.toLowerCase()}</p></div>
+        </div>
+      )}
+      {fmt === "A4" ? <A4Receipt doc={doc} shop={st} batchLines={st.receiptBatchLines} /> : <ThermalReceipt doc={doc} shop={st} format={fmt} batchLines={st.receiptBatchLines} />}
+      {!embed && s.returns.length > 0 && (
+        <section className="no-print mx-auto mt-4 max-w-3xl rounded-xl bg-surface p-4 text-sm shadow">
+          <h2 className="mb-2 font-semibold">Returns</h2>
+          <ul className="space-y-1">{s.returns.map((r) => <li key={r.id}><Link className="text-primary hover:underline" href={`/invoice/returns/${r.id}`}>{r.number}</Link>, {formatDateTime(r.createdAt)}, {m(r.total)} ({r.refundMethod === "CREDIT" ? "credit note" : `${r.refundMethod.toLowerCase()} refund`})</li>)}</ul>
         </section>
-        <table className="w-full text-sm">
-          <thead><tr className="border-y border-slate-300 text-left text-xs uppercase text-slate-500"><th className="py-2">Medicine</th><th>Batch</th><th>Expiry</th><th className="text-right">Qty</th><th className="text-right">Price</th><th className="text-right">Total</th></tr></thead>
-          <tbody>{s.items.map((i) => (
-            <tr key={i.id} className="border-b border-slate-100"><td className="py-2">{i.medicine.name}</td><td>{i.batch.batchNumber}</td><td>{formatDate(i.batch.expiryDate)}</td><td className="text-right">{i.quantity}</td><td className="text-right">{m(i.unitPrice)}</td><td className="text-right">{m(i.lineTotal)}</td></tr>))}</tbody>
-        </table>
-        <dl className="ml-auto mt-4 w-full max-w-xs space-y-1 text-sm">
-          <div className="flex justify-between"><dt>Subtotal</dt><dd>{m(s.subtotal)}</dd></div>
-          {Number(s.discount) > 0 && <div className="flex justify-between"><dt>Discount</dt><dd>− {m(s.discount)}</dd></div>}
-          <div className="flex justify-between border-t border-slate-300 pt-1 text-base font-bold"><dt>Total</dt><dd>{m(s.total)}</dd></div>
-          <div className="flex justify-between"><dt>Amount paid</dt><dd>{m(s.amountPaid)}</dd></div>
-          <div className="flex justify-between font-semibold"><dt>Balance (credit)</dt><dd>{m(balance)}</dd></div>
-        </dl>
-        {s.status === "CANCELLED" && <p className="mt-4 text-sm font-medium text-red-600">This invoice was cancelled{s.cancelReason ? `: ${s.cancelReason}` : "."}</p>}
-        {st.invoiceFooter && <footer className="mt-8 border-t border-slate-200 pt-3 text-center text-xs text-slate-500">{st.invoiceFooter}</footer>}
-      </article>
-      {history && <section className="no-print mx-auto mt-4 max-w-3xl rounded-xl bg-white text-slate-900 shadow"><h2 className="border-b border-slate-200 p-4 font-semibold">History</h2><HistoryList entity="Sale" entityId={s.id} /></section>}
+      )}
+      {history && <section className="no-print mx-auto mt-4 max-w-3xl rounded-xl bg-surface shadow"><h2 className="border-b border-border p-4 font-semibold">History</h2><HistoryList entity="Sale" entityId={s.id} /></section>}
     </div>
   );
 }

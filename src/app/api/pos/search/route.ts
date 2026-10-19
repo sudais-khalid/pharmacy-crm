@@ -27,6 +27,7 @@ export const GET = route("pos.use", async ({ req, db }) => {
       stock: bs.reduce((s, b) => s + b.quantity, 0),
       price: bs[0]?.salePrice ?? m.salePrice,
       nextExpiry: bs[0]?.expiryDate ?? null,
+      nextBatch: bs[0]?.batchNumber ?? null,
       exactBarcode: !!q && m.barcode === q,
     };
   });
