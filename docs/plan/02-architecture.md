@@ -120,6 +120,20 @@ Design decisions:
 | Size | Roughly 300 MB installed (Electron, PostgreSQL binaries, app). Acceptable for a PC that runs a shop |
 | Mode switch | `DEPLOY_MODE=desktop` or `server`. The only mode-specific code is in `desktop/` (Electron main, supervisor, updater) and in `platform/` start-up (owner bootstrap source, backup target) |
 
+### 2.4 Desktop data safety: local replica, backups and restore (R27)
+
+| Concern | Decision |
+|---|---|
+| Where data lives | `%PROGRAMDATA%\PharmacyCRM\` (`data` for PostgreSQL, `backups`, `logs`, `config.json`, `keys.json`), never in the program folder, so uninstalling the program leaves it in place. On first start the folder's permissions are reduced to the Windows user who set it up, Administrators and SYSTEM |
+| Database password | Random, stored in `keys.json` encrypted with Windows DPAPI (Electron `safeStorage`). If it cannot be decrypted (another Windows user, profile reset), the supervisor resets it locally: PostgreSQL is started once with loopback-only trust, a new password is set, and normal authentication is restored before anything else connects |
+| The local replica | Encrypted backup snapshots in `backups`: every 4 hours while the app runs, when it closes, before every update or migration, and on demand. Retention: the last 24 snapshots plus one per day for 30 days. Optionally mirrored to a second folder (another drive, USB stick, synced cloud folder) |
+| Backup format | Data-only and version aware: a manifest (format version, app version, applied migrations, row counts per table) followed by each table in PostgreSQL `COPY` text format, gzip compressed and encrypted with AES-256-GCM (authenticated, so tampering or a wrong key is detected). The schema is not stored: restoring rebuilds it with the migrations, which keeps backups portable across versions and between desktop and server mode, and needs no `pg_dump` binaries (PoC finding 2) |
+| Backup key and recovery key | A random 256-bit backup key per installation, kept DPAPI-encrypted in `keys.json` and shown once at setup as a recovery key (eight groups of characters) to write down or print. Restoring on the same Windows account needs nothing; on a new PC or after a wipe the recovery key is asked for |
+| Reinstall | Uninstall keeps `PharmacyCRM` unless "Also delete all pharmacy data" is ticked (backups are kept unless that box is ticked too). Reinstalling finds the existing data and starts as before |
+| Fresh install with backups present | The first-start screen offers "Start fresh" or "Restore from backup" (latest snapshot found automatically, or choose a file from a USB drive) |
+| Restore procedure | New empty database, migrations up to the backup's last migration, table data loaded with triggers and foreign-key checks deferred (`session_replication_role = replica`), identity sequences reset, row counts checked against the manifest, then the remaining migrations. The previous data folder is kept aside until the restore succeeds |
+| Server mode | The same backup code runs from the worker on a schedule with the key from `BACKUP_ENCRYPTION_KEY` (Phase 9 adds offsite copies) |
+
 ## 3. Code organisation
 
 ### 3.1 Target layout
@@ -592,3 +606,5 @@ Future proofing without building it now:
 | ADR-11 | One stock entry workflow for manual, OCR and file import, posting through existing stock-in code | Separate OCR screen with its own posting | One set of rules and one review screen; manual entry is the fallback for any OCR failure inside the same grid |
 | ADR-12 | Invite and reset links instead of sending passwords | Developer or admin types passwords for others | Nobody but the account owner knows the password; links are single use and expire |
 | ADR-13 | Windows desktop installer with Electron and embedded PostgreSQL, alongside Docker server mode | Desktop-only app with SQLite; web-only hosting | Works offline in a shop with one PC, same database features as the server, one codebase for both |
+| ADR-14 | Encrypted, data-only backups through COPY, restored by rebuilding the schema with migrations | pg_dump and pg_restore shipped with the installer; copying the data folder | No extra binaries, works across versions and between desktop and server, smaller, and encryption and integrity are built in |
+| ADR-15 | Alt plus letter navigation with underlined mnemonics and a shortcut help overlay | Single-key shortcuts; command palette only | Familiar to Windows users, does not fire while typing, discoverable without training |

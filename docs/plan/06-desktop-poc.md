@@ -53,7 +53,7 @@ Estimated installer size after NSIS compression: 150 to 200 MB. Installed size a
 | # | Finding | Decision for Phase 2 |
 |---|---|---|
 | 1 | Migrations ran through the Prisma CLI from the repository. A packaged app would also have to ship the Prisma schema engine binary | Build a small migration runner that applies `prisma/migrations/*/migration.sql` in order inside a transaction each and records rows in `_prisma_migrations` exactly as Prisma does (same checksum), so server and desktop databases stay interchangeable. Covered by a test that compares its result with `prisma migrate deploy` |
-| 2 | The embedded-postgres Windows package has no `pg_dump.exe` or `pg_restore.exe` | Ship `pg_dump`, `pg_restore` and their DLLs from the official PostgreSQL 16.14 Windows binaries (same minor version), verified by checksum in CI |
+| 2 | The embedded-postgres Windows package has no `pg_dump.exe` or `pg_restore.exe` | Superseded by ADR-14: backups are made by the app itself (encrypted, data-only, COPY based), so no PostgreSQL client binaries are needed |
 | 3 | embedded-postgres registers its own exit hook, which throws `done is not a function` on Electron's exit path (harmless, the supervisor already stops PostgreSQL) | Disable or replace the library's hook; keep explicit, ordered shutdown in the supervisor |
 | 4 | embedded-postgres versions carry a `-beta` tag (wrapper versioning), pinned here to `16.14.0-beta.17` | Pin exactly, record checksums of the binaries, upgrade deliberately |
 | 5 | Electron 44 runs Node 24.21, the Docker image runs Node 22 | Add Node 24 to the CI matrix so both runtimes are tested |

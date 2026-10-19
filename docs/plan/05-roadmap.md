@@ -122,17 +122,17 @@ Acceptance criteria:
 
 Tasks:
 
-- [ ] 2.1 `desktop/` Electron main process: single-instance lock, splash screen with start-up progress, tray icon, main window, crash and log handling (logs in `%PROGRAMDATA%\PharmacyCRM\logs`)
-- [ ] 2.2 Embedded PostgreSQL 16 lifecycle: initialise data directory, DPAPI-protected superuser password, create `app_owner`, `app_user`, `platform_user`, start, stop, restart on crash, free port selection, bind to `127.0.0.1` only
-- [ ] 2.3 Next.js `output: "standalone"` build and a bundled worker, both started as child processes with Electron's Node; wait for `/api/health` before showing the window
-- [ ] 2.4 Migrations on every start through a built-in runner compatible with `_prisma_migrations` (PoC finding 1), with an automatic backup before any pending migration runs
-- [ ] 2.5 Owner bootstrap from build-time secrets (email and password hash), forced TOTP enrolment, `PharmacyCRM.exe --recover-owner` for Windows administrators
-- [ ] 2.6 electron-builder NSIS installer: install folder, Start menu and desktop shortcuts, private-network firewall rule, uninstall that keeps data unless the user ticks "remove data"
-- [ ] 2.7 Client mode: "Connect to a pharmacy server" by LAN address or cloud URL, remembered per device
-- [ ] 2.8 LAN access toggle for Pharmacy Admin with the address shown as a QR code for tablets
-- [ ] 2.9 Local backup target (folder, USB drive, synced cloud folder) using `pg_dump` and `pg_restore` shipped from the official PostgreSQL 16 Windows binaries (PoC finding 2), with restore from the platform console
-- [ ] 2.10 Release pipeline: GitHub Actions Windows runner builds and code-signs the installer, publishes it to the update feed; `electron-updater` checks on start and installs after a backup
-- [ ] 2.11 CI matrix with Node 24 (Electron runtime) next to Node 22 (PoC finding 5); fixed web port per installation (finding 7)
+- [ ] 2.1 Built-in migration runner compatible with `_prisma_migrations` (same names and checksums), shared by desktop start-up and restore (PoC finding 1)
+- [ ] 2.2 Encrypted data-only backup and restore (architecture, section 2.4): COPY streams, manifest with row counts, AES-256-GCM, schema rebuilt by migrations, an operations command (`dist/ops.js`) for migrate, backup, restore and verify
+- [ ] 2.3 `desktop/` supervisor: single-instance lock, data in `%PROGRAMDATA%\PharmacyCRM` with restricted permissions, DPAPI-protected database password with local reset, embedded PostgreSQL on loopback with a fixed port per installation, migrations on start after an automatic backup, web server and worker as child processes, splash with progress, tray icon, logs
+- [ ] 2.4 Local replica: scheduled, on-close and pre-update snapshots with retention, optional mirror folder, recovery key shown once at setup
+- [ ] 2.5 First-start screen: start fresh or restore from a backup (latest found automatically or chosen file), recovery key when the backup key is not available; desktop controls in the Developer console (back up now, last backup, mirror folder, restore)
+- [ ] 2.6 Owner bootstrap from build-time secrets (email and password hash) and `--recover-owner` for Windows administrators
+- [ ] 2.7 electron-builder NSIS installer: per-user install, Start menu and desktop shortcuts, uninstall that keeps data unless "Also delete all pharmacy data" is ticked
+- [ ] 2.8 Letter shortcuts (R28): Alt plus letter navigation with underlined mnemonics, action keys on list pages, `?` shortcut help
+- [ ] 2.9 Client mode: "Connect to a pharmacy server" by LAN address or URL, remembered per device; LAN access toggle with the address shown as a QR code and a private-network firewall rule
+- [ ] 2.10 Release pipeline: GitHub Actions Windows runner builds and code-signs the installer (certificate from secrets) and publishes it; `electron-updater` checks on start and installs after a backup
+- [ ] 2.11 CI matrix with Node 24 (Electron runtime) next to Node 22 (PoC finding 5)
 
 Acceptance criteria:
 
@@ -141,6 +141,9 @@ Acceptance criteria:
 - Updating to a newer installer keeps all data and runs migrations after an automatic backup.
 - A second PC in client mode, and a tablet browser with LAN access enabled, can log in to the same pharmacy.
 - PostgreSQL is not reachable from another machine on the network.
+- Uninstalling and reinstalling keeps every record; deleting the data folder and reinstalling restores everything from the latest backup with the recovery key, row counts matching.
+- A backup is unreadable without its key, and a tampered backup is refused.
+- Every screen opens with Alt plus its letter, and `?` lists all shortcuts.
 
 ---
 

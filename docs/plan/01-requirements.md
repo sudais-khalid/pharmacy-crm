@@ -65,6 +65,8 @@ Added after the first review. These turn the product from a single-shop app into
 | R24 | ~~Customers can place orders~~ | Dropped | Same reason. No customer portal and no online orders |
 | R25 | Pharmacist adds medicines for suppliers | Partial | Supplier catalog: from a supplier's page the pharmacist adds the medicines that supplier provides (supplier code, price, pack, lead time, preferred flag), creating a new medicine on the spot if needed; drives purchase orders |
 | R26 | OCR for existing stock, not only supplier bills | New | A pharmacy joining the platform photographs its stock list or register; OCR reads medicine, batch, expiry, quantity and prices into the same review screen; posting creates opening batches without touching any supplier ledger |
+| R27 | The desktop install keeps a secure local copy of the database; uninstalling and reinstalling must bring the data back, and a lost or wiped PC must be restorable | New | Data lives outside the program folder with access limited to the Windows user and administrators; automatic encrypted backups (the local replica) every few hours, on close and before updates, optionally mirrored to a second folder or USB drive; a recovery key shown once at setup; first start after a reinstall reuses the data or offers "Restore from backup" |
+| R28 | Letter shortcuts so everything is quick to reach | New | Alt plus a letter opens each screen (letter underlined in the menu), common actions have keys (Alt+N new, / search), and ? shows every shortcut |
 
 ## 3. Additional requirements (senior review)
 
