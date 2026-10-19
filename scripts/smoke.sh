@@ -27,6 +27,10 @@ ok "Pharmacist cannot list users" "$(code -b /tmp/smoke_pharmacist.jar $B/api/us
 ok "Admin can list users" "$(code -b /tmp/smoke_admin.jar $B/api/users)" 200
 ok "Dashboard loads" "$(code -b /tmp/smoke_admin.jar $B/api/dashboard)" 200
 ok "Cashier dashboard hides profit" "$(curl -s -b /tmp/smoke_cashier.jar $B/api/dashboard | js "d['today']['profit']")" None
+ok "Cashier lands on the POS" "$(curl -s -o /dev/null -w '%{redirect_url}' -b /tmp/smoke_cashier.jar $B/home | sed 's#.*//[^/]*##')" /pos
+ok "Admin lands on the dashboard" "$(curl -s -o /dev/null -w '%{redirect_url}' -b /tmp/smoke_admin.jar $B/home | sed 's#.*//[^/]*##')" /dashboard
+ok "Roles list for the admin" "$(curl -s -b /tmp/smoke_admin.jar $B/api/roles | js "[r['name'] for r in d['roles']][:3]")" "['Pharmacy Admin', 'Pharmacist', 'Cashier']"
+ok "Cashier cannot list roles" "$(code -b /tmp/smoke_cashier.jar $B/api/roles)" 403
 
 MID=$(curl -s -b /tmp/smoke_admin.jar "$B/api/medicines?q=Panadol" | js "d['items'][0]['id']")
 ok "Cashier cannot delete medicine" "$(code -b /tmp/smoke_cashier.jar -X DELETE $B/api/medicines/$MID)" 403
@@ -97,7 +101,7 @@ if [ -n "$PLATFORM_OWNER_EMAIL" ] && [ -n "$PLATFORM_OWNER_PASSWORD" ]; then
   ok "New pharmacy is listed" "$(curl -s -b /tmp/smoke_dev.jar "$B/api/platform/pharmacies?q=$SLUG" | js "len(d['items'])")" 1
   ok "Pharmacy detail loads" "$(code -b /tmp/smoke_dev.jar $B/api/platform/pharmacies/$PID)" 200
   ok "Unknown pharmacy is 404" "$(code -b /tmp/smoke_dev.jar $B/api/platform/pharmacies/00000000-0000-0000-0000-000000000000)" 404
-  ok "Other pharmacy staff invisible to this pharmacy" "$(curl -s -b /tmp/smoke_admin.jar $B/api/users | js "str(any(u['username']=='smokeadmin' for u in d))")" False
+  ok "Other pharmacy staff invisible to this pharmacy" "$(curl -s -b /tmp/smoke_admin.jar $B/api/users | js "str(any(u['username']=='smokeadmin' for u in d['items']))")" False
   ok "Invite link page opens" "$(code $B$(echo "$NEWP" | js "d['credentials']['path']"))" 200
   for p in /platform/pharmacies /platform/pharmacies/new /platform/pharmacies/$PID; do ok "Console page $p renders" "$(code -b /tmp/smoke_dev.jar $B$p)" 200; done
   DEMO=$(curl -s -b /tmp/smoke_dev.jar "$B/api/platform/pharmacies?q=demo" | js "d['items'][0]['id']")

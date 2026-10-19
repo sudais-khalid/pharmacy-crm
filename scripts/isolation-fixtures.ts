@@ -10,7 +10,7 @@ loadEnvConfig(process.cwd());
 async function main() {
   const bcrypt = (await import("bcryptjs")).default;
   const { platformDb } = await import("../src/lib/platform-db");
-  const { serviceContext } = await import("../src/modules/identity");
+  const { serviceContext, createRole, ADMIN_ROLE_ID, ALL_PERMISSIONS } = await import("../src/modules/identity");
   const { createSale } = await import("../src/modules/sales");
   const { createPurchase } = await import("../src/modules/procurement");
   const { addDays, todayStr, dateOnly } = await import("../src/lib/dates");
@@ -20,9 +20,10 @@ async function main() {
   const pharmacy = await platformDb.pharmacy.create({ data: { slug, name: "Isolation Bravo", settings: { create: {} } } });
   const pharmacyId = pharmacy.id;
   const admin = await platformDb.user.create({
-    data: { pharmacyId, name: "Bravo Admin", username: "badmin", email: `badmin@${slug}.example`, role: "ADMIN", passwordHash: await bcrypt.hash(password, 10) },
+    data: { pharmacyId, name: "Bravo Admin", username: "badmin", email: `badmin@${slug}.example`, roleId: ADMIN_ROLE_ID, passwordHash: await bcrypt.hash(password, 10) },
   });
-  const ctx = serviceContext(admin, pharmacyId);
+  const ctx = serviceContext({ id: admin.id, permissions: ALL_PERMISSIONS }, pharmacyId);
+  const role = await createRole(ctx, { name: "Bravo Only Role", permissions: ["pos.use"], landingPath: "/pos" });
   const medicine = await platformDb.medicine.create({ data: { pharmacyId, name: "Bravo Only Syrup", barcode: `B-${slug}`, salePrice: 90, purchasePrice: 60 } });
   const batch = await platformDb.batch.create({
     data: { pharmacyId, medicineId: medicine.id, batchNumber: "BRAVO-1", expiryDate: dateOnly(addDays(todayStr(), 300)), quantity: 40, salePrice: 90, purchasePrice: 60 },
@@ -38,7 +39,7 @@ async function main() {
   console.log(JSON.stringify({
     pharmacy: slug,
     admin: { username: "badmin", password },
-    ids: { medicine: medicine.id, batch: batch.id, customer: customer.id, supplier: supplier.id, sale: sale.id, purchase: purchase.id, user: admin.id },
+    ids: { medicine: medicine.id, batch: batch.id, customer: customer.id, supplier: supplier.id, sale: sale.id, purchase: purchase.id, user: admin.id, role: role.id },
     names: { medicine: medicine.name, customer: customer.name, supplier: supplier.name, invoice: sale.invoiceNo, purchase: purchase.number },
   }));
   process.exit(0);

@@ -1,8 +1,8 @@
 import type { DbContext } from "@/lib/db";
-import type { Role } from "./permissions";
+import type { Permission } from "./permissions";
 
-/** Who is performing a service call. */
-export type Actor = { id: string; role: Role };
+/** Who is performing a service call, with what they may do (resolved from their role). */
+export type Actor = { id: string; permissions: readonly Permission[] };
 
 /** Where the request came from, recorded in the audit log. */
 export type RequestMeta = { ip?: string | null; userAgent?: string | null };
@@ -18,5 +18,5 @@ export type ServiceContext = DbContext & {
 };
 
 export function serviceContext(actor: Actor, pharmacyId: string, meta?: RequestMeta): ServiceContext {
-  return { actor: { id: actor.id, role: actor.role }, pharmacyId, meta };
+  return { actor: { id: actor.id, permissions: actor.permissions }, pharmacyId, meta };
 }

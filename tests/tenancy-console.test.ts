@@ -3,7 +3,7 @@ import bcrypt from "bcryptjs";
 import { platformDb } from "@/lib/platform-db";
 import { tenantTransaction } from "@/lib/db";
 import { createPharmacy, createPharmacySchema, listPharmacies, getPharmacyDetail, updatePharmacyProfile, slugSchema } from "@/modules/tenancy";
-import { inspectStaffToken, redeemStaffToken } from "@/modules/identity";
+import { SYSTEM_ROLES, inspectStaffToken, redeemStaffToken } from "@/modules/identity";
 import { resetDb } from "./helpers";
 
 beforeEach(resetDb);
@@ -28,7 +28,7 @@ describe("creating a pharmacy", () => {
     expect(p.settings).not.toBeNull();
 
     const users = await platformDb.user.findMany({ where: { pharmacyId: p.id }, orderBy: { username: "asc" } });
-    expect(users.map((u) => [u.username, u.role, u.isSystem])).toEqual([["ayesha", "ADMIN", false], ["platform-support", "ADMIN", true]]);
+    expect(users.map((u) => [u.username, u.roleId, u.isSystem])).toEqual([["ayesha", SYSTEM_ROLES.PHARMACY_ADMIN.id, false], ["platform-support", SYSTEM_ROLES.PHARMACY_ADMIN.id, true]]);
 
     const flags = Object.fromEntries((await platformDb.featureFlag.findMany({ where: { pharmacyId: p.id } })).map((f) => [f.key, f.enabled]));
     expect(flags).toEqual({ ocr: true, returns: true, purchaseOrders: false, cashSessions: false, expenses: false });

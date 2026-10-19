@@ -8,12 +8,6 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-enum Role {
-  ADMIN
-  PHARMACIST
-  CASHIER
-}
-
 enum PaymentMethod {
   CASH
   CARD
@@ -49,7 +43,7 @@ model User {
   email              String
   username           String
   passwordHash       String
-  role               Role      @default(CASHIER)
+  roleId             String
   active             Boolean   @default(true)
   isSystem           Boolean   @default(false) // hidden account used for platform support sessions
   sessionVersion     Int       @default(1)
@@ -65,9 +59,33 @@ model User {
   supplierLedgers SupplierLedger[]
 
   pharmacy Pharmacy @relation(fields: [pharmacyId], references: [id])
+  role     Role     @relation(fields: [roleId], references: [id])
 
   @@unique([pharmacyId, username])
   @@unique([pharmacyId, email])
+  @@index([pharmacyId])
+  @@index([roleId])
+}
+
+// A role: one of the shared templates (pharmacyId null, read-only, permissions from code) or a custom role
+// of one pharmacy. See src/modules/identity/permissions.ts for the catalog.
+model Role {
+  id          String   @id @default(uuid())
+  pharmacyId  String?  @default(dbgenerated("current_setting('app.pharmacy_id'::text, true)"))
+  key         String
+  name        String
+  description String?
+  system      Boolean  @default(false)
+  permissions String[] @default([])
+  landingPath String   @default("/dashboard")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  users    User[]
+  // Restrict, not the optional-relation default (set null), which would turn custom roles into templates
+  pharmacy Pharmacy? @relation(fields: [pharmacyId], references: [id], onDelete: Restrict)
+
+  @@unique([pharmacyId, key])
   @@index([pharmacyId])
 }
 
@@ -491,6 +509,7 @@ model Pharmacy {
   supportSessions SupportSession[]
   authTokens      AuthToken[]
   users           User[]
+  roles           Role[]
   categories      Category[]
   medicines       Medicine[]
   batches         Batch[]

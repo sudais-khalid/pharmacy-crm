@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { platformDb } from "@/lib/platform-db";
 import { getFeatureFlags } from "@/modules/platform";
-import { createUser, updateUser } from "@/modules/identity";
+import { SYSTEM_ROLES, createUser, updateUser } from "@/modules/identity";
 import { setFeatureFlag, setPharmacyPlan, setAccountActive } from "@/modules/tenancy";
 import { resetDb, makeUser, ctxOf, pharmacyId } from "./helpers";
 
@@ -34,11 +34,11 @@ describe("plan and limits", () => {
   it("cap active staff when creating and reactivating accounts", async () => {
     await setPharmacyPlan(dev, pharmacyId, { plan: "SMALL", maxUsers: 2, ocrMonthlyLimit: 0 });
     const admin = await makeUser("ADMIN");
-    const second = await createUser(ctxOf(admin), { name: "Second", email: "second@t.test", password: "Second-password-1", role: "CASHIER" });
-    await expect(createUser(ctxOf(admin), { name: "Third", email: "third@t.test", password: "Third-password-1", role: "CASHIER" })).rejects.toThrow(/allows 2 active staff/);
+    const { user: second } = await createUser(ctxOf(admin), { name: "Second", email: "second@t.test", roleId: SYSTEM_ROLES.CASHIER.id, credentials: "password" });
+    await expect(createUser(ctxOf(admin), { name: "Third", email: "third@t.test", roleId: SYSTEM_ROLES.CASHIER.id, credentials: "password" })).rejects.toThrow(/allows 2 active staff/);
 
     await updateUser(ctxOf(admin), second.id, { active: false });
-    const third = await createUser(ctxOf(admin), { name: "Third", email: "third@t.test", password: "Third-password-1", role: "CASHIER" });
+    const { user: third } = await createUser(ctxOf(admin), { name: "Third", email: "third@t.test", roleId: SYSTEM_ROLES.CASHIER.id, credentials: "password" });
     await expect(updateUser(ctxOf(admin), second.id, { active: true })).rejects.toThrow(/allows 2 active staff/);
     await expect(setAccountActive(dev, second.id, true)).rejects.toThrow(/allows 2 active staff/);
 

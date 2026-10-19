@@ -9,7 +9,7 @@ export const GET = route("dashboard.view", async ({ user, db }) => {
   const setting = await getSettings(db, user.pharmacyId);
   const today = todayStr();
   const warnTo = addDays(today, setting.expiryWarningDays);
-  const full = can(user.role, "reports.view");
+  const full = can(user, "reports.view");
 
   const [todaySales, totalCustomers, totalMedicines, lowStock, expiringCount, expiredCount, expiringBatches, chart, top, money] = await Promise.all([
     db.$queryRaw<{ total: Prisma.Decimal; count: number; cogs: Prisma.Decimal }[]>`

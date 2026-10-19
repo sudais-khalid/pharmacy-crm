@@ -23,7 +23,7 @@ describe("platform support sessions", () => {
     const session = await startSupportSession(dev.id, pharmacyId, "Owner asked for help");
     const token = await tokenFor(dev.id, dev.sessionVersion, pharmacyId, session.id);
     const user = await load(token);
-    expect(user).toMatchObject({ username: "platform-support", role: "ADMIN", pharmacyId, support: { sessionId: session.id, devId: dev.id, devName: "Sudais" } });
+    expect(user).toMatchObject({ username: "platform-support", role: { key: "PHARMACY_ADMIN" }, pharmacyId, support: { sessionId: session.id, devId: dev.id, devName: "Sudais" } });
 
     await setPharmacyStatus({ devId: dev.id }, pharmacyId, { status: "SUSPENDED", reason: "test" });
     expect(await load(token)).not.toBeNull();

@@ -1,11 +1,15 @@
 import { cookies } from "next/headers";
 import { platformDb } from "@/lib/platform-db";
 import { SESSION_COOKIES, SESSION_MAX_AGE_S, signSession, verifySession, needsRefresh, type SessionRealm, type VerifiedSession } from "@/lib/session-token";
-import type { Role } from "./permissions";
+import type { Permission } from "./permissions";
+import { roleSelect, sessionRole, type SessionRole } from "./roles";
 import { loadSupportSession, type SupportInfo } from "./support";
 
 export type SessionUser = {
-  id: string; name: string; email: string; username: string; role: Role; pharmacyId: string; mustChangePassword: boolean;
+  id: string; name: string; email: string; username: string; pharmacyId: string; mustChangePassword: boolean;
+  role: SessionRole;
+  /** Resolved from the role on every request, so a role change or a role edit applies at once. */
+  permissions: Permission[];
   /** Set when the Developer is working inside the pharmacy (platform support). */
   support?: SupportInfo;
 };
@@ -51,12 +55,12 @@ export async function loadStaffSession(session: VerifiedSession | null): Promise
   if (!session?.pid) return null;
   const user = await platformDb.user.findUnique({
     where: { id: session.sub },
-    select: { id: true, name: true, email: true, username: true, role: true, active: true, isSystem: true, pharmacyId: true, sessionVersion: true, mustChangePassword: true, pharmacy: { select: { status: true } } },
+    select: { id: true, name: true, email: true, username: true, role: { select: roleSelect }, active: true, isSystem: true, pharmacyId: true, sessionVersion: true, mustChangePassword: true, pharmacy: { select: { status: true } } },
   });
   if (!user || !user.active || user.isSystem) return null;
   if (user.pharmacyId !== session.pid || user.sessionVersion !== session.sv) return null;
   if (BLOCKED_STATUSES.includes(user.pharmacy.status)) return null;
-  return { id: user.id, name: user.name, email: user.email, username: user.username, role: user.role, pharmacyId: user.pharmacyId, mustChangePassword: user.mustChangePassword, sessionVersion: user.sessionVersion };
+  return { id: user.id, name: user.name, email: user.email, username: user.username, ...sessionRole(user.role), pharmacyId: user.pharmacyId, mustChangePassword: user.mustChangePassword, sessionVersion: user.sessionVersion };
 }
 
 /**

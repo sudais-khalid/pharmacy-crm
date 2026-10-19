@@ -4,7 +4,7 @@ import type { PharmacyStatus, Prisma } from "@prisma/client";
 import { platformDb } from "@/lib/platform-db";
 import { AppError } from "@/lib/errors";
 import { audit, FEATURE_KEYS, FEATURE_FLAGS, getFeatureFlags, type FeatureKey } from "@/modules/platform";
-import { ensureSupportAccount, issueStaffToken } from "@/modules/identity";
+import { ADMIN_ROLE_ID, ensureSupportAccount, issueStaffToken, temporaryPassword } from "@/modules/identity";
 import type { CreatePharmacyInput } from "./schema";
 
 /**
@@ -20,11 +20,6 @@ async function unusableHash() {
 }
 
 /** A temporary password that is readable over the phone: 4 groups of 4. */
-export function temporaryPassword() {
-  const alphabet = "abcdefghjkmnpqrstuvwxyz23456789";
-  const raw = Array.from(randomBytes(16), (b) => alphabet[b % alphabet.length]).join("");
-  return raw.match(/.{4}/g)!.join("-");
-}
 
 
 export async function createPharmacy(c: DevContext, input: CreatePharmacyInput) {
@@ -47,7 +42,7 @@ export async function createPharmacy(c: DevContext, input: CreatePharmacyInput) 
     // hidden account that platform support sessions act as (sales and stock rows need a staff user)
     await ensureSupportAccount(tx, pharmacy.id);
     const admin = await tx.user.create({
-      data: { pharmacyId: pharmacy.id, name: input.admin.name, username: input.admin.username, email: input.admin.email, passwordHash: adminHash, role: "ADMIN", mustChangePassword: !!password },
+      data: { pharmacyId: pharmacy.id, name: input.admin.name, username: input.admin.username, email: input.admin.email, passwordHash: adminHash, roleId: ADMIN_ROLE_ID, mustChangePassword: !!password },
       select: { id: true, username: true, name: true },
     });
     const chosen = new Set(input.features);
@@ -96,7 +91,7 @@ export async function getPharmacyDetail(id: string) {
   const pharmacy = await platformDb.pharmacy.findUnique({ where: { id }, include: { settings: true } });
   if (!pharmacy) throw new AppError(404, "Pharmacy not found.");
   const [staff, flags, audits, supportSessions] = await Promise.all([
-    platformDb.user.findMany({ where: { pharmacyId: id, isSystem: false }, orderBy: { createdAt: "asc" }, select: { id: true, name: true, username: true, email: true, role: true, active: true, lastLoginAt: true, mustChangePassword: true } }),
+    platformDb.user.findMany({ where: { pharmacyId: id, isSystem: false }, orderBy: { createdAt: "asc" }, select: { id: true, name: true, username: true, email: true, role: { select: { key: true, name: true } }, active: true, lastLoginAt: true, mustChangePassword: true } }),
     getFeatureFlags(platformDb, id),
     platformDb.auditLog.findMany({ where: { pharmacyId: id }, orderBy: { id: "desc" }, take: 50, select: { id: true, at: true, realm: true, actorId: true, action: true, entity: true, entityId: true, supportSessionId: true } }),
     platformDb.supportSession.findMany({ where: { pharmacyId: id }, orderBy: { startedAt: "desc" }, take: 10 }),
@@ -171,7 +166,7 @@ export async function listAccounts(filter: { q?: string; pharmacyId?: string; pa
     platformDb.user.count({ where }),
     platformDb.user.findMany({
       where, orderBy: [{ pharmacy: { name: "asc" } }, { name: "asc" }], skip: (page - 1) * pageSize, take: pageSize,
-      select: { id: true, name: true, username: true, email: true, role: true, active: true, lastLoginAt: true, mustChangePassword: true, pharmacy: { select: { id: true, name: true, slug: true, status: true } } },
+      select: { id: true, name: true, username: true, email: true, role: { select: { key: true, name: true } }, active: true, lastLoginAt: true, mustChangePassword: true, pharmacy: { select: { id: true, name: true, slug: true, status: true } } },
     }),
   ]);
   const since = new Date(Date.now() - LOGIN_LOCK_WINDOW_MS);
@@ -196,10 +191,18 @@ export async function setAccountActive(c: DevContext, id: string, active: boolea
     const activeStaff = await platformDb.user.count({ where: { pharmacyId: user.pharmacyId, active: true, isSystem: false } });
     if (activeStaff >= pharmacy.maxUsers) throw new AppError(409, `The plan allows ${pharmacy.maxUsers} active staff accounts. Raise the limit first.`);
   }
-  await platformDb.$transaction(async (tx) => {
-    await tx.user.update({ where: { id }, data: { active, ...(active ? {} : { sessionVersion: { increment: 1 } }) } });
-    await audit(tx, actorOf(c), { action: active ? "user.activate" : "user.deactivate", entity: "User", entityId: id, pharmacyId: user.pharmacyId, before: { active: user.active }, after: { active } });
-  });
+  await platformDb
+    .$transaction(async (tx) => {
+      await tx.user.update({ where: { id }, data: { active, ...(active ? {} : { sessionVersion: { increment: 1 } }) } });
+      await audit(tx, actorOf(c), { action: active ? "user.activate" : "user.deactivate", entity: "User", entityId: id, pharmacyId: user.pharmacyId, before: { active: user.active }, after: { active } });
+    })
+    .catch((e: unknown) => {
+      // the database keeps one active Pharmacy Admin per pharmacy, for the Developer too
+      if (e instanceof Error && e.message.includes("at least one active Pharmacy Admin")) {
+        throw new AppError(409, "This is the pharmacy's last active Pharmacy Admin. Make another account Pharmacy Admin first.");
+      }
+      throw e;
+    });
   return { active };
 }
 

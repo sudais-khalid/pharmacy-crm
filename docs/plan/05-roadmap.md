@@ -153,14 +153,14 @@ Acceptance criteria:
 
 Tasks:
 
-- [ ] 3.1 Role templates (Pharmacy Admin, Pharmacist, Cashier) and custom roles per pharmacy; "duplicate template"; no-escalation rule
-- [ ] 3.2 Expanded tenant permission catalog (`cost.view`, `sales.reprint.any`, `cash.manage`, `po.approve`, `stockEntry.create`, `stockEntry.post`, `finance.view`, `audit.view`, `roles.manage`, `branding.manage`, `supplierCatalog.manage`)
-- [ ] 3.3 Staff management: add with invite or temporary password, change role, deactivate, reset link, force logout, seat limit from the plan; guard against removing the last Pharmacy Admin
+- [x] 3.1 Role templates (Pharmacy Admin, Pharmacist, Cashier) and custom roles per pharmacy; "duplicate template"; no-escalation rule
+- [x] 3.2 Expanded tenant permission catalog (`cost.view`, `sales.reprint.any`, `cash.manage`, `po.approve`, `stockEntry.create`, `stockEntry.post`, `finance.view`, `audit.view`, `roles.manage`, `branding.manage`, `supplierCatalog.manage`)
+- [x] 3.3 Staff management: add with invite or temporary password, change role, deactivate, reset link, force logout, seat limit from the plan; guard against removing the last Pharmacy Admin
 - [ ] 3.4 Optional TOTP for staff, required per pharmacy if the admin turns it on
 - [ ] 3.5 Forgot password request from the login page routed to Pharmacy Admins as a notification
 - [ ] 3.6 Profile and branding page with live preview: name, logo (resized versions), contacts, licence and tax numbers, receipt header and footer, brand colour with contrast check
 - [ ] 3.7 Brand colour and logo applied to header, login page and receipts
-- [ ] 3.8 Role landing paths: Cashier to POS, Pharmacist to pharmacist dashboard, Pharmacy Admin to owner dashboard
+- [x] 3.8 Role landing paths: Cashier to POS, Pharmacist to pharmacist dashboard, Pharmacy Admin to owner dashboard
 - [ ] 3.9 Cost and profit fields stripped in DTO mappers without `cost.view`
 - [ ] 3.10 Audit log viewer for Pharmacy Admin, "History" tab on invoice, medicine, customer and supplier pages, support sessions labelled "Platform support"
 - [ ] 3.11 Sidebar regrouped (Sell, Stock, Buy, People, Money, Admin) and filtered by permission

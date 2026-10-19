@@ -11,6 +11,7 @@ import { createPurchase } from "@/modules/procurement";
 import { adjustStock } from "@/modules/inventory";
 import { receiveCustomerPayment } from "@/modules/customers";
 import { updateSettings, getSettings } from "@/modules/platform";
+import { SYSTEM_ROLES, createRole } from "@/modules/identity";
 import { resetDb, makePharmacy, makeUser, makeMedicine, makeBatch, makeCustomer, makeSupplier, ctxOf, inDays } from "./helpers";
 
 let A = "";
@@ -37,6 +38,7 @@ async function populate(pharmacyId: string) {
     items: [{ medicineId: m.id, batchNumber: "P1", expiryDate: inDays(300), quantity: 5, purchasePrice: 30, salePrice: 50 }],
   });
   await adjustStock(ctx, { batchId: b.id, kind: "DAMAGE", quantity: 1, note: "broken" });
+  await createRole(ctx, { name: "Senior Cashier", permissions: [...SYSTEM_ROLES.CASHIER.permissions, "sales.cancel"], landingPath: "/pos" });
   const settings = await tenantTransaction(pharmacyId, (tx) => getSettings(tx, pharmacyId));
   await updateSettings(ctx, { ...settings, invoiceFooter: `footer ${pharmacyId}` });
   // platform-written tenant rows
@@ -70,6 +72,8 @@ beforeAll(async () => {
 }, 60_000);
 
 const q = (t: string) => `"${t.replace(/"/g, '""')}"`;
+/** Rows every pharmacy may read besides its own: the shared role templates. */
+const shared = (t: string) => (t === "Role" ? `"pharmacyId" IS NULL` : "false");
 
 describe("row-level security", () => {
   it("covers every table with a pharmacyId column, and Pharmacy itself", async () => {
@@ -99,7 +103,7 @@ describe("row-level security", () => {
     await tenantTransaction(A, async (tx) => {
       for (const t of readableTables) {
         const [r] = await tx.$queryRawUnsafe<{ total: bigint; foreign: bigint }[]>(
-          `SELECT count(*) AS total, count(*) FILTER (WHERE "pharmacyId" IS DISTINCT FROM $1) AS foreign FROM ${q(t)}`, A);
+          `SELECT count(*) AS total, count(*) FILTER (WHERE "pharmacyId" IS DISTINCT FROM $1 AND NOT (${shared(t)})) AS foreign FROM ${q(t)}`, A);
         expect(Number(r.foreign), `${t} leaks other rows`).toBe(0);
         expect(Number(r.total), `${t} shows own rows`).toBeGreaterThan(0);
       }
@@ -110,7 +114,7 @@ describe("row-level security", () => {
 
   it("fails closed: without a tenant the tenant client sees nothing", async () => {
     for (const t of [...readableTables, "Pharmacy"]) {
-      const [r] = await prisma.$queryRawUnsafe<{ n: bigint }[]>(`SELECT count(*) AS n FROM ${q(t)}`);
+      const [r] = await prisma.$queryRawUnsafe<{ n: bigint }[]>(`SELECT count(*) AS n FROM ${q(t)} WHERE NOT (${t === "Pharmacy" ? "false" : shared(t)})`);
       expect(Number(r.n), `${t} visible without tenant`).toBe(0);
     }
     expect(await prisma.medicine.findUnique({ where: { id: fixtures.a.medicine.id } })).toBeNull();
@@ -136,6 +140,15 @@ describe("privileges of the tenant role", () => {
   it("cannot read Developer accounts or support sessions", async () => {
     await expect(tenantTransaction(A, (tx) => tx.platformUser.findMany())).rejects.toThrow(/permission denied/);
     await expect(tenantTransaction(A, (tx) => tx.supportSession.findMany())).rejects.toThrow(/permission denied/);
+  });
+
+  it("reads the role templates but cannot change them or create roles for another pharmacy", async () => {
+    const id = SYSTEM_ROLES.CASHIER.id;
+    expect(await tenantTransaction(A, (tx) => tx.role.findUnique({ where: { id } }))).not.toBeNull();
+    expect((await tenantTransaction(A, (tx) => tx.role.updateMany({ where: { id }, data: { permissions: ["users.manage"] } }))).count).toBe(0);
+    expect((await tenantTransaction(A, (tx) => tx.role.deleteMany({ where: { id } }))).count).toBe(0);
+    await expect(tenantTransaction(A, (tx) => tx.role.create({ data: { pharmacyId: null, key: "SNEAKY", name: "Sneaky", permissions: [] } }))).rejects.toThrow(/row-level security/);
+    await expect(tenantTransaction(A, (tx) => tx.role.create({ data: { pharmacyId: B, key: "x", name: "x", permissions: [] } }))).rejects.toThrow(/row-level security/);
   });
 
   it("cannot change or delete audit rows", async () => {

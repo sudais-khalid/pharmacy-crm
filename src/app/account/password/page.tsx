@@ -21,7 +21,7 @@ export default function ChangePasswordPage() {
     setError("");
     try {
       await api("/api/auth/password", { body: { currentPassword: current, newPassword: next } });
-      router.replace("/dashboard");
+      router.replace("/home");
       router.refresh();
     } catch (err) {
       setError((err as Error).message);

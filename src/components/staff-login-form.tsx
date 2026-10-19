@@ -28,7 +28,7 @@ export function StaffLoginForm({ pharmacy, onChangePharmacy }: { pharmacy: { slu
         // storage can be unavailable (private mode); remembering is only a convenience
       }
       const next = params.get("next");
-      router.replace(r.mustChangePassword ? "/account/password" : next && next.startsWith("/") && !next.startsWith("//") ? next : "/dashboard");
+      router.replace(r.mustChangePassword ? "/account/password" : next && next.startsWith("/") && !next.startsWith("//") ? next : "/home");
       router.refresh();
     } catch (err) {
       setError((err as Error).message);

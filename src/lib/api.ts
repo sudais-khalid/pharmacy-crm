@@ -45,7 +45,7 @@ export function route(permission: Permission | null, fn: (ctx: Ctx) => Promise<u
       if (user.mustChangePassword && !options.allowPasswordChange) {
         throw new AppError(403, "Choose a new password before continuing.", { code: "PASSWORD_CHANGE_REQUIRED" });
       }
-      if (permission && !can(user.role, permission)) throw new AppError(403, "You do not have permission to do this.");
+      if (permission && !can(user, permission)) throw new AppError(403, "You do not have permission to do this.");
       const svc = serviceContext(user, user.pharmacyId, requestMeta(req));
       if (user.support) Object.assign(svc, { realm: "PLATFORM", supportSessionId: user.support.sessionId, auditActorId: user.support.devId });
       const base = { req, user, params: await params, svc };

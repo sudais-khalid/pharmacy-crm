@@ -6,6 +6,8 @@ import type { Tx } from "@/lib/prisma";
 import { AppError } from "@/lib/errors";
 import { SESSION_MAX_AGE_S, type VerifiedSession } from "@/lib/session-token";
 import { audit } from "@/modules/platform";
+import { ADMIN_ROLE_ID } from "./permissions";
+import { roleSelect, sessionRole } from "./roles";
 
 /**
  * Platform support: the Developer working inside one pharmacy with Pharmacy Admin rights
@@ -26,7 +28,7 @@ export async function ensureSupportAccount(db: Tx | PrismaClient, pharmacyId: st
   if (existing) return existing;
   const passwordHash = await bcrypt.hash(randomBytes(32).toString("base64url"), 10);
   return db.user.create({
-    data: { pharmacyId, name: "Platform support", username: SUPPORT_USERNAME, email: `support-${pharmacyId}@system.invalid`, passwordHash, role: "ADMIN", isSystem: true },
+    data: { pharmacyId, name: "Platform support", username: SUPPORT_USERNAME, email: `support-${pharmacyId}@system.invalid`, passwordHash, roleId: ADMIN_ROLE_ID, isSystem: true },
     select: { id: true },
   });
 }
@@ -58,7 +60,7 @@ export async function loadSupportSession(token: VerifiedSession | null) {
     platformDb.supportSession.findUnique({ where: { id: token.ssid } }),
     platformDb.user.findFirst({
       where: { pharmacyId: token.pid, isSystem: true },
-      select: { id: true, name: true, email: true, username: true, role: true, pharmacyId: true },
+      select: { id: true, name: true, email: true, username: true, role: { select: roleSelect }, pharmacyId: true },
     }),
   ]);
   if (!dev || !dev.totpEnabledAt || dev.sessionVersion !== token.sv) return null;
@@ -66,7 +68,8 @@ export async function loadSupportSession(token: VerifiedSession | null) {
   if (Date.now() - session.startedAt.getTime() > MAX_AGE_MS) return null;
   if (!account) return null;
   const support: SupportInfo = { sessionId: session.id, devId: dev.id, devName: dev.name, reason: session.reason };
-  return { ...account, mustChangePassword: false, support };
+  const { role, ...rest } = account;
+  return { ...rest, ...sessionRole(role), mustChangePassword: false, support };
 }
 
 export async function endSupportSession(sessionId: string, devId: string, meta: Meta = {}) {

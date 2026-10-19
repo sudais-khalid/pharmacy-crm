@@ -88,7 +88,7 @@ export async function createSale(ctx: ServiceContext, input: SaleInput, opts: { 
       if (!customer) throw new AppError(400, "Select a customer to sell on credit (udhaar).");
       const current = await customerBalance(tx, customer.id);
       const after = current.plus(balance);
-      if (after.gt(customer.creditLimit) && !can(user.role, "sales.overrideCredit")) {
+      if (after.gt(customer.creditLimit) && !can(user, "sales.overrideCredit")) {
         throw new AppError(409, `Credit limit exceeded: outstanding would be ${after.toFixed(2)} but the limit is ${D(customer.creditLimit).toFixed(2)}.`);
       }
     }

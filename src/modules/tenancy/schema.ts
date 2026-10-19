@@ -12,11 +12,8 @@ export const slugSchema = z
 
 const optText = (max = 200) => z.string().trim().max(max).optional().nullable().transform((v) => (v ? v : null));
 
-export const usernameSchema = z
-  .string()
-  .trim()
-  .toLowerCase()
-  .regex(/^[a-z0-9][a-z0-9._-]{1,29}$/, "2 to 30 letters, digits, dot, dash or underscore");
+export { usernameSchema } from "@/modules/identity";
+import { usernameSchema } from "@/modules/identity";
 
 export const pharmacyProfileSchema = z.object({
   name: z.string().trim().min(2, "Name is required").max(120),

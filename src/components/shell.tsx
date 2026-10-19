@@ -82,7 +82,7 @@ export function Shell({ ctx, children }: { ctx: AppCtx; children: React.ReactNod
             </button>
             <div className="hidden text-right leading-tight sm:block">
               <p className="text-sm font-medium">{ctx.user.name}</p>
-              <p className="text-xs capitalize text-slate-500">{ctx.user.role.toLowerCase()}</p>
+              <p className="text-xs text-slate-500">{ctx.user.role.name}</p>
             </div>
             <button onClick={ctx.support ? endSupport : logout} className="inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800">
               <LogOut className="h-4 w-4" aria-hidden /> <span className="hidden sm:inline">{ctx.support ? "End support" : "Logout"}</span>

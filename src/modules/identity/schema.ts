@@ -10,16 +10,23 @@ export const staffLoginSchema = z.object({
   password: z.string().min(1, "Enter your password"),
 });
 
+export const usernameSchema = z
+  .string()
+  .trim()
+  .toLowerCase()
+  .regex(/^[a-z0-9][a-z0-9._-]{1,29}$/, "2 to 30 letters, digits, dot, dash or underscore");
+
+/** A new staff account: it gets an invite link, or a temporary password to change at first sign-in. */
 export const userCreateSchema = z.object({
-  name: z.string().trim().min(1).max(100),
-  email: z.string().trim().toLowerCase().email(),
-  password: z.string().min(8, "Password must be at least 8 characters").max(100),
-  role: z.enum(["ADMIN", "PHARMACIST", "CASHIER"]),
+  name: z.string().trim().min(2, "Name is required").max(100),
+  email: z.string().trim().toLowerCase().email("A valid email is required").max(120),
+  username: usernameSchema.optional().or(z.literal("").transform(() => undefined)),
+  roleId: z.string().uuid("Choose a role"),
+  credentials: z.enum(["invite", "password"]),
 });
 
 export const userUpdateSchema = z.object({
-  name: z.string().trim().min(1).max(100).optional(),
-  role: z.enum(["ADMIN", "PHARMACIST", "CASHIER"]).optional(),
+  name: z.string().trim().min(2).max(100).optional(),
+  roleId: z.string().uuid().optional(),
   active: z.boolean().optional(),
-  password: z.string().min(8, "Password must be at least 8 characters").max(100).optional().or(z.literal("").transform(() => undefined)),
 });

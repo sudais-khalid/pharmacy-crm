@@ -31,6 +31,8 @@ const ROUTES = {
   "suppliers/[id]": [["GET", "/api/suppliers/{supplier}"], ["PUT", "/api/suppliers/{supplier}", { name: "Hijacked" }]],
   "suppliers/[id]/payments": [["POST", "/api/suppliers/{supplier}/payments", { amount: 1, method: "CASH" }]],
   "users/[id]": [["PUT", "/api/users/{user}", { name: "Hijacked" }]],
+  "users/[id]/[action]": [["POST", "/api/users/{user}/reset-link"], ["POST", "/api/users/{user}/temporary-password"], ["POST", "/api/users/{user}/logout"]],
+  "roles/[id]": [["PUT", "/api/roles/{role}", { name: "Hijacked", permissions: ["pos.use"], landingPath: "/pos" }], ["DELETE", "/api/roles/{role}"]],
 };
 /** Writes that take another pharmacy's ids in the body. */
 const BODY_WRITES = [
@@ -92,7 +94,7 @@ async function idsOf(client) {
   };
   return {
     medicine: await pick("/api/medicines"), customer: await pick("/api/customers"), supplier: await pick("/api/suppliers"),
-    sale: await pick("/api/sales"), purchase: await pick("/api/purchases"), batch: await pick("/api/inventory/batches"), user: await pick("/api/users", "x"),
+    sale: await pick("/api/sales"), purchase: await pick("/api/purchases"), batch: await pick("/api/inventory/batches"), user: await pick("/api/users", "items"), role: (await client.req("GET", "/api/roles")).data?.roles?.find((r) => !r.system)?.id,
   };
 }
 
@@ -107,8 +109,6 @@ async function main() {
   ok("pharmacy A admin signs in", (await a.req("POST", "/api/auth/login", { pharmacy: "demo", username: "admin", password: "Admin@12345" })).status, 200);
   ok("pharmacy B admin signs in", (await b.req("POST", "/api/auth/login", { pharmacy: fx.pharmacy, username: fx.admin.username, password: fx.admin.password })).status, 200);
   const idsA = await idsOf(a);
-  const usersA = await a.req("GET", "/api/users");
-  idsA.user = usersA.data?.[0]?.id;
   const idsB = fx.ids;
 
   for (const [label, client, other, own] of [["A", a, idsB, idsA], ["B", b, idsA, idsB]]) {
@@ -129,7 +129,7 @@ async function main() {
   for (const [path, needle] of [
     ["/api/medicines?q=Bravo", fx.names.medicine], ["/api/pos/search?q=Bravo", fx.names.medicine], ["/api/customers?q=Bravo", fx.names.customer],
     ["/api/suppliers?q=Bravo", fx.names.supplier], ["/api/sales?q=" + fx.names.invoice, fx.ids.sale], ["/api/purchases", fx.ids.purchase],
-    ["/api/inventory/batches?q=BRAVO", "BRAVO-1"], ["/api/inventory/movements?q=Bravo", fx.ids.medicine], ["/api/users", fx.ids.user],
+    ["/api/inventory/batches?q=BRAVO", "BRAVO-1"], ["/api/inventory/movements?q=Bravo", fx.ids.medicine], ["/api/users", fx.ids.user], ["/api/roles", fx.ids.role],
     ["/api/dashboard", fx.names.medicine], ["/api/reports?type=sales&from=2020-01-01&to=2035-01-01", fx.names.invoice],
   ]) {
     ok(`A: ${path} hides pharmacy B`, (await text(a, path)).includes(needle), false);

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
 import { platformDb } from "@/lib/platform-db";
-import { BLOCKED_STATUSES, staffLoginSchema, setStaffSession } from "@/modules/identity";
+import { BLOCKED_STATUSES, roleSelect, staffLoginSchema, setStaffSession } from "@/modules/identity";
 import { errorResponse, readJson } from "@/lib/api";
 import { AppError } from "@/lib/errors";
 import { isLimited, recordHit, clearBucket } from "@/lib/rate-limit";
@@ -31,7 +31,7 @@ export async function POST(req: NextRequest) {
 
     const user = await platformDb.user.findFirst({
       where: { pharmacy: { slug }, isSystem: false, OR: [{ username }, { email: username }] },
-      include: { pharmacy: { select: { status: true } } },
+      include: { pharmacy: { select: { status: true } }, role: { select: roleSelect } },
     });
     const ok = await bcrypt.compare(password, user?.passwordHash ?? DUMMY_HASH);
     if (!user || !ok) {
@@ -47,7 +47,7 @@ export async function POST(req: NextRequest) {
     await clearBucket(bucket);
     await platformDb.user.update({ where: { id: user.id }, data: { lastLoginAt: new Date() } });
     await setStaffSession(user);
-    return NextResponse.json({ user: { id: user.id, name: user.name, username: user.username, role: user.role }, mustChangePassword: user.mustChangePassword });
+    return NextResponse.json({ user: { id: user.id, name: user.name, username: user.username, role: user.role.name }, mustChangePassword: user.mustChangePassword });
   } catch (e) {
     return errorResponse(e);
   }

@@ -1,8 +1,9 @@
 import { platformDb } from "@/lib/platform-db";
 import { addDays, todayStr, dateOnly } from "@/lib/dates";
-import { serviceContext } from "@/modules/identity";
+import { SYSTEM_ROLES, ensureSystemRoles, serviceContext, type Permission } from "@/modules/identity";
 
 type RoleName = "ADMIN" | "PHARMACIST" | "CASHIER";
+const TEMPLATE = { ADMIN: SYSTEM_ROLES.PHARMACY_ADMIN, PHARMACIST: SYSTEM_ROLES.PHARMACIST, CASHIER: SYSTEM_ROLES.CASHIER } as const;
 
 /** The pharmacy that fixtures belong to unless a test passes another one. Recreated by resetDb. */
 export let pharmacyId = "";
@@ -10,8 +11,9 @@ export let pharmacyId = "";
 export async function resetDb() {
   await platformDb.$executeRawUnsafe(
     `TRUNCATE "AuditLog","OutboxEvent","IdempotencyKey","RateLimitHit","StockMovement","SaleItem","PurchaseItem","CustomerLedger","SupplierLedger","Sale","Purchase","Batch","Medicine","Category","Customer","Supplier","User",
-              "AuthToken","SupportSession","FeatureFlag","TenantCounter","PharmacySettings","PlatformUser","Pharmacy" RESTART IDENTITY CASCADE`,
+              "AuthToken","SupportSession","FeatureFlag","TenantCounter","PharmacySettings","PlatformUser","Role","Pharmacy" RESTART IDENTITY CASCADE`,
   );
+  await ensureSystemRoles(platformDb);
   pharmacyId = (await makePharmacy("test")).id;
 }
 
@@ -23,11 +25,12 @@ export const inDays = (n: number) => addDays(todayStr(), n);
 
 export async function makeUser(role: RoleName = "CASHIER", inPharmacy = pharmacyId) {
   const tag = `${role.toLowerCase()}-${Math.random().toString(36).slice(2, 10)}`;
-  return platformDb.user.create({ data: { pharmacyId: inPharmacy, name: role, email: `${tag}@t.test`, username: tag, passwordHash: "x", role } });
+  return platformDb.user.create({ data: { pharmacyId: inPharmacy, name: role, email: `${tag}@t.test`, username: tag, passwordHash: "x", roleId: TEMPLATE[role].id } });
 }
 
-/** Service context for a test user, scoped to the user's pharmacy. */
-export const ctxOf = (user: { id: string; role: RoleName; pharmacyId: string }) => serviceContext(user, user.pharmacyId);
+/** Service context for a test user (template roles), or with explicit permissions for custom roles. */
+export const ctxOf = (user: { id: string; roleId: string; pharmacyId: string }, permissions?: readonly Permission[]) =>
+  serviceContext({ id: user.id, permissions: permissions ?? Object.values(SYSTEM_ROLES).find((r) => r.id === user.roleId)?.permissions ?? [] }, user.pharmacyId);
 
 export async function makeMedicine(name = "Panadol", extra: Record<string, unknown> = {}, inPharmacy = pharmacyId) {
   return platformDb.medicine.create({ data: { pharmacyId: inPharmacy, name, salePrice: 50, purchasePrice: 40, ...extra } });

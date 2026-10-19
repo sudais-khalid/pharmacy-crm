@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { tenantTransaction } from "@/lib/db";
 import { createSale } from "@/modules/sales";
 import { getSettings, updateSettings } from "@/modules/platform";
+import { SYSTEM_ROLES } from "@/modules/identity";
 import { resetDb, makePharmacy, makeUser, makeMedicine, makeBatch, ctxOf, pharmacyId } from "./helpers";
 
 beforeEach(resetDb);
@@ -36,8 +37,8 @@ describe("tenant scoping", () => {
     await makeMedicine("Panadol", { barcode: "8901" });
     await makeMedicine("Panadol", { barcode: "8901" }, other.id);
     await expect(makeMedicine("Copy", { barcode: "8901" })).rejects.toThrow();
-    await platformDb.user.create({ data: { pharmacyId, name: "Ali", email: "ali-a@t.test", username: "ali", passwordHash: "x" } });
-    await platformDb.user.create({ data: { pharmacyId: other.id, name: "Ali", email: "ali-b@t.test", username: "ali", passwordHash: "x" } });
+    await platformDb.user.create({ data: { pharmacyId, name: "Ali", email: "ali-a@t.test", username: "ali", passwordHash: "x", roleId: SYSTEM_ROLES.CASHIER.id } });
+    await platformDb.user.create({ data: { pharmacyId: other.id, name: "Ali", email: "ali-b@t.test", username: "ali", passwordHash: "x", roleId: SYSTEM_ROLES.CASHIER.id } });
     expect(await platformDb.user.count({ where: { username: "ali" } })).toBe(2);
   });
 });

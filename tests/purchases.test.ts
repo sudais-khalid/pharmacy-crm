@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach } from "vitest";
 import { platformDb } from "@/lib/platform-db";
 import { createPurchase, paySupplier, supplierBalance } from "@/modules/procurement";
 import { adjustStock } from "@/modules/inventory";
-import { can } from "@/modules/identity";
+import { SYSTEM_ROLES, can } from "@/modules/identity";
 import { resetDb, makeUser, makeMedicine, makeBatch, makeSupplier, inDays, ctxOf } from "./helpers";
 
 beforeEach(resetDb);
@@ -66,12 +66,14 @@ describe("stock adjustments", () => {
 
 describe("role permissions", () => {
   it("cashiers cannot manage users or delete medicines; admins can", () => {
-    expect(can("CASHIER", "pos.use")).toBe(true);
-    expect(can("CASHIER", "medicines.delete")).toBe(false);
-    expect(can("CASHIER", "users.manage")).toBe(false);
-    expect(can("CASHIER", "sales.overrideCredit")).toBe(false);
-    expect(can("PHARMACIST", "purchases.create")).toBe(true);
-    expect(can("PHARMACIST", "users.manage")).toBe(false);
-    expect(can("ADMIN", "users.manage")).toBe(true);
+    const [cashier, pharmacist, admin] = (["CASHIER", "PHARMACIST", "PHARMACY_ADMIN"] as const).map((k) => ({ permissions: SYSTEM_ROLES[k].permissions }));
+    expect(can(cashier, "pos.use")).toBe(true);
+    expect(can(cashier, "medicines.delete")).toBe(false);
+    expect(can(cashier, "users.manage")).toBe(false);
+    expect(can(cashier, "sales.overrideCredit")).toBe(false);
+    expect(can(cashier, "cost.view")).toBe(false);
+    expect(can(pharmacist, "purchases.create")).toBe(true);
+    expect(can(pharmacist, "users.manage")).toBe(false);
+    expect(can(admin, "users.manage")).toBe(true);
   });
 });

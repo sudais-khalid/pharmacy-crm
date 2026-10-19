@@ -8,12 +8,11 @@ import { api, formatDateTime, qs, useApi, useDebounce } from "@/lib/client";
 import { StatusBadge, type PharmacyStatus } from "../status-badge";
 
 type Account = {
-  id: string; name: string; username: string; email: string; role: "ADMIN" | "PHARMACIST" | "CASHIER"; active: boolean; locked: boolean;
+  id: string; name: string; username: string; email: string; role: { key: string; name: string }; active: boolean; locked: boolean;
   lastLoginAt: string | null; mustChangePassword: boolean; pharmacy: { id: string; name: string; slug: string; status: PharmacyStatus };
 };
 type Page = { items: Account[]; total: number; page: number; pageSize: number };
 
-const ROLE = { ADMIN: "Pharmacy Admin", PHARMACIST: "Pharmacist", CASHIER: "Cashier" } as const;
 type Pending = { kind: "deactivate" | "activate" | "logout"; account: Account } | null;
 
 function AccountsInner() {
@@ -58,7 +57,7 @@ function AccountsInner() {
                   <tr key={a.id} className="border-b border-border/60">
                     <td className="td"><span className="font-medium">{a.name}</span><span className="block text-xs text-fg-muted"><span className="font-mono">{a.username}</span> · {a.email}</span></td>
                     <td className="td"><Link href={`/platform/pharmacies/${a.pharmacy.id}`} className="text-primary hover:underline">{a.pharmacy.name}</Link>{a.pharmacy.status !== "ACTIVE" && <span className="ml-2"><StatusBadge status={a.pharmacy.status} /></span>}</td>
-                    <td className="td">{ROLE[a.role]}</td>
+                    <td className="td">{a.role.name}</td>
                     <td className="td">
                       <span className="flex flex-wrap gap-1">
                         {a.active ? <Badge tone="green">Active</Badge> : <Badge>Inactive</Badge>}

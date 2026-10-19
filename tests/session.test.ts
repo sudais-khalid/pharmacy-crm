@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { platformDb } from "@/lib/platform-db";
 import { signSession, verifySession, needsRefresh } from "@/lib/session-token";
-import { loadStaffSession, loadPlatformSession, updateUser, forceLogout } from "@/modules/identity";
+import { SYSTEM_ROLES, loadStaffSession, loadPlatformSession, updateUser, forceLogout, setTemporaryPassword } from "@/modules/identity";
 import { resetDb, makePharmacy, makeUser, ctxOf } from "./helpers";
 
 beforeEach(resetDb);
@@ -43,16 +43,19 @@ describe("staff sessions", () => {
   it("load the account for a valid token", async () => {
     const u = await makeUser("CASHIER");
     const s = await loadStaffSession(await verifySession("staff", await staffToken(u)));
-    expect(s).toMatchObject({ id: u.id, pharmacyId: u.pharmacyId, role: "CASHIER" });
+    expect(s).toMatchObject({ id: u.id, pharmacyId: u.pharmacyId, role: { key: "CASHIER", name: "Cashier" } });
+    expect(s?.permissions).toContain("pos.use");
+    expect(s?.permissions).not.toContain("cost.view");
   });
 
   it("end when the account is deactivated, its role or password changes, or logout is forced", async () => {
     const admin = await makeUser("ADMIN");
-    for (const change of [{ active: false }, { role: "PHARMACIST" as const }, { password: "NewPassword@1" }, "force"] as const) {
+    for (const change of [{ active: false }, { roleId: SYSTEM_ROLES.PHARMACIST.id }, "password", "force"] as const) {
       const u = await makeUser("CASHIER");
       const token = await staffToken(u);
       expect(await loadStaffSession(await verifySession("staff", token))).not.toBeNull();
       if (change === "force") await forceLogout(ctxOf(admin), u.id);
+      else if (change === "password") await setTemporaryPassword(ctxOf(admin), u.id);
       else await updateUser(ctxOf(admin), u.id, change);
       expect(await loadStaffSession(await verifySession("staff", token)), JSON.stringify(change)).toBeNull();
     }

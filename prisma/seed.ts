@@ -7,7 +7,10 @@ import { addDays, todayStr } from "../src/lib/dates";
 import { createMedicine } from "../src/modules/catalog";
 import { createPurchase } from "../src/modules/procurement";
 import { createSale } from "../src/modules/sales";
-import { serviceContext } from "../src/modules/identity";
+import { SYSTEM_ROLES, createRole, ensureSystemRoles, serviceContext, type SystemRoleKey } from "../src/modules/identity";
+
+/** A seeded user as a service actor, with the permissions of their template role. */
+const actor = (u: { id: string; roleId: string }) => ({ id: u.id, permissions: Object.values(SYSTEM_ROLES).find((r) => r.id === u.roleId)!.permissions });
 
 function rng(seed: number) {
   return () => {
@@ -27,6 +30,7 @@ async function main() {
     return;
   }
 
+  await ensureSystemRoles(prisma);
   const pharmacy = await prisma.pharmacy.create({
     data: {
       slug: "demo", name: "Demo Pharmacy", address: "Shop 12, Main Bazaar, Mardan", phone: "0300-0000000", email: "info@demo-pharmacy.example", currency: "PKR",
@@ -37,14 +41,16 @@ async function main() {
 
   const users = await Promise.all(
     [
-      ["Admin User", "admin@example.com", "Admin@12345", "ADMIN"],
+      ["Admin User", "admin@example.com", "Admin@12345", "PHARMACY_ADMIN"],
       ["Sara Pharmacist", "pharmacist@example.com", "Pharmacist@12345", "PHARMACIST"],
       ["Bilal Cashier", "cashier@example.com", "Cashier@12345", "CASHIER"],
     ].map(async ([name, email, pw, role]) =>
-      prisma.user.create({ data: { pharmacyId, name, email, username: email.split("@")[0], role: role as "ADMIN", passwordHash: await bcrypt.hash(pw, 10) } }),
+      prisma.user.create({ data: { pharmacyId, name, email, username: email.split("@")[0], roleId: SYSTEM_ROLES[role as SystemRoleKey].id, passwordHash: await bcrypt.hash(pw, 10) } }),
     ),
   );
   const [admin, pharmacist, cashier] = users;
+  // a custom role, as a pharmacy admin would make one
+  await createRole(serviceContext(actor(admin), pharmacyId), { name: "Senior Cashier", description: "The counter, plus cancelling invoices and reprinting any receipt.", permissions: [...SYSTEM_ROLES.CASHIER.permissions, "sales.cancel", "sales.reprint.any"], landingPath: "/pos" });
 
   const catNames = ["Analgesics", "Antibiotics", "Antihistamines", "Vitamins & Supplements", "Gastrointestinal", "Cardiovascular", "Dermatology", "Diabetes", "Respiratory"];
   const cats: Record<string, string> = {};
@@ -84,7 +90,7 @@ async function main() {
   for (const [name, generic, cat, buy, sell, rx, min, qty, exp] of meds) {
     i += 1;
     const m = await createMedicine(
-      serviceContext(admin, pharmacyId),
+      serviceContext(actor(admin), pharmacyId),
       { name, genericName: generic, categoryId: cats[cat], barcode: `890100${String(i).padStart(6, "0")}`, sku: `SKU-${String(i).padStart(4, "0")}`, unit: "Pack", purchasePrice: buy, salePrice: sell, minStock: min, prescriptionRequired: rx, description: null, active: true,
         opening: { batchNumber: `OP-${String(i).padStart(3, "0")}`, expiryDate: addDays(today, exp), quantity: qty } },
     );
@@ -103,7 +109,7 @@ async function main() {
   for (let p = 0; p < 6; p++) {
     const chosen = medRecords.slice(p * 3, p * 3 + 3);
     await createPurchase(
-      serviceContext(admin, pharmacyId),
+      serviceContext(actor(admin), pharmacyId),
       {
         supplierId: suppliers[p % 3].id, supplierInvoice: `SUP-${1000 + p}`, purchaseDate: addDays(today, -(20 - p * 3)),
         items: chosen.map((m, k) => ({ medicineId: m.id, batchNumber: `PB-${p}${k}`, expiryDate: addDays(today, 600 + k * 30), quantity: 60 + k * 20, purchasePrice: m.buy, salePrice: m.sale + 2 })),
@@ -137,7 +143,7 @@ async function main() {
         // same evaluation order as before so the seeded data stays identical
         const sale: Parameters<typeof createSale>[1] = { items: lines, customerId: customer?.id ?? null, discountType: "AMOUNT", discountValue: rand() < 0.15 ? 20 : 0, paymentMethod: useCredit ? "CREDIT" : rand() < 0.3 ? "CARD" : "CASH", amountPaid: useCredit ? 0 : undefined, note: null };
         const seller = rand() < 0.5 ? cashier : pharmacist;
-        await createSale(serviceContext(seller, pharmacyId), sale, { createdAt: at });
+        await createSale(serviceContext(actor(seller), pharmacyId), sale, { createdAt: at });
         count++;
       } catch (e) {
         // credit limit / stock issues in random data are fine – skip

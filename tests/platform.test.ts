@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { platformDb } from "@/lib/platform-db";
 import { runInTx } from "@/lib/db";
+import { SYSTEM_ROLES } from "@/modules/identity";
 import { withIdempotency, purgeIdempotencyKeys } from "@/lib/idempotency";
 import { createSale } from "@/modules/sales";
 import { audit, emit } from "@/modules/platform";
@@ -22,7 +23,7 @@ describe("idempotency", () => {
     await makeBatch(m.id, "A", 90, 50);
     return { u, m };
   }
-  const sell = (u: { id: string; role: "ADMIN" | "PHARMACIST" | "CASHIER"; pharmacyId: string }, body: ReturnType<typeof saleBody>, key: string) =>
+  const sell = (u: { id: string; roleId: string; pharmacyId: string }, body: ReturnType<typeof saleBody>, key: string) =>
     withIdempotency({ key, actorId: u.id, pharmacyId: u.pharmacyId, route: "POST /api/sales", rawBody: JSON.stringify(body) }, async (tx) => {
       const sale = await createSale({ ...ctxOf(u), tx }, body);
       return { id: sale.id, invoiceNo: sale.invoiceNo };
@@ -173,14 +174,16 @@ describe("write paths are audited and emit events", () => {
   it("user changes are audited without the password hash", async () => {
     const { createUser, updateUser } = await import("@/modules/identity");
     const admin = await makeUser("ADMIN");
-    const created = await createUser(ctxOf(admin), { name: "Ali", email: "ali@t.test", password: "Secret@1234", role: "CASHIER" });
-    await updateUser(ctxOf(admin), created.id, { password: "NewSecret@1234" });
+    const { setTemporaryPassword } = await import("@/modules/identity");
+    const { user: created, credentials } = await createUser(ctxOf(admin), { name: "Ali", email: "ali@t.test", roleId: SYSTEM_ROLES.CASHIER.id, credentials: "password" });
+    const temp = await setTemporaryPassword(ctxOf(admin), created.id);
     await updateUser(ctxOf(admin), created.id, { active: false });
     const r = await rows();
-    expect(r.audit.map((a) => a.action)).toEqual(["user.create", "user.password.reset", "user.deactivate"]);
+    expect(r.audit.map((a) => a.action)).toEqual(["user.create", "user.password.temporary", "user.deactivate"]);
     const text = JSON.stringify(r.audit.map((a) => [a.before, a.after]));
     expect(text).not.toMatch(/passwordHash|\$2[aby]\$/);
-    expect(r.audit[1].after).toEqual({ passwordChanged: true });
+    expect(text).not.toContain(temp.password);
+    expect(credentials.kind === "password" && text.includes(credentials.password)).toBe(false);
     await expect(updateUser(ctxOf(admin), admin.id, { active: false })).rejects.toThrow(/own account/);
   });
 });

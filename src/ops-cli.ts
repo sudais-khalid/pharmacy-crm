@@ -8,7 +8,7 @@
  *   node dist/ops.js restore <file>
  *   node dist/ops.js recover-owner [--email you@example.com] [--json]
  *
- * The database comes from DATABASE_URL (or --db <url>), read from ./.env (or --env-file <path>) when
+ * The database comes from DATABASE_URL (or --db <url>), read from ./.env (or --env <path>; Node itself claims --env-file) when
  * present. The recovery key comes from PCRM_RECOVERY_KEY or --key-file <path>; it is never taken as a
  * plain argument, so it does not end up in process lists or shell history. Migrations are read from ./prisma/migrations unless --migrations <dir> is given.
  */
@@ -39,7 +39,7 @@ function recoveryKey(args: string[]): Buffer {
 
 async function main(argv: string[]) {
   const args = [...argv];
-  const envFile = option(args, "--env-file") ?? ".env";
+  const envFile = option(args, "--env") ?? ".env";
   try {
     process.loadEnvFile(envFile); // variables already set in the environment win
   } catch {

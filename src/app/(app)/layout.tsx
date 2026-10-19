@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { getSessionUser, ROLE_PERMISSIONS } from "@/modules/identity";
+import { getSessionUser } from "@/modules/identity";
 import { tenantTransaction } from "@/lib/db";
 import { getSettings } from "@/modules/platform";
 import { Shell } from "@/components/shell";
@@ -14,5 +14,5 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     settings: await getSettings(tx, user.pharmacyId),
     status: (await tx.pharmacy.findUniqueOrThrow({ where: { id: user.pharmacyId }, select: { status: true } })).status,
   }));
-  return <Shell ctx={{ user, permissions: [...ROLE_PERMISSIONS[user.role]], settings, pharmacyStatus: status, support: user.support && { devName: user.support.devName, reason: user.support.reason } }}>{children}</Shell>;
+  return <Shell ctx={{ user, permissions: user.permissions, settings, pharmacyStatus: status, support: user.support && { devName: user.support.devName, reason: user.support.reason } }}>{children}</Shell>;
 }

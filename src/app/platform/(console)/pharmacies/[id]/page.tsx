@@ -13,7 +13,7 @@ type Detail = {
     email: string | null; licenseNumber: string | null; taxNumber: string | null; status: PharmacyStatus; statusReason: string | null; plan: string;
     subscriptionEndsAt: string | null; maxUsers: number; ocrMonthlyLimit: number; createdAt: string;
   };
-  staff: { id: string; name: string; username: string; email: string; role: string; active: boolean; lastLoginAt: string | null; mustChangePassword: boolean }[];
+  staff: { id: string; name: string; username: string; email: string; role: { key: string; name: string }; active: boolean; lastLoginAt: string | null; mustChangePassword: boolean }[];
   flags: { key: string; label: string; enabled: boolean }[];
   audits: { id: string; at: string; realm: "STAFF" | "PLATFORM"; actorId: string | null; action: string; entity: string; supportSessionId: string | null }[];
   supportSessions: { id: string; reason: string; startedAt: string; endedAt: string | null }[];
@@ -105,7 +105,7 @@ function StaffTab({ detail }: { detail: Detail }) {
             <tr key={u.id} className="border-b border-border/60">
               <td className="td font-medium">{u.name}<span className="block text-xs text-fg-muted">{u.email}</span></td>
               <td className="td font-mono">{u.username}</td>
-              <td className="td">{u.role === "ADMIN" ? "Pharmacy Admin" : u.role === "PHARMACIST" ? "Pharmacist" : "Cashier"}</td>
+              <td className="td">{u.role.name}</td>
               <td className="td">{u.active ? (u.mustChangePassword ? <Badge tone="amber">Must change password</Badge> : <Badge tone="green">Active</Badge>) : <Badge>Inactive</Badge>}</td>
               <td className="td">{u.lastLoginAt ? formatDateTime(u.lastLoginAt) : "Never"}</td>
             </tr>

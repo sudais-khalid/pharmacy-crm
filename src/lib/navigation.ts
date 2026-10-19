@@ -1,4 +1,4 @@
-import { BarChart3, Boxes, Building2, ClipboardList, LayoutDashboard, Monitor, Pill, Receipt, Settings, ShoppingCart, Truck, UserCog, Users } from "lucide-react";
+import { BarChart3, Boxes, Building2, ClipboardList, LayoutDashboard, Monitor, Pill, Receipt, Settings, ShieldCheck, ShoppingCart, Truck, UserCog, Users } from "lucide-react";
 
 /**
  * The menus and their Alt+letter shortcuts. Each key is a letter of the label (it is underlined there);
@@ -15,6 +15,7 @@ export const STAFF_NAV = [
   { href: "/customers", label: "Customers", key: "C", icon: Users, perm: "customers.view" },
   { href: "/reports", label: "Reports", key: "R", icon: BarChart3, perm: "reports.view" },
   { href: "/users", label: "Users", key: "U", icon: UserCog, perm: "users.manage" },
+  { href: "/roles", label: "Roles", key: "O", icon: ShieldCheck, perm: "roles.manage" },
   { href: "/settings", label: "Settings", key: "T", icon: Settings, perm: "settings.manage" },
 ] as const;
 

@@ -243,6 +243,8 @@ export async function restoreBackup(connectionString: string, file: string, key:
 
     await client.query("BEGIN");
     await client.query("SET LOCAL session_replication_role = replica");
+    // migrations may seed rows (the role templates, for example); the backup's rows are the truth
+    for (const t of manifest.tables) await client.query(`DELETE FROM ${q(t.name)}`);
     const columnsOf = new Map(manifest.tables.map((t) => [t.name, t.columns]));
     let copy: Writable | null = null;
     let copyDone: Promise<unknown> | null = null;

@@ -54,6 +54,13 @@ export async function inspectStaffToken(token: string) {
   return { valid: true as const, purpose: row.purpose, name: user.name, username: user.username, pharmacy: { name: user.pharmacy.name, slug: user.pharmacy.slug }, expiresAt: row.expiresAt };
 }
 
+/** A temporary password people can type: 16 letters and digits without look-alikes, in groups of four. */
+export function temporaryPassword() {
+  const alphabet = "abcdefghjkmnpqrstuvwxyz23456789";
+  const raw = Array.from(randomBytes(16), (b) => alphabet[b % alphabet.length]).join("");
+  return raw.match(/.{4}/g)!.join("-");
+}
+
 export function checkNewPassword(password: string, username?: string) {
   if (password.length < 10) throw new AppError(400, "Use at least 10 characters.", { fields: { password: "Use at least 10 characters." } });
   if (password.length > 100) throw new AppError(400, "Use at most 100 characters.");
