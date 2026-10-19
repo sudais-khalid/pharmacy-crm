@@ -13,9 +13,11 @@ export type PermissionGroup = (typeof PERMISSION_GROUPS)[number];
 export const PERMISSION_CATALOG = [
   { key: "dashboard.view", group: "General", label: "See the dashboard" },
   { key: "pos.use", group: "Sell", label: "Sell at the counter (POS)" },
-  { key: "sales.view", group: "Sell", label: "See invoices" },
+  { key: "sales.view", group: "Sell", label: "See invoices (their own, unless they may see all)" },
+  { key: "sales.viewAll", group: "Sell", label: "See every cashier's invoices" },
   { key: "sales.reprint.any", group: "Sell", label: "Reprint anyone's invoices" },
   { key: "sales.cancel", group: "Sell", label: "Cancel invoices" },
+  { key: "returns.create", group: "Sell", label: "Take back sold items and refund" },
   { key: "sales.overrideCredit", group: "Sell", label: "Sell on credit above a customer's limit" },
   { key: "cash.manage", group: "Sell", label: "Manage every cashier's cash session" },
   { key: "medicines.view", group: "Stock", label: "See medicines" },
@@ -52,7 +54,7 @@ export const isPermission = (p: string): p is Permission => KNOWN.has(p);
 const cashier: Permission[] = ["dashboard.view", "pos.use", "sales.view", "medicines.view", "inventory.view", "customers.view", "customers.manage", "customers.payments"];
 const pharmacist: Permission[] = [
   ...cashier,
-  "sales.reprint.any", "sales.cancel", "sales.overrideCredit",
+  "sales.viewAll", "sales.reprint.any", "sales.cancel", "returns.create", "sales.overrideCredit",
   "medicines.manage", "inventory.adjust", "stockEntry.create", "stockEntry.post",
   "suppliers.view", "supplierCatalog.manage", "purchases.view", "purchases.create", "po.approve",
   "cost.view", "reports.view",

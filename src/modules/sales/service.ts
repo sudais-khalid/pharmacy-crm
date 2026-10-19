@@ -5,7 +5,8 @@ import { todayStr } from "@/lib/dates";
 import { D, ZERO } from "@/lib/money";
 import { customerBalance } from "@/modules/customers";
 import { can, type ServiceContext } from "@/modules/identity";
-import { audit, emit, nextNumber } from "@/modules/platform";
+import { audit, emit, getSettings, nextNumber } from "@/modules/platform";
+import { sessionForPayment } from "./cash";
 
 export type SaleInput = {
   customerId?: string | null;
@@ -14,7 +15,12 @@ export type SaleInput = {
   discountValue: number;
   paymentMethod: "CASH" | "CARD" | "CREDIT";
   amountPaid?: number;
+  /** Cash handed over by the customer; the change is worked out from it (cash sales). */
+  cashTendered?: number | null;
   note?: string | null;
+  /** Walk-in details printed on the bill when no customer account is used. */
+  customerName?: string | null;
+  customerPhone?: string | null;
 };
 
 type BatchRow = { id: string; batchNumber: string; quantity: number; salePrice: Prisma.Decimal.Value; purchasePrice: Prisma.Decimal.Value };
@@ -80,8 +86,11 @@ export async function createSale(ctx: ServiceContext, input: SaleInput, opts: { 
     if (discount.gt(subtotal)) throw new AppError(400, "Discount cannot be more than the subtotal.");
     const total = subtotal.minus(discount);
 
-    const paid = D(input.amountPaid ?? (input.paymentMethod === "CREDIT" ? 0 : total.toString())).toDecimalPlaces(2);
+    const tendered = input.paymentMethod === "CASH" && input.cashTendered != null ? D(input.cashTendered).toDecimalPlaces(2) : null;
+    const paid = D(input.amountPaid ?? (input.paymentMethod === "CREDIT" ? 0 : tendered ? Prisma.Decimal.min(tendered, total).toString() : total.toString())).toDecimalPlaces(2);
     if (paid.lt(0) || paid.gt(total)) throw new AppError(400, "Amount paid must be between 0 and the invoice total.");
+    if (tendered && tendered.lt(paid)) throw new AppError(400, "The cash received is less than the amount paid.");
+    const changeGiven = tendered ? tendered.minus(paid) : ZERO;
     const balance = total.minus(paid);
 
     if (balance.gt(0)) {
@@ -93,6 +102,10 @@ export async function createSale(ctx: ServiceContext, input: SaleInput, opts: { 
       }
     }
 
+    // money in the drawer: cash sales and the down payment on a credit sale
+    const cashSessionId = await sessionForPayment(tx, ctx, input.paymentMethod !== "CARD" && paid.gt(0));
+    const { receiptFormat } = await getSettings(tx, ctx.pharmacyId);
+
     const n = await nextNumber(tx, "INVOICE");
     const invoiceNo = `INV-${today.replace(/-/g, "")}-${String(n).padStart(5, "0")}`;
 
@@ -100,6 +113,8 @@ export async function createSale(ctx: ServiceContext, input: SaleInput, opts: { 
       data: {
         invoiceNo, customerId: customer?.id ?? null, userId: user.id, subtotal, discount, total, amountPaid: paid,
         paymentMethod: input.paymentMethod, note: input.note ?? null, ...(opts.createdAt ? { createdAt: opts.createdAt } : {}),
+        customerName: input.customerName?.trim() || null, customerPhone: input.customerPhone?.trim() || null,
+        cashSessionId, cashTendered: tendered, changeGiven, receiptFormat,
         items: { create: lines.map((l) => ({ medicineId: l.medicineId, batchId: l.batchId, quantity: l.quantity, unitPrice: l.unitPrice, costPrice: l.costPrice, lineTotal: l.lineTotal })) },
       },
     });
@@ -134,8 +149,10 @@ export async function createSale(ctx: ServiceContext, input: SaleInput, opts: { 
 export async function cancelSale(ctx: ServiceContext, saleId: string, reason: string) {
   const userId = ctx.actor.id;
   return runInTx(ctx, async (tx) => {
-    const sale = await tx.sale.findUnique({ where: { id: saleId }, include: { items: true } });
+    const sale = await tx.sale.findUnique({ where: { id: saleId }, include: { items: true, _count: { select: { returns: true } } } });
     if (!sale) throw new AppError(404, "Sale not found.");
+    // items already came back through a return; cancelling as well would put them in stock twice
+    if (sale._count.returns) throw new AppError(409, "This invoice has returns. Return the remaining items instead of cancelling it.");
     const res = await tx.sale.updateMany({ where: { id: saleId, status: "COMPLETED" }, data: { status: "CANCELLED", cancelledAt: new Date(), cancelReason: reason } });
     if (res.count === 0) throw new AppError(409, "This sale is already cancelled.");
 

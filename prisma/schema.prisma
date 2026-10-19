@@ -27,6 +27,18 @@ enum MovementType {
   ADJUSTMENT
   DAMAGE
   EXPIRY
+  SALE_RETURN
+  SUPPLIER_RETURN
+}
+
+enum CashSessionStatus {
+  OPEN
+  CLOSED
+}
+
+enum CashMovementType {
+  PAY_IN
+  PAY_OUT
 }
 
 enum LedgerKind {
@@ -34,6 +46,7 @@ enum LedgerKind {
   PAYMENT
   ADJUSTMENT
   CANCELLATION
+  RETURN
 }
 
 model User {
@@ -59,6 +72,10 @@ model User {
   sales           Sale[]
   purchases       Purchase[]
   stockMovements  StockMovement[]
+  cashSessions    CashSession[]    @relation("CashSessionUser")
+  closedSessions  CashSession[]    @relation("CashSessionCloser")
+  cashMovements   CashMovement[]
+  saleReturns     SaleReturn[]
   customerLedgers CustomerLedger[]
   supplierLedgers SupplierLedger[]
 
@@ -157,10 +174,11 @@ model Batch {
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
-  medicine      Medicine        @relation(fields: [medicineId], references: [id])
+  medicine      Medicine         @relation(fields: [medicineId], references: [id])
   saleItems     SaleItem[]
   purchaseItems PurchaseItem[]
   movements     StockMovement[]
+  returnItems   SaleReturnItem[]
 
   pharmacy Pharmacy @relation(fields: [pharmacyId], references: [id])
 
@@ -229,13 +247,15 @@ model CustomerLedger {
   credit      Decimal        @default(0) @db.Decimal(12, 2)
   description String
   saleId      String?
+  returnId    String?
   method      PaymentMethod?
   userId      String?
   createdAt   DateTime       @default(now())
 
-  customer Customer @relation(fields: [customerId], references: [id])
-  sale     Sale?    @relation(fields: [saleId], references: [id])
-  user     User?    @relation(fields: [userId], references: [id])
+  customer   Customer    @relation(fields: [customerId], references: [id])
+  sale       Sale?       @relation(fields: [saleId], references: [id])
+  saleReturn SaleReturn? @relation(fields: [returnId], references: [id])
+  user       User?       @relation(fields: [userId], references: [id])
 
   pharmacy Pharmacy @relation(fields: [pharmacyId], references: [id])
 
@@ -365,14 +385,22 @@ model Sale {
   paymentMethod PaymentMethod
   status        SaleStatus    @default(COMPLETED)
   note          String?
+  customerName  String? // walk-in name printed on the bill
+  customerPhone String? // walk-in contact printed on the bill
+  cashSessionId String?
+  cashTendered  Decimal?      @db.Decimal(12, 2)
+  changeGiven   Decimal       @default(0) @db.Decimal(12, 2)
+  receiptFormat String? // format at print time, so a reprint looks the same
   createdAt     DateTime      @default(now())
   cancelledAt   DateTime?
   cancelReason  String?
 
-  customer Customer?        @relation(fields: [customerId], references: [id])
-  user     User             @relation(fields: [userId], references: [id])
-  items    SaleItem[]
-  ledger   CustomerLedger[]
+  customer    Customer?        @relation(fields: [customerId], references: [id])
+  user        User             @relation(fields: [userId], references: [id])
+  cashSession CashSession?     @relation(fields: [cashSessionId], references: [id])
+  items       SaleItem[]
+  ledger      CustomerLedger[]
+  returns     SaleReturn[]
 
   pharmacy Pharmacy @relation(fields: [pharmacyId], references: [id])
 
@@ -380,6 +408,8 @@ model Sale {
   @@index([pharmacyId, createdAt])
   @@index([customerId])
   @@index([userId])
+  @@index([cashSessionId])
+  @@index([pharmacyId, customerPhone])
   @@index([invoiceNo(ops: raw("gin_trgm_ops"))], type: Gin, map: "Sale_invoiceNo_trgm_idx")
 }
 
@@ -394,15 +424,111 @@ model SaleItem {
   costPrice  Decimal @db.Decimal(12, 4)
   lineTotal  Decimal @db.Decimal(12, 2)
 
-  sale     Sale     @relation(fields: [saleId], references: [id], onDelete: Cascade)
-  medicine Medicine @relation(fields: [medicineId], references: [id])
-  batch    Batch    @relation(fields: [batchId], references: [id])
+  sale     Sale             @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  medicine Medicine         @relation(fields: [medicineId], references: [id])
+  batch    Batch            @relation(fields: [batchId], references: [id])
+  returns  SaleReturnItem[]
 
   pharmacy Pharmacy @relation(fields: [pharmacyId], references: [id])
 
   @@index([saleId])
   @@index([medicineId])
   @@index([pharmacyId])
+}
+
+// A cashier's drawer from opening float to counted cash (data model, section 3.2). One open session per user.
+model CashSession {
+  id           String            @id @default(uuid())
+  pharmacyId   String            @default(dbgenerated("current_setting('app.pharmacy_id'::text, true)"))
+  userId       String
+  status       CashSessionStatus @default(OPEN)
+  openedAt     DateTime          @default(now())
+  openingFloat Decimal           @db.Decimal(12, 2)
+  closedAt     DateTime?
+  expectedCash Decimal?          @db.Decimal(12, 2) // computed at close
+  countedCash  Decimal?          @db.Decimal(12, 2)
+  difference   Decimal?          @db.Decimal(12, 2) // counted minus expected
+  note         String?
+  closedById   String?
+
+  user      User           @relation("CashSessionUser", fields: [userId], references: [id])
+  closedBy  User?          @relation("CashSessionCloser", fields: [closedById], references: [id])
+  sales     Sale[]
+  movements CashMovement[]
+  returns   SaleReturn[]
+
+  pharmacy Pharmacy @relation(fields: [pharmacyId], references: [id])
+
+  @@index([pharmacyId, openedAt])
+  @@index([userId, status])
+}
+
+// Cash put into or taken out of the drawer during a session (petty cash, change from the bank).
+model CashMovement {
+  id         String           @id @default(uuid())
+  pharmacyId String           @default(dbgenerated("current_setting('app.pharmacy_id'::text, true)"))
+  sessionId  String
+  type       CashMovementType
+  amount     Decimal          @db.Decimal(12, 2)
+  reason     String
+  userId     String
+  createdAt  DateTime         @default(now())
+
+  session CashSession @relation(fields: [sessionId], references: [id])
+  user    User        @relation(fields: [userId], references: [id])
+
+  pharmacy Pharmacy @relation(fields: [pharmacyId], references: [id])
+
+  @@index([sessionId])
+}
+
+// Items a customer brings back (data model, section 3.3). Lines point at the exact sale line, so batch and price are known.
+model SaleReturn {
+  id            String        @id @default(uuid())
+  pharmacyId    String        @default(dbgenerated("current_setting('app.pharmacy_id'::text, true)"))
+  number        String // RET-YYYYMMDD-00001
+  saleId        String
+  userId        String
+  refundMethod  PaymentMethod // CASH, CARD, or CREDIT (a credit note on the customer's account)
+  total         Decimal       @db.Decimal(12, 2)
+  reason        String
+  cashSessionId String?
+  createdAt     DateTime      @default(now())
+
+  sale        Sale             @relation(fields: [saleId], references: [id])
+  user        User             @relation(fields: [userId], references: [id])
+  cashSession CashSession?     @relation(fields: [cashSessionId], references: [id])
+  items       SaleReturnItem[]
+  ledger      CustomerLedger[]
+
+  pharmacy Pharmacy @relation(fields: [pharmacyId], references: [id])
+
+  @@unique([pharmacyId, number])
+  @@index([saleId])
+  @@index([pharmacyId, createdAt])
+}
+
+model SaleReturnItem {
+  id         String  @id @default(uuid())
+  pharmacyId String  @default(dbgenerated("current_setting('app.pharmacy_id'::text, true)"))
+  returnId   String
+  saleItemId String
+  batchId    String
+  medicineId String
+  quantity   Int
+  unitPrice  Decimal @db.Decimal(12, 2)
+  costPrice  Decimal @db.Decimal(12, 4)
+  restock    Boolean @default(true) // false: damaged, written off with a DAMAGE movement
+  lineTotal  Decimal @db.Decimal(12, 2) // refund for the line, after the invoice discount
+
+  saleReturn SaleReturn @relation(fields: [returnId], references: [id], onDelete: Cascade)
+  saleItem   SaleItem   @relation(fields: [saleItemId], references: [id])
+  batch      Batch      @relation(fields: [batchId], references: [id])
+
+  pharmacy Pharmacy @relation(fields: [pharmacyId], references: [id])
+
+  @@index([returnId])
+  @@index([saleItemId])
 }
 
 // ---------------------------------------------------------------------------
@@ -571,6 +697,10 @@ model Pharmacy {
   purchaseItems   PurchaseItem[]
   sales           Sale[]
   saleItems       SaleItem[]
+  cashSessions    CashSession[]
+  cashMovements   CashMovement[]
+  saleReturns     SaleReturn[]
+  saleReturnItems SaleReturnItem[]
   auditLogs       AuditLog[]
   outboxEvents    OutboxEvent[]
 
@@ -579,14 +709,19 @@ model Pharmacy {
 
 // Operational settings, one row per pharmacy.
 model PharmacySettings {
-  pharmacyId        String   @id
-  receiptHeader     String   @default("")
-  requireStaffTotp  Boolean  @default(false)
-  ocrProvider       String   @default("LOCAL") // the pharmacy's choice among its allowed providers // every staff account needs an authenticator code to sign in
-  invoiceFooter     String   @default("Thank you for your purchase. Get well soon!")
-  expiryWarningDays Int      @default(90)
-  expiryAlertDays   Int      @default(30)
-  updatedAt         DateTime @updatedAt
+  pharmacyId         String   @id
+  receiptHeader      String   @default("")
+  requireStaffTotp   Boolean  @default(false) // every staff account needs an authenticator code to sign in
+  ocrProvider        String   @default("LOCAL") // the pharmacy's choice among its allowed providers
+  invoiceFooter      String   @default("Thank you for your purchase. Get well soon!")
+  receiptFormat      String   @default("THERMAL_80") // THERMAL_80, THERMAL_58 or A4
+  autoPrintReceipt   Boolean  @default(true)
+  receiptBatchLines  Boolean  @default(false) // print batch and expiry under each receipt line
+  requireCashSession Boolean  @default(true) // with cash sessions switched on: no cash sale without an open drawer
+  cashDiffThreshold  Decimal  @default(100) @db.Decimal(12, 2) // a closing difference above this needs a note
+  expiryWarningDays  Int      @default(90)
+  expiryAlertDays    Int      @default(30)
+  updatedAt          DateTime @updatedAt
 
   pharmacy Pharmacy @relation(fields: [pharmacyId], references: [id], onDelete: Cascade)
 }

@@ -6,7 +6,7 @@ import { describe, it, expect, beforeAll } from "vitest";
 import { platformDb } from "@/lib/platform-db";
 import { prisma } from "@/lib/prisma";
 import { tenantTransaction, runInTx } from "@/lib/db";
-import { createSale, cancelSale } from "@/modules/sales";
+import { createSale, cancelSale, createReturn, openSession, addCashMovement } from "@/modules/sales";
 import { createPurchase } from "@/modules/procurement";
 import { adjustStock } from "@/modules/inventory";
 import { receiveCustomerPayment } from "@/modules/customers";
@@ -33,7 +33,13 @@ async function populate(pharmacyId: string) {
   await tenantTransaction(pharmacyId, (tx) => tx.category.create({ data: { name: "Analgesics" } }));
   const sale = await createSale(ctx, { items: [{ medicineId: m.id, quantity: 2 }], discountType: "AMOUNT", discountValue: 0, paymentMethod: "CREDIT", customerId: c.id });
   await receiveCustomerPayment(ctx, c.id, { amount: 10, method: "CASH" });
-  await createSale(ctx, { items: [{ medicineId: m.id, quantity: 1 }], discountType: "AMOUNT", discountValue: 0, paymentMethod: "CASH" });
+  // a drawer session with a pay-in, and a cash sale with a return taken from it
+  await platformDb.featureFlag.create({ data: { pharmacyId, key: "cashSessions", enabled: true } });
+  const session = await openSession(ctx, { openingFloat: 100 });
+  await addCashMovement(ctx, session.id, { type: "PAY_IN", amount: 50, reason: "change" });
+  const cashSale = await createSale(ctx, { items: [{ medicineId: m.id, quantity: 1 }], discountType: "AMOUNT", discountValue: 0, paymentMethod: "CASH" });
+  const [cashLine] = await platformDb.saleItem.findMany({ where: { saleId: cashSale.id } });
+  await createReturn(ctx, { saleId: cashSale.id, refundMethod: "CASH", reason: "fixture", items: [{ saleItemId: cashLine.id, quantity: 1, restock: true }] });
   await cancelSale(ctx, sale.id, "test cancel");
   await createPurchase(ctx, {
     supplierId: s.id, purchaseDate: inDays(0), discount: 0, paid: 0, paymentMethod: "CASH",
