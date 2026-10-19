@@ -140,6 +140,33 @@ export class LocalDatabase {
     });
   }
 
+  async dropDatabase(password, name) {
+    await this.withClient(password, "postgres", (c) => c.query(`DROP DATABASE IF EXISTS ${c.escapeIdentifier(name)} WITH (FORCE)`));
+  }
+
+  async createDatabase(password, name) {
+    await this.withClient(password, "postgres", (c) => c.query(`CREATE DATABASE ${c.escapeIdentifier(name)} ENCODING 'UTF8' TEMPLATE template0`));
+  }
+
+  /**
+   * Puts a fully restored database in place of the live one by renaming, then drops the old one. Nothing
+   * may be connected to either database (the web server and worker are stopped first).
+   */
+  async swapIn(password, restored) {
+    const previous = `${DB_NAME}_before_restore`;
+    await this.withClient(password, "postgres", async (c) => {
+      await c.query(`DROP DATABASE IF EXISTS ${previous} WITH (FORCE)`);
+      await c.query(`ALTER DATABASE ${DB_NAME} RENAME TO ${previous}`);
+      try {
+        await c.query(`ALTER DATABASE ${c.escapeIdentifier(restored)} RENAME TO ${DB_NAME}`);
+      } catch (e) {
+        await c.query(`ALTER DATABASE ${previous} RENAME TO ${DB_NAME}`);
+        throw e;
+      }
+      await c.query(`DROP DATABASE ${previous} WITH (FORCE)`);
+    });
+  }
+
   /**
    * Sets a new superuser password when the stored one is lost (keys.json missing or unreadable for this
    * Windows account). The server is started once with a temporary rules file that trusts only the

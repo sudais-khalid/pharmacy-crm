@@ -21,12 +21,12 @@ function check(name, ok, detail = "") {
   if (!ok) failures++;
 }
 
-function runApp(extraEnv = {}) {
+function runApp(extraEnv = {}, args = []) {
   const env = { ...process.env, PCRM_DATA_DIR: dataDir, ...extraEnv };
   delete env.ELECTRON_RUN_AS_NODE;
   return new Promise((resolve) => {
     const started = Date.now();
-    const p = spawn(electron, [desktop, "--selftest"], { env, stdio: ["ignore", "pipe", "pipe"] });
+    const p = spawn(electron, [desktop, "--selftest", ...args], { env, stdio: ["ignore", "pipe", "pipe"] });
     let out = "";
     p.stdout.on("data", (d) => (out += d));
     p.stderr.on("data", (d) => (out += d));
@@ -97,6 +97,61 @@ try {
   const fifth = await runApp({ PCRM_MIGRATIONS_DIR: migrations });
   const backups = readdirSync(path.join(dataDir, "backups"));
   check("pending migrations run after an automatic backup", fifth.code === 0 && backups.some((f) => f.endsWith("-pre-update.pcrmbak")), `${fifth.out.slice(-1500)} ${backups}`);
+
+  // the backups now carry the update's migration, so the following runs are that version of the app
+  // (an older app refuses them: "made by a newer version")
+  const older = await runApp();
+  check("an older app refuses data a newer version has updated", older.code !== 0 && /updated by a newer version/.test(older.out), older.out.slice(-800));
+
+  // 6. the database folder is lost, keys.json and the backups remain: restore the newest backup, no key needed
+  const markers5 = fifth.report?.auditMarkers;
+  rmSync(path.join(dataDir, "data"), { recursive: true, force: true });
+  const sixth = await runApp({ PCRM_MIGRATIONS_DIR: migrations, PCRM_SELFTEST_FIRST_START: "latest" });
+  check("a lost database folder is restored from the newest backup", sixth.code === 0 && sixth.report?.events.includes("restored") && sixth.report.auditMarkers === markers5 + 1, `${markers5} -> ${sixth.report?.auditMarkers} ${sixth.out.slice(-1500)}`);
+
+  // 7. a new computer: only the backups and the recovery key
+  const recoveryKey = sixth.report?.recoveryKey;
+  rmSync(path.join(dataDir, "data"), { recursive: true, force: true });
+  rmSync(path.join(dataDir, "keys.json"), { force: true });
+  const otherKey = execFileSync(process.execPath, [path.join(repo, "dist", "ops.js"), "new-key"], { encoding: "utf8" }).trim();
+  const wrong = await runApp({ PCRM_MIGRATIONS_DIR: migrations, PCRM_SELFTEST_FIRST_START: "latest", PCRM_SELFTEST_RECOVERY_KEY: otherKey });
+  check("a wrong recovery key is refused", wrong.code !== 0 && /does not belong to this backup/.test(wrong.out), wrong.out.slice(-800));
+  const missing = await runApp({ PCRM_MIGRATIONS_DIR: migrations, PCRM_SELFTEST_FIRST_START: "latest" });
+  check("without the recovery key the restore asks for it", missing.code !== 0 && /Enter its recovery key/.test(missing.out), missing.out.slice(-800));
+  const seventh = await runApp({ PCRM_MIGRATIONS_DIR: migrations, PCRM_SELFTEST_FIRST_START: "latest", PCRM_SELFTEST_RECOVERY_KEY: recoveryKey?.toLowerCase().replace(/-/g, " ") });
+  check("the recovery key restores everything on a new computer", seventh.code === 0 && seventh.report?.events.includes("restored") && seventh.report.auditMarkers === sixth.report.auditMarkers + 1, seventh.out.slice(-1500));
+  check("the same recovery key stays valid afterwards", seventh.report?.recoveryKey === recoveryKey);
+
+  // 8. the Developer console's desktop controls, through the app window
+  const owner = { PLATFORM_OWNER_EMAIL: "owner@selftest.example", PLATFORM_OWNER_PASSWORD: "Selftest-Owner-2026" };
+  const eighth = await runApp({ PCRM_MIGRATIONS_DIR: migrations, PCRM_SELFTEST_CONSOLE: "1", ...owner });
+  const c = eighth.report?.console ?? {};
+  check("console: the controls refuse staff pages and signed-out visitors", c.refusedOnStaffPage === true && c.refusedBeforeSignIn === true, JSON.stringify(c));
+  check("console: the Developer signs in and enrols", c.login === 200 && c.enrol === 200, JSON.stringify(c));
+  check("console: the desktop page is in the console menu", c.navShowsThisComputer === true);
+  check("console: status and back up now work", c.status === true && c.backup === true && c.latestReason === "manual", JSON.stringify(c));
+  check("console: restore needs a valid authenticator code and a listed backup", /not valid/.test(c.wrongCode ?? "") && /Choose a backup/.test(c.unknownBackup ?? ""), JSON.stringify(c));
+  check("console: restore works and the window returns to the console", c.restore === "ok" && c.restoredEvent && c.afterRestoreUrl === "/platform/desktop" && c.preRestoreBackup, JSON.stringify(c));
+  check("console: backup and restore are in the audit log after the restore", c.audit?.["desktop.backup"] === 1 && c.audit?.["desktop.restore"] === 1, JSON.stringify(c.audit));
+  check("console: the app is healthy after the restore", eighth.code === 0 && eighth.report?.ok, eighth.out.slice(-1500));
+
+  // 9. the Developer lost the password and the authenticator: a Windows administrator recovers the account
+  let elevated = true;
+  try {
+    execFileSync(path.join(process.env.SystemRoot || "C:\\Windows", "System32", "net.exe"), ["session"], { stdio: "ignore" });
+  } catch {
+    elevated = false;
+  }
+  if (!elevated) {
+    const refused = await runApp({ PCRM_MIGRATIONS_DIR: migrations }, ["--recover-owner"]);
+    check("recovery is refused without administrator rights", refused.code !== 0 && !refused.report);
+  }
+  const recovered = await runApp({ PCRM_MIGRATIONS_DIR: migrations, PCRM_SELFTEST_ASSUME_ADMIN: "1" }, ["--recover-owner"]);
+  const fresh = recovered.report?.recovered;
+  check("recovery sets a new password for the Developer", recovered.code === 0 && fresh?.email === owner.PLATFORM_OWNER_EMAIL && fresh.password.length >= 12, recovered.out.slice(-1500));
+  const tenth = await runApp({ PCRM_MIGRATIONS_DIR: migrations, PCRM_SELFTEST_CONSOLE: "1", PLATFORM_OWNER_EMAIL: owner.PLATFORM_OWNER_EMAIL, PLATFORM_OWNER_PASSWORD: fresh?.password ?? "x" });
+  const c2 = tenth.report?.console ?? {};
+  check("after recovery the new password signs in and two-factor is set up again", c2.login === 200 && c2.enrol === 200 && c2.restore === "ok", JSON.stringify(c2));
 } finally {
   if (pgRunning()) execFileSync(path.join(pgBin, "pg_ctl.exe"), ["stop", "-D", path.join(dataDir, "data"), "-m", "fast"], { stdio: "ignore" });
   if (failures) console.log(`kept ${root} for inspection`);

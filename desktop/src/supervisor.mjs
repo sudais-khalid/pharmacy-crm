@@ -6,14 +6,14 @@
  */
 import { app } from "electron";
 import { randomBytes } from "node:crypto";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { DB_NAME, LocalDatabase, freePort, portIsFree } from "./database.mjs";
 import { createLogger } from "./log.mjs";
 import { layout, prepareDataRoot } from "./paths.mjs";
-import { Replica } from "./replica.mjs";
+import { Replica, listBackups } from "./replica.mjs";
 import { ChildService, readyWhenHealthy, readyWhenOutput } from "./services.mjs";
 import { ConfigStore, SecretStore } from "./store.mjs";
 
@@ -33,14 +33,24 @@ export function locateBundle() {
     migrations: !app.isPackaged && process.env.PCRM_MIGRATIONS_DIR ? path.resolve(process.env.PCRM_MIGRATIONS_DIR) : path.join(server, "prisma", "migrations"),
     pgBin,
   };
+  // the server would load an .env file found next to it; a build must never carry one (local secrets)
+  if (readdirSync(server).some((f) => f.startsWith(".env"))) throw new Error(`The app folder ${server} contains an .env file. Rebuild with npm run build:desktop.`);
   const missing = Object.entries(bundle).filter(([, p]) => !existsSync(p));
   if (missing.length) throw new Error(`The app is incomplete (missing ${missing.map(([k, p]) => `${k}: ${p}`).join(", ")}). ${app.isPackaged ? "Reinstall it." : "Run npm run build:desktop first."}`);
   return bundle;
 }
 
+const RESTORE_DB = `${DB_NAME}_restore`;
+
 export class Supervisor {
-  constructor({ status = () => {}, echoLogs = false } = {}) {
+  /**
+   * @param {{ status?: (text: string) => void, echoLogs?: boolean,
+   *   firstStart?: (supervisor: Supervisor) => Promise<void> }} opts
+   *   firstStart runs once on a new data folder, with the empty database started; it may call restore().
+   */
+  constructor({ status = () => {}, echoLogs = false, firstStart = null } = {}) {
     this.status = status;
+    this.firstStart = firstStart;
     this.echoLogs = echoLogs;
     this.paths = layout();
     this.state = "stopped";
@@ -51,7 +61,11 @@ export class Supervisor {
     this.events.push(event);
   }
 
-  async start() {
+  /**
+   * The data folder, secrets and PostgreSQL with the pharmacy database, nothing else. start() continues
+   * from here; --recover-owner only needs this much.
+   */
+  async openDatabase() {
     this.state = "starting";
     const { paths } = this;
     this.status("Preparing the data folder");
@@ -80,7 +94,7 @@ export class Supervisor {
       password = random(24);
       secrets.set("dbPassword", password);
       await db.initialise(password);
-      config.set({ installedAt: new Date().toISOString() });
+      config.set({ installedAt: new Date().toISOString(), setupPending: true });
       this.note("database-created");
       log.info("database cluster created");
     } else {
@@ -97,8 +111,35 @@ export class Supervisor {
     this.status("Starting the database");
     await db.start();
     await db.ensureDatabase(password);
-    const superUrl = db.url(password);
-    this.superUrl = superUrl;
+    this.password = password;
+    this.superUrl = db.url(password);
+  }
+
+  /** Where the Developer account of a new installation comes from: the build's owner.json. */
+  ownerEnv() {
+    // tests and local runs may set the variables directly
+    if (process.env.PLATFORM_OWNER_EMAIL) return {};
+    const file = app.isPackaged ? path.join(process.resourcesPath, "owner.json") : path.resolve(here, "..", "build", "owner.json");
+    if (!existsSync(file)) {
+      this.log.warn("no owner.json in this build: a new installation has no Developer account to sign in with", { file });
+      return {};
+    }
+    const owner = JSON.parse(readFileSync(file, "utf8"));
+    return { PLATFORM_OWNER_EMAIL: owner.email, PLATFORM_OWNER_NAME: owner.name ?? "Developer", PLATFORM_OWNER_PASSWORD_HASH: owner.passwordHash };
+  }
+
+  async start() {
+    await this.openDatabase();
+    const { paths, config, secrets, bundle, ops, db, log, password, superUrl } = this;
+
+    // until a choice succeeds (setup closed, a restore failed) the next start asks again; the database
+    // is still empty then, because a restore only replaces it once complete
+    if (config.get("setupPending") && this.firstStart) {
+      this.status("Waiting for the setup choice");
+      await this.firstStart(this);
+      this.status("Starting");
+    }
+    if (config.get("setupPending")) config.set({ setupPending: false });
 
     // The backup key protects the local replica. A lost key gets a new one; the new recovery key is shown
     // to the Developer (old backups still need the old recovery key).
@@ -119,7 +160,10 @@ export class Supervisor {
 
     // Migrations, after a safety backup when this database already holds data
     const all = ops.readMigrations(bundle.migrations);
-    const pending = await ops.pendingMigrations(superUrl, bundle.migrations);
+    const { pending, unknown } = await ops.migrationStatus(superUrl, bundle.migrations);
+    if (unknown.length) {
+      throw new Error(`This pharmacy data was updated by a newer version of Pharmacy CRM (${unknown[unknown.length - 1]}). Install that version or a newer one; nothing has been changed.`);
+    }
     if (pending.length) {
       if (pending.length < all.length) {
         this.status("Backing up before updating the database");
@@ -131,8 +175,8 @@ export class Supervisor {
       log.info("migrations applied", { applied: result.applied });
     }
 
-    const appPassword = random(24);
-    await db.prepareAppLogin(password, appPassword);
+    this.appPassword = random(24);
+    await db.prepareAppLogin(password, this.appPassword);
 
     // Long-lived application secrets
     const jwtSecret = secrets.getOrCreate("jwtSecret", () => random(48)).value;
@@ -148,11 +192,12 @@ export class Supervisor {
       DEPLOY_MODE: "desktop",
       APP_VERSION: app.getVersion(),
       DATABASE_URL: superUrl,
-      APP_DATABASE_URL: db.url(appPassword, { user: "pcrm_web" }),
+      APP_DATABASE_URL: db.url(this.appPassword, { user: "pcrm_web" }),
       JWT_SECRET: jwtSecret,
       TOTP_ENCRYPTION_KEY: totpKey.value,
       APP_TIMEZONE: config.get("timezone") ?? "Asia/Karachi",
       DATA_DIR: paths.root,
+      ...this.ownerEnv(),
     };
     this.web = new ChildService({
       name: "web server",
@@ -212,9 +257,127 @@ export class Supervisor {
     }
   }
 
+  versionInfo() {
+    return { app: app.getVersion(), electron: process.versions.electron, node: process.versions.node };
+  }
+
   /** The recovery key for the current backup key, as people write it down. */
   recoveryKey() {
     return this.ops.formatRecoveryKey(this.backupKey);
+  }
+
+  /** Backup keys this installation can use without asking: the current one and earlier ones. */
+  knownKeys() {
+    const keys = [];
+    const current = this.secrets.get("backupKey");
+    if (current) keys.push(Buffer.from(current, "base64"));
+    for (const k of JSON.parse(this.secrets.get("backupKeyHistory") ?? "[]")) keys.push(Buffer.from(k, "base64"));
+    return keys;
+  }
+
+  /** Keeps a replaced backup key, so backups made with it still open without the old recovery key. */
+  rememberKey(key) {
+    if (!key) return;
+    const history = JSON.parse(this.secrets.get("backupKeyHistory") ?? "[]");
+    const b64 = key.toString("base64");
+    if (!history.includes(b64)) this.secrets.set("backupKeyHistory", JSON.stringify([b64, ...history].slice(0, 10)));
+  }
+
+  /** What the restore screens show about a backup file, without decrypting it. */
+  inspectBackup(file) {
+    const { header, size } = this.ops.readBackupHeader(file);
+    const key = this.knownKeys().find((k) => this.ops.keyId(k) === header.keyId) ?? null;
+    return { file, name: path.basename(file), createdAt: header.createdAt, size, needsKey: key === null, key };
+  }
+
+  /** Snapshots found in the backups folder and the mirror folder, newest first. */
+  availableBackups() {
+    const seen = new Set();
+    const found = [];
+    for (const [source, dir] of [["backups", this.paths.backups], ["mirror", this.config.get("mirrorDir")]]) {
+      if (!dir) continue;
+      for (const b of listBackups(dir)) {
+        if (seen.has(b.name)) continue;
+        seen.add(b.name);
+        found.push({ ...b, source });
+      }
+    }
+    return found.sort((a, b) => b.at - a.at);
+  }
+
+  /**
+   * Restores a backup into a side database and swaps it in only when it is complete and checked, so a
+   * failed restore leaves the current data untouched. The web server and worker must be stopped.
+   * key: the backup's key, from knownKeys() or typed in as a recovery key.
+   */
+  async restoreDatabase(file, key, onProgress = () => {}) {
+    const { db, ops, password, log } = this;
+    log.info("restore started", { file });
+    await db.dropDatabase(password, RESTORE_DB);
+    await db.createDatabase(password, RESTORE_DB);
+    let result;
+    try {
+      result = await ops.restoreBackup(db.url(password, { database: RESTORE_DB }), file, key, this.bundle.migrations, {
+        log: (m) => {
+          log.info(`restore: ${m}`);
+          onProgress(m);
+        },
+      });
+    } catch (e) {
+      await db.dropDatabase(password, RESTORE_DB).catch(() => {});
+      log.error("restore failed", { file, error: String(e?.message ?? e) });
+      throw e;
+    }
+    onProgress("switching to the restored data");
+    await db.swapIn(password, RESTORE_DB);
+    // The key that opened this backup becomes the installation's key: the recovery key people already
+    // hold keeps working. The replaced key is remembered for the backups made with it.
+    const current = this.secrets.get("backupKey");
+    if (current !== key.toString("base64")) {
+      if (current) this.rememberKey(Buffer.from(current, "base64"));
+      this.secrets.set("backupKey", key.toString("base64"));
+      this.config.set({ recoveryKeyShown: true });
+    }
+    this.backupKey = key;
+    log.info("restore finished", { file, createdAt: result.manifest.createdAt, migratedAfter: result.migratedAfter });
+    this.note("restored");
+    return result;
+  }
+
+  /** An audit row written directly, for events the web server cannot record itself (after a restore). */
+  async auditDirect({ actorId, action, after }) {
+    await this.db.withClient(this.password, DB_NAME, (c) =>
+      c.query(`INSERT INTO "AuditLog" (realm, "actorId", action, entity, "entityId", after) VALUES ('PLATFORM', $1, $2, 'Installation', 'desktop', $3)`, [actorId, action, JSON.stringify(after)]),
+    );
+  }
+
+  /**
+   * Restore on a running installation (Developer console): a snapshot of the current data first, then the
+   * restore with the web server and worker stopped, then everything starts again.
+   */
+  async restoreRunning(file, key, onProgress = () => {}) {
+    if (this.state !== "running") throw new Error("The app is not ready for a restore.");
+    this.state = "restoring";
+    this.replica.stopSchedule();
+    try {
+      onProgress("saving a backup of the current data");
+      await this.replica.running?.catch(() => {});
+      await this.replica.snapshot("pre-restore");
+      onProgress("stopping the app");
+      await this.worker.stop();
+      await this.web.stop();
+      try {
+        return await this.restoreDatabase(file, key, onProgress);
+      } finally {
+        onProgress("starting the app");
+        await this.db.prepareAppLogin(this.password, this.appPassword);
+        await this.web.start();
+        await this.worker.start();
+      }
+    } finally {
+      this.state = "running";
+      this.replica.startSchedule();
+    }
   }
 
   async stop() {

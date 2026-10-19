@@ -126,8 +126,8 @@ Tasks:
 - [x] 2.2 Encrypted data-only backup and restore (architecture, section 2.4): COPY streams, manifest with row counts, AES-256-GCM, schema rebuilt by migrations, an operations command (`dist/ops.js`) for migrate, backup, restore and verify
 - [x] 2.3 `desktop/` supervisor: single-instance lock, data in `%PROGRAMDATA%\PharmacyCRM` with restricted permissions, DPAPI-protected database password with local reset, embedded PostgreSQL on loopback with a fixed port per installation, migrations on start after an automatic backup, web server and worker as child processes, splash with progress, tray icon, logs
 - [x] 2.4 Local replica: scheduled, on-close and pre-update snapshots with retention, optional mirror folder, recovery key shown once at setup
-- [ ] 2.5 First-start screen: start fresh or restore from a backup (latest found automatically or chosen file), recovery key when the backup key is not available; desktop controls in the Developer console (back up now, last backup, mirror folder, restore)
-- [ ] 2.6 Owner bootstrap from build-time secrets (email and password hash) and `--recover-owner` for Windows administrators
+- [x] 2.5 First-start screen: start fresh or restore from a backup (latest found automatically or chosen file), recovery key when the backup key is not available; desktop controls in the Developer console (back up now, last backup, mirror folder, restore)
+- [x] 2.6 Owner bootstrap from build-time secrets (email and password hash) and `--recover-owner` for Windows administrators
 - [ ] 2.7 electron-builder NSIS installer: per-user install, Start menu and desktop shortcuts, uninstall that keeps data unless "Also delete all pharmacy data" is ticked
 - [ ] 2.8 Letter shortcuts (R28): Alt plus letter navigation with underlined mnemonics, action keys on list pages, `?` shortcut help
 - [ ] 2.9 Client mode: "Connect to a pharmacy server" by LAN address or URL, remembered per device; LAN access toggle with the address shown as a QR code and a private-network firewall rule

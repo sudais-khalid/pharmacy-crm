@@ -1,3 +1,6 @@
 node_modules
 poc-report.json
 poc-login.png
+# owner.json holds the Developer password hash for builds; never commit it
+build/
+dist/
