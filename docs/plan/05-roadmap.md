@@ -123,7 +123,7 @@ Acceptance criteria:
 Tasks:
 
 - [x] 2.1 Built-in migration runner compatible with `_prisma_migrations` (same names and checksums), shared by desktop start-up and restore (PoC finding 1)
-- [ ] 2.2 Encrypted data-only backup and restore (architecture, section 2.4): COPY streams, manifest with row counts, AES-256-GCM, schema rebuilt by migrations, an operations command (`dist/ops.js`) for migrate, backup, restore and verify
+- [x] 2.2 Encrypted data-only backup and restore (architecture, section 2.4): COPY streams, manifest with row counts, AES-256-GCM, schema rebuilt by migrations, an operations command (`dist/ops.js`) for migrate, backup, restore and verify
 - [ ] 2.3 `desktop/` supervisor: single-instance lock, data in `%PROGRAMDATA%\PharmacyCRM` with restricted permissions, DPAPI-protected database password with local reset, embedded PostgreSQL on loopback with a fixed port per installation, migrations on start after an automatic backup, web server and worker as child processes, splash with progress, tray icon, logs
 - [ ] 2.4 Local replica: scheduled, on-close and pre-update snapshots with retention, optional mirror folder, recovery key shown once at setup
 - [ ] 2.5 First-start screen: start fresh or restore from a backup (latest found automatically or chosen file), recovery key when the backup key is not available; desktop controls in the Developer console (back up now, last backup, mirror folder, restore)
