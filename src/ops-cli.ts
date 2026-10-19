@@ -108,7 +108,8 @@ async function main(argv: string[]) {
           if (owners.length !== 1) throw new Error(owners.length ? "There is more than one Developer account: pass --email." : "There is no Developer account yet. Sign in once with the owner credentials of this build.");
           email = owners[0].email;
         }
-        const { recoverPlatformOwner } = await import("@/modules/identity");
+        // platform-auth directly: the identity index also loads the session helpers, which need Next
+        const { recoverPlatformOwner } = await import("@/modules/identity/platform-auth");
         const r = await recoverPlatformOwner(email);
         console.log(json ? JSON.stringify(r) : `Developer account ${r.email} recovered.
 New password (shown once): ${r.password}
