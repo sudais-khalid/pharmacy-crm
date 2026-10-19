@@ -8,7 +8,7 @@ import { AppContext, type AppCtx } from "./app-context";
 import { MnemonicLabel, ShortcutHelpButton, ShortcutProvider } from "./shortcuts";
 import { cn } from "./ui";
 import { api } from "@/lib/client";
-import { STAFF_NAV } from "@/lib/navigation";
+import { NAV_GROUPS, STAFF_NAV } from "@/lib/navigation";
 
 export function Shell({ ctx, children }: { ctx: AppCtx; children: React.ReactNode }) {
   const pathname = usePathname();
@@ -32,15 +32,27 @@ export function Shell({ ctx, children }: { ctx: AppCtx; children: React.ReactNod
     window.location.href = r.redirect;
   }
 
-  const nav = (
-    <nav aria-label="Main" className="flex-1 space-y-0.5 overflow-y-auto px-3 py-3">
-      {items.map((n) => {
+  const link = (n: (typeof items)[number]) => {
         const active = pathname === n.href || pathname.startsWith(n.href + "/");
         return (
           <Link key={n.href} href={n.href} aria-current={active ? "page" : undefined} aria-keyshortcuts={`Alt+${n.key}`} title={`Alt+${n.key}`}
             className={cn("flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium", active ? "bg-brand-600 text-white" : "text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800")}>
             <n.icon className="h-[18px] w-[18px]" aria-hidden /> <MnemonicLabel label={n.label} k={n.key} />
           </Link>
+        );
+  };
+  // grouped by task (Sell, Stock, Buy, People, Money, Admin); a group only shows when it has entries
+  const nav = (
+    <nav aria-label="Main" className="flex-1 overflow-y-auto px-3 py-3">
+      <div className="space-y-0.5">{items.filter((n) => !n.group).map(link)}</div>
+      {NAV_GROUPS.map((g) => {
+        const entries = items.filter((n) => n.group === g);
+        if (!entries.length) return null;
+        return (
+          <div key={g} className="mt-3" role="group" aria-labelledby={`nav-${g}`}>
+            <p id={`nav-${g}`} className="px-3 pb-1 text-[11px] font-semibold uppercase tracking-wider text-slate-400">{g}</p>
+            <div className="space-y-0.5">{entries.map(link)}</div>
+          </div>
         );
       })}
     </nav>
@@ -52,7 +64,10 @@ export function Shell({ ctx, children }: { ctx: AppCtx; children: React.ReactNod
       <a href="#main" className="sr-only focus:not-sr-only focus:absolute focus:left-2 focus:top-2 focus:z-[70] focus:rounded focus:bg-white focus:px-3 focus:py-2">Skip to content</a>
       <div className="no-print fixed inset-y-0 left-0 z-30 hidden w-60 flex-col border-r border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900 lg:flex">
         <div className="flex h-14 items-center gap-2 border-b border-slate-200 px-5 dark:border-slate-800">
-          <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand-600 text-white"><Pill className="h-4 w-4" aria-hidden /></span>
+          {ctx.settings.logoIconFileId
+            ? /* eslint-disable-next-line @next/next/no-img-element -- the pharmacy's own logo from our file route */
+              <img src={`/api/files/${ctx.settings.logoIconFileId}`} alt="" className="h-8 w-8 rounded-lg object-contain" />
+            : <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand-600 text-on-primary"><Pill className="h-4 w-4" aria-hidden /></span>}
           <span className="truncate font-semibold">{ctx.settings.pharmacyName}</span>
         </div>
         {nav}

@@ -162,8 +162,8 @@ Tasks:
 - [x] 3.7 Brand colour and logo applied to header, login page and receipts
 - [x] 3.8 Role landing paths: Cashier to POS, Pharmacist to pharmacist dashboard, Pharmacy Admin to owner dashboard
 - [x] 3.9 Cost and profit fields stripped in DTO mappers without `cost.view`
-- [ ] 3.10 Audit log viewer for Pharmacy Admin, "History" tab on invoice, medicine, customer and supplier pages, support sessions labelled "Platform support"
-- [ ] 3.11 Sidebar regrouped (Sell, Stock, Buy, People, Money, Admin) and filtered by permission
+- [x] 3.10 Audit log viewer for Pharmacy Admin, "History" tab on invoice, medicine, customer and supplier pages, support sessions labelled "Platform support"
+- [x] 3.11 Sidebar regrouped (Sell, Stock, Buy, People, Money, Admin) and filtered by permission
 
 Acceptance criteria:
 

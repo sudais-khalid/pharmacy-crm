@@ -38,6 +38,15 @@ ok "Cashier lands on the POS" "$(curl -s -o /dev/null -w '%{redirect_url}' -b /t
 ok "Admin lands on the dashboard" "$(curl -s -o /dev/null -w '%{redirect_url}' -b /tmp/smoke_admin.jar $B/home | sed 's#.*//[^/]*##')" /dashboard
 ok "Roles list for the admin" "$(curl -s -b /tmp/smoke_admin.jar $B/api/roles | js "[r['name'] for r in d['roles']][:3]")" "['Pharmacy Admin', 'Pharmacist', 'Cashier']"
 ok "Cashier cannot list roles" "$(code -b /tmp/smoke_cashier.jar $B/api/roles)" 403
+ok "Cashier cannot change the branding" "$(code -b /tmp/smoke_cashier.jar -X PUT $B/api/branding -H 'content-type: application/json' -d '{"pharmacyName":"X"}')" 403
+ok "Admin sets a brand colour" "$(curl -s -b /tmp/smoke_admin.jar -X PUT $B/api/branding -H 'content-type: application/json' -d '{"pharmacyName":"Demo Pharmacy","address":"Main Road","phone":"0300-0000000","brandColor":"0b3d91"}' | js "d['brandColor']")" "#0B3D91"
+ok "A colour too light to read is refused" "$(code -b /tmp/smoke_admin.jar -X PUT $B/api/branding -H 'content-type: application/json' -d '{"pharmacyName":"Demo Pharmacy","brandColor":"#FFF3B0"}')" 400
+ok "The brand colour reaches the sign-in page" "$(curl -s $B/p/demo/login | grep -q -- '--brand-600: 11 61 145' && echo yes)" yes
+ok "Unknown file is 404" "$(code -b /tmp/smoke_admin.jar $B/api/files/00000000-0000-0000-0000-000000000000)" 404
+ok "No logo yet on the sign-in page" "$(code $B/api/auth/pharmacy/demo/logo)" 404
+ok "Admin reads the activity history" "$(curl -s -b /tmp/smoke_admin.jar "$B/api/audit?entity=Pharmacy" | js "d['items'][0]['action']")" pharmacy.profile.update
+ok "Cashier cannot read the activity history" "$(code -b /tmp/smoke_cashier.jar $B/api/audit)" 403
+for p in /branding /activity /roles /users; do ok "Page $p renders" "$(code -b /tmp/smoke_admin.jar $B$p)" 200; done
 
 MID=$(curl -s -b /tmp/smoke_admin.jar "$B/api/medicines?q=Panadol" | js "d['items'][0]['id']")
 ok "Cashier cannot delete medicine" "$(code -b /tmp/smoke_cashier.jar -X DELETE $B/api/medicines/$MID)" 403

@@ -5,6 +5,7 @@ import { useParams } from "next/navigation";
 import { ArrowLeft, HandCoins, Pencil, Printer } from "lucide-react";
 import { Badge, Button, Card, EmptyState, ErrorBox, Field, Input, Modal, PageHeader, Select, StatCard, Tabs, TableWrap, Spinner, useToast } from "@/components/ui";
 import { useApp, useCan, useMoney } from "@/components/app-context";
+import { HistoryList } from "@/components/history";
 import { api, formatDate, formatDateTime, useApi } from "@/lib/client";
 import { SupplierForm, type Supplier } from "@/components/supplier-form";
 
@@ -18,7 +19,8 @@ export default function SupplierDetail() {
   const { id } = useParams<{ id: string }>();
   const money = useMoney(); const toast = useToast(); const { settings } = useApp(); const canManage = useCan("suppliers.manage");
   const { data, error, loading, reload } = useApi<Detail>(`/api/suppliers/${id}`);
-  const [tab, setTab] = useState<"ledger" | "purchases" | "payments">("ledger");
+  const [tab, setTab] = useState<"ledger" | "purchases" | "payments" | "history">("ledger");
+  const canAudit = useCan("audit.view");
   const [paying, setPaying] = useState(false); const [editing, setEditing] = useState(false);
   const [amount, setAmount] = useState(""); const [method, setMethod] = useState("CASH"); const [note, setNote] = useState(""); const [busy, setBusy] = useState(false);
   if (error) return <ErrorBox message={error} onRetry={reload} />;
@@ -42,7 +44,7 @@ export default function SupplierDetail() {
         <StatCard label="Total purchases" value={money(data.totalPurchases)} icon={<span className="font-bold">+</span>} />
         <StatCard label="Total paid" value={money(data.totalPayments)} icon={<span className="font-bold">−</span>} tone="green" />
       </div>
-      <div className="no-print mt-6"><Tabs tabs={[{ id: "ledger", label: "Ledger" }, { id: "purchases", label: "Purchases" }, { id: "payments", label: "Payments" }]} value={tab} onChange={setTab} /></div>
+      <div className="no-print mt-6"><Tabs tabs={[{ id: "ledger", label: "Ledger" }, { id: "purchases", label: "Purchases" }, { id: "payments", label: "Payments" }, ...(canAudit ? [{ id: "history" as const, label: "History" }] : [])]} value={tab} onChange={setTab} /></div>
       <Card className="print-area">
         <div className="hidden p-4 print:block"><h2 className="text-lg font-bold">{settings.pharmacyName} – supplier statement: {s.name}</h2></div>
         {tab === "ledger" && (data.ledger.length === 0 ? <EmptyState title="No ledger entries yet" /> : (
@@ -54,6 +56,7 @@ export default function SupplierDetail() {
         {tab === "payments" && (payments.length === 0 ? <EmptyState title="No payments yet" /> : (
           <TableWrap><thead><tr className="border-b border-slate-200 dark:border-slate-800"><th className="th">Date</th><th className="th">Description</th><th className="th">Method</th><th className="th text-right">Amount</th></tr></thead>
             <tbody>{payments.map((l) => (<tr key={l.id} className="border-b border-slate-100 dark:border-slate-800/60"><td className="td">{formatDateTime(l.createdAt)}</td><td className="td">{l.description}</td><td className="td capitalize">{l.method?.toLowerCase() ?? "—"}</td><td className="td text-right">{money(l.credit)}</td></tr>))}</tbody></TableWrap>))}
+        {tab === "history" && <HistoryList entity="Supplier" entityId={s.id} />}
       </Card>
       <Modal open={paying} onClose={() => setPaying(false)} title="Pay supplier" footer={<><Button variant="secondary" onClick={() => setPaying(false)}>Cancel</Button><Button type="submit" form="spay-form" loading={busy}>Record payment</Button></>}>
         <p className="mb-3 text-sm">Outstanding payable: <b>{money(data.balance)}</b></p>

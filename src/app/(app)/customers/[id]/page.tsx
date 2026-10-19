@@ -5,6 +5,7 @@ import { useParams } from "next/navigation";
 import { ArrowLeft, HandCoins, Pencil, Printer } from "lucide-react";
 import { Badge, Button, Card, EmptyState, ErrorBox, Field, Input, Modal, PageHeader, Select, StatCard, Tabs, TableWrap, Spinner, useToast } from "@/components/ui";
 import { useApp, useCan, useMoney } from "@/components/app-context";
+import { HistoryList } from "@/components/history";
 import { api, formatDateTime, useApi } from "@/lib/client";
 import { CustomerForm, type Customer } from "@/components/customer-form";
 
@@ -19,7 +20,8 @@ export default function CustomerDetail() {
   const money = useMoney(); const toast = useToast(); const { settings } = useApp();
   const canPay = useCan("customers.payments"); const canManage = useCan("customers.manage");
   const { data, error, loading, reload } = useApi<Detail>(`/api/customers/${id}`);
-  const [tab, setTab] = useState<"ledger" | "sales" | "payments">("ledger");
+  const [tab, setTab] = useState<"ledger" | "sales" | "payments" | "history">("ledger");
+  const canAudit = useCan("audit.view");
   const [paying, setPaying] = useState(false); const [editing, setEditing] = useState(false);
   const [amount, setAmount] = useState(""); const [method, setMethod] = useState("CASH"); const [note, setNote] = useState(""); const [busy, setBusy] = useState(false);
 
@@ -50,7 +52,7 @@ export default function CustomerDetail() {
         <StatCard label="Total payments" value={money(data.totalPayments)} icon={<span className="font-bold">−</span>} tone="green" />
       </div>
       {c.notes && <p className="mt-3 text-sm text-slate-600 dark:text-slate-300">Notes: {c.notes}</p>}
-      <div className="mt-6 no-print"><Tabs tabs={[{ id: "ledger", label: "Ledger" }, { id: "sales", label: "Purchase history" }, { id: "payments", label: "Payment history" }]} value={tab} onChange={setTab} /></div>
+      <div className="mt-6 no-print"><Tabs tabs={[{ id: "ledger", label: "Ledger" }, { id: "sales", label: "Purchase history" }, { id: "payments", label: "Payment history" }, ...(canAudit ? [{ id: "history" as const, label: "History" }] : [])]} value={tab} onChange={setTab} /></div>
       <Card className="print-area">
         <div className="hidden p-4 print:block"><h2 className="text-lg font-bold">{settings.pharmacyName} – statement for {c.name}</h2></div>
         {tab === "ledger" && (data.ledger.length === 0 ? <EmptyState title="No ledger entries yet" /> : (
@@ -62,6 +64,7 @@ export default function CustomerDetail() {
         {tab === "payments" && (payments.length === 0 ? <EmptyState title="No payments yet" /> : (
           <TableWrap><thead><tr className="border-b border-slate-200 dark:border-slate-800"><th className="th">Date</th><th className="th">Description</th><th className="th">Method</th><th className="th text-right">Amount</th></tr></thead>
             <tbody>{payments.map((l) => (<tr key={l.id} className="border-b border-slate-100 dark:border-slate-800/60"><td className="td">{formatDateTime(l.createdAt)}</td><td className="td">{l.description}</td><td className="td capitalize">{l.method?.toLowerCase() ?? "—"}</td><td className="td text-right">{money(l.credit)}</td></tr>))}</tbody></TableWrap>))}
+        {tab === "history" && <HistoryList entity="Customer" entityId={c.id} />}
       </Card>
 
       <Modal open={paying} onClose={() => setPaying(false)} title="Receive payment" footer={<><Button variant="secondary" onClick={() => setPaying(false)}>Cancel</Button><Button type="submit" form="pay-form" loading={busy}>Record payment</Button></>}>

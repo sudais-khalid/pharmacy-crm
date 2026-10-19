@@ -1,22 +1,27 @@
-import { BarChart3, Boxes, Building2, ClipboardList, LayoutDashboard, Monitor, Pill, Receipt, Settings, ShieldCheck, ShoppingCart, Truck, UserCog, Users } from "lucide-react";
+import { BarChart3, Boxes, Building2, ClipboardList, History, LayoutDashboard, Monitor, Palette, Pill, Receipt, Settings, ShieldCheck, ShoppingCart, Truck, UserCog, Users } from "lucide-react";
 
 /**
  * The menus and their Alt+letter shortcuts. Each key is a letter of the label (it is underlined there);
  * tests/shortcuts.test.ts checks the letters are unique, present and not reserved.
  */
+/** Sidebar groups (task 3.11); entries without a group sit on top. */
+export const NAV_GROUPS = ["Sell", "Stock", "Buy", "People", "Money", "Admin"] as const;
+
 export const STAFF_NAV = [
-  { href: "/dashboard", label: "Dashboard", key: "B", icon: LayoutDashboard, perm: "dashboard.view" },
-  { href: "/pos", label: "POS / Sales", key: "P", icon: ShoppingCart, perm: "pos.use" },
-  { href: "/sales", label: "Invoices", key: "I", icon: Receipt, perm: "sales.view" },
-  { href: "/medicines", label: "Medicines", key: "M", icon: Pill, perm: "medicines.view" },
-  { href: "/inventory", label: "Inventory", key: "V", icon: Boxes, perm: "inventory.view" },
-  { href: "/purchases", label: "Purchases", key: "H", icon: ClipboardList, perm: "purchases.view" },
-  { href: "/suppliers", label: "Suppliers", key: "S", icon: Truck, perm: "suppliers.view" },
-  { href: "/customers", label: "Customers", key: "C", icon: Users, perm: "customers.view" },
-  { href: "/reports", label: "Reports", key: "R", icon: BarChart3, perm: "reports.view" },
-  { href: "/users", label: "Users", key: "U", icon: UserCog, perm: "users.manage" },
-  { href: "/roles", label: "Roles", key: "O", icon: ShieldCheck, perm: "roles.manage" },
-  { href: "/settings", label: "Settings", key: "T", icon: Settings, perm: "settings.manage" },
+  { href: "/dashboard", label: "Dashboard", key: "B", icon: LayoutDashboard, perm: "dashboard.view", group: null },
+  { href: "/pos", label: "POS / Sales", key: "P", icon: ShoppingCart, perm: "pos.use", group: "Sell" },
+  { href: "/sales", label: "Invoices", key: "I", icon: Receipt, perm: "sales.view", group: "Sell" },
+  { href: "/medicines", label: "Medicines", key: "M", icon: Pill, perm: "medicines.view", group: "Stock" },
+  { href: "/inventory", label: "Inventory", key: "V", icon: Boxes, perm: "inventory.view", group: "Stock" },
+  { href: "/purchases", label: "Purchases", key: "H", icon: ClipboardList, perm: "purchases.view", group: "Buy" },
+  { href: "/suppliers", label: "Suppliers", key: "S", icon: Truck, perm: "suppliers.view", group: "Buy" },
+  { href: "/customers", label: "Customers", key: "C", icon: Users, perm: "customers.view", group: "People" },
+  { href: "/reports", label: "Reports", key: "R", icon: BarChart3, perm: "reports.view", group: "Money" },
+  { href: "/users", label: "Users", key: "U", icon: UserCog, perm: "users.manage", group: "Admin" },
+  { href: "/roles", label: "Roles", key: "O", icon: ShieldCheck, perm: "roles.manage", group: "Admin" },
+  { href: "/branding", label: "Profile & branding", key: "G", icon: Palette, perm: "branding.manage", group: "Admin" },
+  { href: "/activity", label: "Activity", key: "A", icon: History, perm: "audit.view", group: "Admin" },
+  { href: "/settings", label: "Settings", key: "T", icon: Settings, perm: "settings.manage", group: "Admin" },
 ] as const;
 
 export const CONSOLE_NAV = [
