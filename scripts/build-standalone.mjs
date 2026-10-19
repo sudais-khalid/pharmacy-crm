@@ -2,10 +2,15 @@
 // its static assets (Next does not copy them), the worker and ops bundles in dist/, and the migrations.
 // The bundles keep Prisma external and find it in the folder's own traced node_modules.
 import { execSync } from "node:child_process";
-import { cpSync, rmSync, existsSync } from "node:fs";
+import { cpSync, rmSync, existsSync, readdirSync } from "node:fs";
 
 execSync("npx next build", { stdio: "inherit", env: { ...process.env, NEXT_OUTPUT: "standalone" } });
 execSync("node scripts/build-worker.mjs", { stdio: "inherit" });
+// Next copies .env files into the standalone folder and its server loads them at start. They hold local
+// development secrets and must never reach an installer: the desktop supervisor provides every setting.
+for (const f of readdirSync(".next/standalone")) if (f.startsWith(".env")) rmSync(`.next/standalone/${f}`, { force: true });
+const leftover = readdirSync(".next/standalone").filter((f) => f.startsWith(".env"));
+if (leftover.length) throw new Error(`refusing to continue: ${leftover.join(", ")} still in .next/standalone`);
 rmSync(".next/standalone/.next/static", { recursive: true, force: true });
 cpSync(".next/static", ".next/standalone/.next/static", { recursive: true });
 if (existsSync("public")) cpSync("public", ".next/standalone/public", { recursive: true });
