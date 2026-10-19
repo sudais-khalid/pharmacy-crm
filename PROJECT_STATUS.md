@@ -1,7 +1,21 @@
 # Project status
 
 ## Current phase
-Phase 1 (tenancy and Developer console) is complete and tagged `v1.1.0`. Next: Phase 2, the Windows desktop installer (see `docs/plan/05-roadmap.md`).
+Phase 2 (Windows desktop app and installer) is complete and tagged `v1.2.0`. Next: Phase 3, pharmacy accounts, roles and branding (see `docs/plan/05-roadmap.md`).
+
+## Phase 2 delivered
+- Windows installer (`desktop/`, `npm run package`): per-user NSIS setup with shortcuts; Electron supervises an embedded PostgreSQL 16 on loopback, the web server and the worker, with splash, tray and logs
+- Data in `%PROGRAMDATA%\PharmacyCRM`, limited to the setup user, Administrators and SYSTEM; secrets protected with Windows DPAPI; a lost database password is reset locally
+- Local replica: encrypted, verified snapshots at start, every 4 hours, on close, before migrations and updates, and on demand; retention of 24 plus one a day for 30 days; optional mirror folder; recovery key shown once
+- First start: start fresh, or restore the newest backup or a chosen file (recovery key only when needed); restores go into a side database and are swapped in only when complete
+- Uninstalling keeps the data; the uninstaller can delete the data and, separately, the backups; reinstalling restores everything with the recovery key
+- Developer console "This computer": backups, mirror folder, restore (authenticator code, audited), shop network access with QR codes
+- Owner bootstrap from the build's `owner.json` (email and bcrypt hash) and `PharmacyCRM.exe --recover-owner` for Windows administrators
+- Letter shortcuts: Alt plus the underlined letter for every screen, Alt+N for new, / for search, ? for the list
+- Client mode for a second counter PC; shop network access for tablets over the PC's network address
+- Updates through electron-updater after a backup and a clean shutdown; release workflow for tagged versions; CI on Node 22 and 24 plus a Windows desktop job
+- `ops.js`: migrate, backup, verify, restore, recover-owner
+- 125 integration tests, 108 smoke checks, 58 isolation checks, 6 desktop unit tests, a desktop self-test (from source and packaged) and an installer round-trip test
 
 ## Phase 1 delivered
 - Multi-pharmacy data: every business table carries `pharmacyId`; the original shop became pharmacy `main` (rehearsed on a copy, numbering continues)
@@ -48,10 +62,10 @@ Phase 1 (tenancy and Developer console) is complete and tagged `v1.1.0`. Next: P
 - `npm run test:smoke`: 47 HTTP checks against the running app (auth, RBAC, validation, sale/cancel flow, reports, all pages return 200)
 
 ## Known limitations / not built
-- Not in the simplified scope you gave: customer & supplier returns, prescriptions/doctors/file uploads, expenses, notifications centre, audit log, multi-branch, global search
-- UI was not opened in a real browser in my environment (no browser available): please click through each screen once
-- Docker files are written but were not run (no Docker in my environment)
-- Migration SQL was generated from the schema by script because Prisma's engine download was blocked; apply with `prisma migrate deploy`
+- Not built yet (later phases): customer and supplier returns, OCR stock entry, supplier orders, expenses, notifications centre, global search
+- The installer is unsigned until a code-signing certificate is added to the release secrets, so Windows SmartScreen warns on first run
+- Updates have not been tried end to end against a real release feed (no public releases location yet); the feed settings, latest.yml and app-update.yml are built and checked
+- The installer was tested on the development PC only, not yet on clean Windows 10 and 11 machines
 - Sale prices come from the batch being sold; a sale spanning batches with different prices is priced per batch
 
 ## Next tasks (suggested)
