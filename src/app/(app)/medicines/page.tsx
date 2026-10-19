@@ -17,6 +17,7 @@ type Detail = Med & { batches: { id: string; batchNumber: string; expiryDate: st
 const emptyForm = { name: "", genericName: "", categoryId: "", barcode: "", sku: "", unit: "Pack", purchasePrice: "", salePrice: "", minStock: "10", prescriptionRequired: false, description: "", active: true, batchNumber: "", expiryDate: "", quantity: "" };
 
 function MedicinesInner() {
+  const seesCost = useCan("cost.view");
   const sp = useSearchParams();
   const toast = useToast();
   const money = useMoney();
@@ -74,14 +75,14 @@ function MedicinesInner() {
         ) : (
           <>
             <TableWrap>
-              <thead><tr className="border-b border-slate-200 dark:border-slate-800"><th className="th">Medicine</th><th className="th">Category</th><th className="th">Barcode</th><th className="th text-right">Cost</th><th className="th text-right">Price</th><th className="th text-right">Stock</th><th className="th text-right">Actions</th></tr></thead>
+              <thead><tr className="border-b border-slate-200 dark:border-slate-800"><th className="th">Medicine</th><th className="th">Category</th><th className="th">Barcode</th>{seesCost && <th className="th text-right">Cost</th>}<th className="th text-right">Price</th><th className="th text-right">Stock</th><th className="th text-right">Actions</th></tr></thead>
               <tbody>
                 {data.items.map((m) => (
                   <tr key={m.id} className="border-b border-slate-100 hover:bg-slate-50 dark:border-slate-800/60 dark:hover:bg-slate-800/40">
                     <td className="td"><div className="font-medium">{m.name} {m.prescriptionRequired && <Badge tone="blue">Rx</Badge>} {!m.active && <Badge>Archived</Badge>}</div><div className="text-xs text-slate-500">{m.genericName}</div></td>
                     <td className="td">{m.category?.name ?? "—"}</td>
                     <td className="td font-mono text-xs">{m.barcode ?? "—"}</td>
-                    <td className="td text-right">{money(m.purchasePrice)}</td>
+                    {seesCost && <td className="td text-right">{money(m.purchasePrice)}</td>}
                     <td className="td text-right">{money(m.salePrice)}</td>
                     <td className="td text-right">
                       {m.stock === 0 ? <Badge tone="red">Out of stock</Badge> : m.stock <= m.minStock ? <Badge tone="amber">{m.stock} · low</Badge> : <Badge tone="green">{m.stock}</Badge>}
@@ -114,6 +115,7 @@ function MedicinesInner() {
 
 function MedicineDetail({ id, onClose }: { id: string | null; onClose: () => void }) {
   const money = useMoney();
+  const seesCost = useCan("cost.view");
   const { data, loading } = useApi<Detail>(id ? `/api/medicines/${id}` : null);
   const today = new Date().toISOString().slice(0, 10);
   return (
@@ -128,11 +130,11 @@ function MedicineDetail({ id, onClose }: { id: string | null; onClose: () => voi
           {data.description && <p className="text-slate-600 dark:text-slate-300">{data.description}</p>}
           <h3 className="font-semibold">Batches (earliest expiry sells first)</h3>
           {data.batches.length === 0 ? <p className="text-slate-500">No batches yet – add stock through Purchases.</p> : (
-            <TableWrap><thead><tr className="border-b border-slate-200 dark:border-slate-800"><th className="th">Batch</th><th className="th">Expiry</th><th className="th text-right">Qty</th><th className="th text-right">Cost</th><th className="th text-right">Price</th></tr></thead>
+            <TableWrap><thead><tr className="border-b border-slate-200 dark:border-slate-800"><th className="th">Batch</th><th className="th">Expiry</th><th className="th text-right">Qty</th>{seesCost && <th className="th text-right">Cost</th>}<th className="th text-right">Price</th></tr></thead>
               <tbody>{data.batches.map((b) => (
                 <tr key={b.id} className="border-b border-slate-100 dark:border-slate-800/60"><td className="td">{b.batchNumber}</td>
                   <td className="td">{formatDate(b.expiryDate)} {b.expiryDate.slice(0, 10) < today && <Badge tone="red">Expired</Badge>}</td>
-                  <td className="td text-right">{b.quantity}</td><td className="td text-right">{money(b.purchasePrice)}</td><td className="td text-right">{money(b.salePrice)}</td></tr>))}</tbody></TableWrap>
+                  <td className="td text-right">{b.quantity}</td>{seesCost && <td className="td text-right">{money(b.purchasePrice)}</td>}<td className="td text-right">{money(b.salePrice)}</td></tr>))}</tbody></TableWrap>
           )}
         </div>
       )}
@@ -141,6 +143,7 @@ function MedicineDetail({ id, onClose }: { id: string | null; onClose: () => voi
 }
 
 function MedicineForm({ med, categories, reloadCats, onClose, onSaved }: { med: Med | null; categories: Category[]; reloadCats: () => void; onClose: () => void; onSaved: () => void }) {
+  const seesCost = useCan("cost.view");
   const toast = useToast();
   const [f, setF] = useState(med ? { ...emptyForm, name: med.name, genericName: med.genericName ?? "", categoryId: med.categoryId ?? "", barcode: med.barcode ?? "", sku: med.sku ?? "", unit: med.unit, purchasePrice: String(med.purchasePrice), salePrice: String(med.salePrice), minStock: String(med.minStock), prescriptionRequired: med.prescriptionRequired, description: med.description ?? "", active: med.active } : emptyForm);
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -184,7 +187,7 @@ function MedicineForm({ med, categories, reloadCats, onClose, onSaved }: { med: 
         </div>
         <Field label="Barcode" error={errors.barcode} hint="Scan with a USB scanner"><Input value={f.barcode} onChange={(e) => set("barcode", e.target.value)} /></Field>
         <Field label="SKU" error={errors.sku}><Input value={f.sku} onChange={(e) => set("sku", e.target.value)} /></Field>
-        <Field label="Purchase price" error={errors.purchasePrice}><Input type="number" min="0" step="0.01" value={f.purchasePrice} onChange={(e) => set("purchasePrice", e.target.value)} /></Field>
+        {seesCost && <Field label="Purchase price" error={errors.purchasePrice}><Input type="number" min="0" step="0.01" value={f.purchasePrice} onChange={(e) => set("purchasePrice", e.target.value)} /></Field>}
         <Field label="Sale price" error={errors.salePrice}><Input type="number" min="0" step="0.01" value={f.salePrice} onChange={(e) => set("salePrice", e.target.value)} /></Field>
         <Field label="Unit"><Input value={f.unit} onChange={(e) => set("unit", e.target.value)} /></Field>
         <Field label="Minimum stock (low-stock alert)" error={errors.minStock}><Input type="number" min="0" value={f.minStock} onChange={(e) => set("minStock", e.target.value)} /></Field>

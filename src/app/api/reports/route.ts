@@ -2,16 +2,22 @@ import { Prisma } from "@prisma/client";
 import { route, AppError } from "@/lib/api";
 import { TZ, todayStr } from "@/lib/dates";
 import { D } from "@/lib/money";
+import { COST_FIELDS } from "@/lib/cost-fields";
+import { can } from "@/modules/identity";
 
 type Col = { key: string; label: string; format?: "money" | "int" | "date" | "text" | "percent" };
 type Report = { title: string; description: string; columns: Col[]; rows: Record<string, unknown>[]; sumKeys?: string[] };
 
 const REPORTS = ["sales", "profit", "purchases", "lowStock", "expired", "customerBalances", "supplierBalances"] as const;
+/** Reports that are about cost as a whole; the others only lose their cost columns without cost.view. */
+const COST_REPORTS = new Set(["profit", "purchases"]);
 
-export const GET = route("reports.view", async ({ req, db }) => {
+export const GET = route("reports.view", async ({ req, db, user }) => {
   const sp = req.nextUrl.searchParams;
   const type = sp.get("type") || "sales";
   if (!(REPORTS as readonly string[]).includes(type)) throw new AppError(400, "Unknown report type.");
+  const seesCost = can(user, "cost.view");
+  if (COST_REPORTS.has(type) && !seesCost) throw new AppError(403, "This report shows cost prices, which your role cannot see.");
   const today = todayStr();
   const from = sp.get("from") || today.slice(0, 8) + "01";
   const to = sp.get("to") || today;
@@ -98,6 +104,10 @@ export const GET = route("reports.view", async ({ req, db }) => {
     }
   }
 
+  if (!seesCost) {
+    r.columns = r.columns.filter((c) => !COST_FIELDS.has(c.key));
+    r.sumKeys = r.sumKeys?.filter((k) => !COST_FIELDS.has(k));
+  }
   let totals: Record<string, string> | null = null;
   if (r.sumKeys && r.rows.length) {
     totals = {};

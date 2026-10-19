@@ -8,7 +8,7 @@ import { useCan, useMoney } from "@/components/app-context";
 import { api, formatDate, formatDateTime, formatNum, qs, useApi, useDebounce } from "@/lib/client";
 
 type Batch = { id: string; batchNumber: string; expiryDate: string; quantity: number; purchasePrice: string; salePrice: string; daysLeft: number; medicine: { id: string; name: string; genericName: string | null } };
-type BatchList = { items: Batch[]; total: number; page: number; pageSize: number; summary: { units: number; stockValueCost: string; stockValueRetail: string }; warningDays: number };
+type BatchList = { items: Batch[]; total: number; page: number; pageSize: number; summary: { units: number; stockValueCost?: string; stockValueRetail: string }; warningDays: number };
 type Tab = "batches" | "expiry" | "low" | "movements";
 
 function InventoryInner() {
@@ -29,11 +29,12 @@ function InventoryInner() {
 
 function BatchTable({ rows, onAdjust, showValues }: { rows: Batch[]; onAdjust?: (b: Batch) => void; showValues?: boolean }) {
   const money = useMoney();
+  const seesCost = useCan("cost.view");
   return (
     <TableWrap>
       <thead><tr className="border-b border-slate-200 dark:border-slate-800">
         <th className="th">Medicine</th><th className="th">Batch</th><th className="th">Expiry</th><th className="th text-right">Qty</th>
-        <th className="th text-right">Cost</th><th className="th text-right">Price</th>{showValues && <><th className="th text-right">Purchase value</th><th className="th text-right">Sale value</th></>}{onAdjust && <th className="th text-right">Adjust</th>}
+        {seesCost && <th className="th text-right">Cost</th>}<th className="th text-right">Price</th>{showValues && <>{seesCost && <th className="th text-right">Purchase value</th>}<th className="th text-right">Sale value</th></>}{onAdjust && <th className="th text-right">Adjust</th>}
       </tr></thead>
       <tbody>
         {rows.map((b) => (
@@ -41,8 +42,8 @@ function BatchTable({ rows, onAdjust, showValues }: { rows: Batch[]; onAdjust?: 
             <td className="td font-medium">{b.medicine.name}</td><td className="td">{b.batchNumber}</td>
             <td className="td">{formatDate(b.expiryDate)}{" "}
               {b.quantity > 0 && (b.daysLeft < 0 ? <Badge tone="red">Expired {-b.daysLeft}d ago</Badge> : b.daysLeft <= 30 ? <Badge tone="amber">{b.daysLeft} days left</Badge> : <span className="text-xs text-slate-500">{b.daysLeft}d</span>)}</td>
-            <td className="td text-right">{b.quantity}</td><td className="td text-right">{money(b.purchasePrice)}</td><td className="td text-right">{money(b.salePrice)}</td>
-            {showValues && <><td className="td text-right">{money(Number(b.purchasePrice) * b.quantity)}</td><td className="td text-right">{money(Number(b.salePrice) * b.quantity)}</td></>}
+            <td className="td text-right">{b.quantity}</td>{seesCost && <td className="td text-right">{money(b.purchasePrice)}</td>}<td className="td text-right">{money(b.salePrice)}</td>
+            {showValues && <>{seesCost && <td className="td text-right">{money(Number(b.purchasePrice) * b.quantity)}</td>}<td className="td text-right">{money(Number(b.salePrice) * b.quantity)}</td></>}
             {onAdjust && <td className="td text-right"><Button size="sm" variant="ghost" aria-label={`Adjust ${b.medicine.name} batch ${b.batchNumber}`} onClick={() => onAdjust(b)}><SlidersHorizontal className="h-4 w-4" /></Button></td>}
           </tr>
         ))}
@@ -64,7 +65,7 @@ function BatchesTab() {
       {data && (
         <div className="mb-4 grid gap-4 sm:grid-cols-3">
           <StatCard label="Sellable units" value={formatNum(data.summary.units)} icon={<span className="text-sm font-bold">#</span>} />
-          <StatCard label="Stock value (cost)" value={money(data.summary.stockValueCost)} icon={<span className="text-sm font-bold">₨</span>} tone="blue" />
+          {data.summary.stockValueCost !== undefined && <StatCard label="Stock value (cost)" value={money(data.summary.stockValueCost)} icon={<span className="text-sm font-bold">₨</span>} tone="blue" />}
           <StatCard label="Stock value (retail)" value={money(data.summary.stockValueRetail)} icon={<span className="text-sm font-bold">₨</span>} tone="green" />
         </div>
       )}

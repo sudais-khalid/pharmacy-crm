@@ -51,7 +51,7 @@ export const GET = route("dashboard.view", async ({ user, db }) => {
 
   const t = todaySales[0];
   return {
-    today: { sales: t.total, invoices: t.count, profit: full ? D(t.total).minus(t.cogs) : null },
+    today: { sales: t.total, invoices: t.count, profit: can(user, "cost.view") ? D(t.total).minus(t.cogs) : null },
     totalCustomers, totalMedicines,
     lowStockCount: lowStock[0]?.total ?? 0, lowStock,
     expiringCount, expiredCount, expiringBatches: expiringBatches.map((b) => ({ ...b, daysLeft: Math.round((b.expiryDate.getTime() - dateOnly(today).getTime()) / 86400000) })),

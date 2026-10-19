@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { Prisma } from "@prisma/client";
 import { ZodError } from "zod";
 import { getSessionUser, type SessionUser, can, type Permission, serviceContext, type ServiceContext, type RequestMeta } from "@/modules/identity";
+import { jsonWithoutCost } from "./cost-fields";
 import { AppError } from "./errors";
 import { IDEMPOTENCY_HEADER, withIdempotency } from "./idempotency";
 import { assertSameOrigin } from "./origin";
@@ -31,6 +32,12 @@ export function requestMeta(req: NextRequest): RequestMeta {
   return { ip: clientIp(req), userAgent: req.headers.get("user-agent") };
 }
 
+/** JSON response; cost and profit fields are left out for people without cost.view. */
+function respond(user: { permissions: readonly string[] }, data: unknown, headers?: Record<string, string>) {
+  if (can(user, "cost.view")) return NextResponse.json(data, headers ? { headers } : undefined);
+  return new NextResponse(jsonWithoutCost(data), { headers: { "content-type": "application/json", ...headers } });
+}
+
 /**
  * Wraps an API handler with authentication, permission check, tenant scoping and uniform error handling.
  * The whole handler runs in one transaction scoped to the user's pharmacy (`db`, also `svc.tx`), so every
@@ -57,11 +64,11 @@ export function route(permission: Permission | null, fn: (ctx: Ctx) => Promise<u
           { key, actorId: user.id, pharmacyId: user.pharmacyId, route: `${req.method} ${req.nextUrl.pathname}`, rawBody: await req.clone().text() },
           run,
         );
-        return NextResponse.json(result.body ?? { ok: true }, result.replayed ? { headers: { "Idempotent-Replayed": "true" } } : undefined);
+        return respond(user, result.body ?? { ok: true }, result.replayed ? { "Idempotent-Replayed": "true" } : undefined);
       }
 
       const data = await tenantTransaction(user.pharmacyId, run);
-      return NextResponse.json(data ?? { ok: true });
+      return respond(user, data ?? { ok: true });
     } catch (e) {
       return errorResponse(e);
     }

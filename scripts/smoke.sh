@@ -26,7 +26,14 @@ ok "Cashier cannot view purchases" "$(code -b /tmp/smoke_cashier.jar $B/api/purc
 ok "Pharmacist cannot list users" "$(code -b /tmp/smoke_pharmacist.jar $B/api/users)" 403
 ok "Admin can list users" "$(code -b /tmp/smoke_admin.jar $B/api/users)" 200
 ok "Dashboard loads" "$(code -b /tmp/smoke_admin.jar $B/api/dashboard)" 200
-ok "Cashier dashboard hides profit" "$(curl -s -b /tmp/smoke_cashier.jar $B/api/dashboard | js "d['today']['profit']")" None
+ok "Cashier dashboard hides profit" "$(curl -s -b /tmp/smoke_cashier.jar $B/api/dashboard | js "d['today'].get('profit')")" None
+# a cashier's responses never carry cost prices or profit (stripped for roles without cost.view)
+SALE_ID=$(curl -s -b /tmp/smoke_admin.jar "$B/api/sales" | js "d['items'][0]['id']")
+for p in /api/medicines /api/inventory/batches /api/dashboard "/api/pos/search?q=pa" /api/sales "/api/sales/$SALE_ID"; do
+  ok "Cashier gets no cost or profit fields from $p" "$(curl -s -b /tmp/smoke_cashier.jar "$B$p" | grep -cE '"(purchasePrice|costPrice|profit|cogs|costValue|stockValueCost)"')" 0
+done
+ok "Pharmacist sees cost prices" "$(curl -s -b /tmp/smoke_pharmacist.jar "$B/api/sales/$SALE_ID" | grep -c '"costPrice"')" 1
+ok "Cashier cannot open the profit report" "$(code -b /tmp/smoke_cashier.jar "$B/api/reports?type=profit")" 403
 ok "Cashier lands on the POS" "$(curl -s -o /dev/null -w '%{redirect_url}' -b /tmp/smoke_cashier.jar $B/home | sed 's#.*//[^/]*##')" /pos
 ok "Admin lands on the dashboard" "$(curl -s -o /dev/null -w '%{redirect_url}' -b /tmp/smoke_admin.jar $B/home | sed 's#.*//[^/]*##')" /dashboard
 ok "Roles list for the admin" "$(curl -s -b /tmp/smoke_admin.jar $B/api/roles | js "[r['name'] for r in d['roles']][:3]")" "['Pharmacy Admin', 'Pharmacist', 'Cashier']"

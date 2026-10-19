@@ -1,5 +1,5 @@
 import { runInTx } from "@/lib/db";
-import type { ServiceContext } from "@/modules/identity";
+import { can, type ServiceContext } from "@/modules/identity";
 import { audit, emit } from "@/modules/platform";
 import { AppError } from "@/lib/errors";
 import { dateOnly } from "@/lib/dates";
@@ -37,7 +37,10 @@ const PRICE_FIELDS = ["purchasePrice", "salePrice"];
 
 /** Updates a medicine's details. Opening stock is ignored (it only applies on create). */
 export async function updateMedicine(ctx: ServiceContext, id: string, input: MedicineInput) {
-  const { opening: _opening, ...data } = input;
+  const { opening: _opening, ...rest } = input;
+  // without cost.view the form never saw the purchase price, so it must not overwrite it
+  const { purchasePrice: _cost, ...withoutCost } = rest;
+  const data = can(ctx.actor, "cost.view") ? rest : withoutCost;
   return runInTx(ctx, async (tx) => {
     const before = await tx.medicine.findUnique({ where: { id } });
     if (!before) throw new AppError(404, "Medicine not found.");

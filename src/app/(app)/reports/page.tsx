@@ -8,13 +8,15 @@ import { downloadCsv, formatDate, formatNum, qs, useApi } from "@/lib/client";
 type Col = { key: string; label: string; format?: "money" | "int" | "date" | "text" | "percent" };
 type Report = { title: string; description: string; columns: Col[]; rows: Record<string, unknown>[]; totals: Record<string, string> | null; from: string; to: string };
 
-const TYPES: [string, string, boolean][] = [
+const COST_REPORTS = ["profit", "purchases"];
+const ALL_TYPES: [string, string, boolean][] = [
   ["sales", "Sales", true], ["profit", "Profit", true], ["purchases", "Purchases", true],
   ["lowStock", "Low stock", false], ["expired", "Expired medicines", false], ["customerBalances", "Customer balances", false], ["supplierBalances", "Supplier payables", false],
 ];
 
 export default function ReportsPage() {
-  const { settings } = useApp();
+  const { settings, permissions } = useApp();
+  const TYPES = permissions.includes("cost.view") ? ALL_TYPES : ALL_TYPES.filter((t) => !COST_REPORTS.includes(t[0]));
   const today = new Date().toISOString().slice(0, 10);
   const [type, setType] = useState("sales"); const [from, setFrom] = useState(today.slice(0, 8) + "01"); const [to, setTo] = useState(today); const [group, setGroup] = useState("day");
   const ranged = TYPES.find((t) => t[0] === type)![2];
