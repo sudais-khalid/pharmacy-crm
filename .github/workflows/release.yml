@@ -1,0 +1,77 @@
+name: Release desktop
+
+# A version tag builds, tests, signs and publishes the Windows installer. The installed apps find it through
+# latest.yml in the release (electron-updater), so releases must be public: either this repository's, or
+# a public releases repository named in the PCRM_UPDATE_REPO variable (then RELEASES_TOKEN must be able to
+# write to it).
+#
+# Secrets: PCRM_OWNER_EMAIL, PCRM_OWNER_PASSWORD_HASH (the Developer account of new installations),
+# WINDOWS_CERT_P12_BASE64 and WINDOWS_CERT_PASSWORD (Authenticode; without them the build is unsigned).
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 60
+    env:
+      NEXT_TELEMETRY_DISABLED: "1"
+      PCRM_UPDATE_REPO: ${{ vars.PCRM_UPDATE_REPO || github.repository }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            desktop/package-lock.json
+
+      - name: Install
+        run: |
+          npm ci
+          npm ci --prefix desktop
+
+      - name: Build the server folder
+        run: npm run build:desktop
+
+      - name: Desktop unit tests and self-test
+        working-directory: desktop
+        run: |
+          npm test
+          npm run selftest
+
+      - name: Build the installer
+        working-directory: desktop
+        shell: bash
+        env:
+          PCRM_OWNER_EMAIL: ${{ secrets.PCRM_OWNER_EMAIL }}
+          PCRM_OWNER_PASSWORD_HASH: ${{ secrets.PCRM_OWNER_PASSWORD_HASH }}
+          CSC_LINK: ${{ secrets.WINDOWS_CERT_P12_BASE64 }}
+          CSC_KEY_PASSWORD: ${{ secrets.WINDOWS_CERT_PASSWORD }}
+        run: |
+          version="$(node -p "require('../package.json').version")"
+          if [ "v$version" != "$GITHUB_REF_NAME" ]; then echo "Tag $GITHUB_REF_NAME does not match package.json version $version"; exit 1; fi
+          npm run package
+
+      - name: Test the installed app
+        working-directory: desktop
+        run: |
+          node scripts/selftest.mjs --exe dist/win-unpacked/PharmacyCRM.exe
+          node scripts/installer-test.mjs
+
+      - name: Publish
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.RELEASES_TOKEN || secrets.GITHUB_TOKEN }}
+        run: |
+          cd desktop/dist
+          gh release create "$GITHUB_REF_NAME" --repo "$PCRM_UPDATE_REPO" --title "Pharmacy CRM $GITHUB_REF_NAME" --notes "Windows installer for Pharmacy CRM $GITHUB_REF_NAME." \
+            PharmacyCRM-Setup-*.exe PharmacyCRM-Setup-*.exe.blockmap latest.yml

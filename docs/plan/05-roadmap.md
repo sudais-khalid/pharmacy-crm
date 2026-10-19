@@ -130,9 +130,9 @@ Tasks:
 - [x] 2.6 Owner bootstrap from build-time secrets (email and password hash) and `--recover-owner` for Windows administrators
 - [x] 2.7 electron-builder NSIS installer: per-user install, Start menu and desktop shortcuts, uninstall that keeps data unless "Also delete all pharmacy data" is ticked
 - [x] 2.8 Letter shortcuts (R28): Alt plus letter navigation with underlined mnemonics, action keys on list pages, `?` shortcut help
-- [ ] 2.9 Client mode: "Connect to a pharmacy server" by LAN address or URL, remembered per device; LAN access toggle with the address shown as a QR code and a private-network firewall rule
-- [ ] 2.10 Release pipeline: GitHub Actions Windows runner builds and code-signs the installer (certificate from secrets) and publishes it; `electron-updater` checks on start and installs after a backup
-- [ ] 2.11 CI matrix with Node 24 (Electron runtime) next to Node 22 (PoC finding 5)
+- [x] 2.9 Client mode: "Connect to a pharmacy server" by LAN address or URL, remembered per device; LAN access toggle with the address shown as a QR code and a private-network firewall rule
+- [x] 2.10 Release pipeline: GitHub Actions Windows runner builds and code-signs the installer (certificate from secrets) and publishes it; `electron-updater` checks on start and installs after a backup
+- [x] 2.11 CI matrix with Node 24 (Electron runtime) next to Node 22 (PoC finding 5)
 
 Acceptance criteria:
 

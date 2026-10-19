@@ -14,8 +14,14 @@ permissions:
 
 jobs:
   verify:
+    name: verify (Node ${{ matrix.node }})
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        # 22 for servers, 24 because the desktop app runs the same code on Electron's Node 24
+        node: [22, 24]
 
     services:
       postgres:
@@ -46,7 +52,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: ${{ matrix.node }}
           cache: npm
 
       - name: Install dependencies
@@ -102,3 +108,36 @@ jobs:
       - name: Show server log on failure
         if: failure()
         run: test -f next.log && tail -n 200 next.log || true
+
+  # The Windows app: supervisor, embedded PostgreSQL, backups, restore, console controls, shortcuts and
+  # client mode, run headless against throwaway data folders.
+  desktop:
+    runs-on: windows-latest
+    timeout-minutes: 45
+    env:
+      NEXT_TELEMETRY_DISABLED: "1"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            desktop/package-lock.json
+
+      - name: Install
+        run: |
+          npm ci
+          npm ci --prefix desktop
+
+      - name: Build the server folder
+        run: npm run build:desktop
+
+      - name: Unit tests and self-test
+        working-directory: desktop
+        run: |
+          npm test
+          npm run selftest
