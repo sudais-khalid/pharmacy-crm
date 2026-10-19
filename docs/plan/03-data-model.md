@@ -245,7 +245,8 @@ model RateLimitHit {                     // not tenant scoped: login happens bef
 | `customerName String?` | Walk-in name printed on the bill (R8) |
 | `customerPhone String?` | Walk-in contact printed on the bill (R8), indexed for lookup |
 | `cashSessionId String?` | Links cash and card sales to the cashier's drawer session |
-| `changeGiven Decimal` | Cash tendered minus total, for drawer reconciliation |
+| `cashTendered Decimal?` | Cash handed over by the customer (cash sales) |
+| `changeGiven Decimal` | Cash tendered minus the amount paid, printed on the receipt |
 | `receiptFormat String?` | Format used at print time, for identical reprints |
 
 ### 3.2 Cash sessions
@@ -271,13 +272,15 @@ model CashSession {
 model CashMovement {                 // pay-in and pay-out during a shift (e.g. petty cash)
   id         String   @id @default(uuid())
   sessionId  String
-  type       CashMovementType      // PAY_IN, PAY_OUT, REFUND
+  type       CashMovementType      // PAY_IN, PAY_OUT (cash refunds are returns linked to the session)
   amount     Decimal  @db.Decimal(12, 2)
   reason     String
   userId     String
   createdAt  DateTime @default(now())
 }
 ```
+
+Expected cash at close = opening float + amount paid on completed cash and credit sales in the session - cash refunds (`SaleReturn.cashSessionId`, `refundMethod = CASH`) + pay-ins - pay-outs. Card sales never reach the drawer. A difference above `cashDiffThreshold` needs a note and raises a `CASH_DIFFERENCE` notification for `cash.manage`.
 
 Constraint: a partial unique index allows only one `OPEN` session per user:
 `CREATE UNIQUE INDEX one_open_session ON "CashSession"("userId") WHERE status = 'OPEN';`
@@ -294,6 +297,7 @@ model SaleReturn {
   refundMethod PaymentMethod                // CASH, CARD, CREDIT (credit note to ledger)
   total       Decimal  @db.Decimal(12, 2)
   reason      String
+  cashSessionId String?                     // the drawer a cash refund came out of
   createdAt   DateTime @default(now())
   items       SaleReturnItem[]
 }
@@ -311,7 +315,7 @@ model SaleReturnItem {
 }
 ```
 
-Rule enforced in service and by a check query: total returned quantity per `saleItemId` cannot exceed the sold quantity.
+Rules enforced in the service, with the sale row locked: total returned quantity per `saleItemId` cannot exceed the sold quantity; a line's refund is its share of what was paid (unit price x quantity, less the invoice discount in proportion); cash and card refunds together cannot exceed the amount paid on the invoice (the rest goes as a credit note, which needs a customer account); an invoice with returns cannot be cancelled. Restocked items go back to their original batch with a `SALE_RETURN` movement; damaged ones get `SALE_RETURN` then `DAMAGE`. `CustomerLedger` gains `returnId` and the `RETURN` kind.
 
 `MovementType` gains `SALE_RETURN` and `SUPPLIER_RETURN`.
 

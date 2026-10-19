@@ -218,15 +218,15 @@ Acceptance criteria:
 
 Tasks:
 
-- [ ] 5.1 Full-screen POS layout (`(pos)` route group) with the keyboard map from the UI plan
-- [ ] 5.2 Walk-in `customerName` and `customerPhone` on sale; phone lookup suggests an existing customer; "save as customer"
-- [ ] 5.3 Cash sessions: open with float, link sales, pay-in and pay-out, close with counted cash and difference note; Pharmacy Admin session list
-- [ ] 5.4 Receipt data model and three templates (80 mm, 58 mm, A4) using pharmacy branding; auto print setting; QR code with invoice number
-- [ ] 5.5 Batch and expiry printed on receipt lines (setting)
-- [ ] 5.6 Customer returns: by invoice number or QR scan, partial quantities, restock or damaged, refund cash, card or credit note; return receipt
-- [ ] 5.7 Cashier restrictions: own invoices only, reprint own, no cancel
-- [ ] 5.8 Customer timeline (purchases, returns, payments) and medicine sales history
-- [ ] 5.9 `Idempotency-Key` sent by the POS on complete sale
+- [x] 5.1 Full-screen POS layout (`(pos)` route group) with the keyboard map from the UI plan
+- [x] 5.2 Walk-in `customerName` and `customerPhone` on sale; phone lookup suggests an existing customer; "save as customer"
+- [x] 5.3 Cash sessions: open with float, link sales, pay-in and pay-out, close with counted cash and difference note; Pharmacy Admin session list
+- [x] 5.4 Receipt data model and three templates (80 mm, 58 mm, A4) using pharmacy branding; auto print setting; QR code with invoice number
+- [x] 5.5 Batch and expiry printed on receipt lines (setting)
+- [x] 5.6 Customer returns: by invoice number or QR scan, partial quantities, restock or damaged, refund cash, card or credit note; return receipt
+- [x] 5.7 Cashier restrictions: own invoices only, reprint own, no cancel
+- [x] 5.8 Customer timeline (purchases, returns, payments) and medicine sales history
+- [x] 5.9 `Idempotency-Key` sent by the POS on complete sale
 
 Acceptance criteria:
 
