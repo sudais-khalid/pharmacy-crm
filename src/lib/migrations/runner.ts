@@ -45,16 +45,27 @@ export async function appliedMigrations(client: Client): Promise<AppliedMigratio
   return r.rows.filter((x) => !x.rolled_back_at).map((x) => ({ name: x.migration_name, checksum: x.checksum, finished: !!x.finished_at }));
 }
 
-/** Names of migrations in `dir` not yet applied to the database. */
-export async function pendingMigrations(connectionString: string, dir: string): Promise<string[]> {
+/**
+ * pending: migrations in `dir` not yet applied. unknown: migrations the database has that `dir` does not,
+ * meaning a newer version of the app has already updated this database.
+ */
+export async function migrationStatus(connectionString: string, dir: string): Promise<{ pending: string[]; unknown: string[] }> {
   const client = new Client({ connectionString });
   await client.connect();
   try {
-    const done = new Set((await appliedMigrations(client)).filter((m) => m.finished).map((m) => m.name));
-    return readMigrations(dir).filter((m) => !done.has(m.name)).map((m) => m.name);
+    const done = (await appliedMigrations(client)).filter((m) => m.finished).map((m) => m.name);
+    const files = readMigrations(dir).map((m) => m.name);
+    const doneSet = new Set(done);
+    const fileSet = new Set(files);
+    return { pending: files.filter((n) => !doneSet.has(n)), unknown: done.filter((n) => !fileSet.has(n)) };
   } finally {
     await client.end();
   }
+}
+
+/** Names of migrations in `dir` not yet applied to the database. */
+export async function pendingMigrations(connectionString: string, dir: string): Promise<string[]> {
+  return (await migrationStatus(connectionString, dir)).pending;
 }
 
 export type MigrateResult = { applied: string[]; alreadyApplied: number };

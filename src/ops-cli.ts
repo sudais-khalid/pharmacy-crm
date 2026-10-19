@@ -6,6 +6,7 @@
  *   node dist/ops.js backup  <file>
  *   node dist/ops.js verify  <file>
  *   node dist/ops.js restore <file>
+ *   node dist/ops.js recover-owner [--email you@example.com] [--json]
  *
  * The database comes from DATABASE_URL (or --db <url>), read from ./.env (or --env-file <path>) when
  * present. The recovery key comes from PCRM_RECOVERY_KEY or --key-file <path>; it is never taken as a
@@ -94,8 +95,31 @@ async function main(argv: string[]) {
       console.log(`Restored ${r.manifest.tables.length} tables from ${r.manifest.createdAt}${r.migratedAfter.length ? `, then applied ${r.migratedAfter.length} newer migration(s)` : ""}.`);
       return;
     }
+    case "recover-owner": {
+      // A new password for the Developer account, two-factor sign-in removed, every session ended. Whoever
+      // can run this already controls the computer; the desktop app asks Windows for an administrator.
+      process.env.DATABASE_URL = needDb();
+      const json = args.includes("--json");
+      let email = option(args, "--email");
+      const { platformDb } = await import("@/lib/platform-db");
+      try {
+        if (!email) {
+          const owners = await platformDb.platformUser.findMany({ select: { email: true } });
+          if (owners.length !== 1) throw new Error(owners.length ? "There is more than one Developer account: pass --email." : "There is no Developer account yet. Sign in once with the owner credentials of this build.");
+          email = owners[0].email;
+        }
+        const { recoverPlatformOwner } = await import("@/modules/identity");
+        const r = await recoverPlatformOwner(email);
+        console.log(json ? JSON.stringify(r) : `Developer account ${r.email} recovered.
+New password (shown once): ${r.password}
+Sign in and set up two-factor sign-in again.`);
+      } finally {
+        await platformDb.$disconnect();
+      }
+      return;
+    }
     default:
-      throw new Error("Commands: migrate [--status], new-key, backup <file>, verify <file>, restore <file>");
+      throw new Error("Commands: migrate [--status], new-key, backup <file>, verify <file>, restore <file>, recover-owner");
   }
 }
 

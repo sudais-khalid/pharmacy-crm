@@ -53,7 +53,7 @@ module.exports = {
       severity: "error",
       comment:
         "platformDb bypasses tenant isolation. Only cross-pharmacy code may use it: the platform module and console, " +
-        "login and session lookups, maintenance helpers, the worker, seed, scripts and tests.",
+        "login and session lookups, maintenance helpers, the worker, the ops command, seed, scripts and tests.",
       from: {
         pathNot: [
           "^src/modules/platform/",
@@ -62,6 +62,7 @@ module.exports = {
           "^src/instrumentation\\.ts$",
           "^src/lib/(rate-limit|idempotency|platform-db)\\.ts$",
           "^src/worker\\.ts$",
+          "^src/ops-cli\\.ts$",
           "^src/app/api/(auth|platform)/",
           "^src/app/\\(platform\\)/",
           "^(tests|prisma|scripts)/",

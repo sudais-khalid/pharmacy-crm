@@ -1,20 +1,27 @@
 "use client";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { Building2, LayoutDashboard, LogOut, ShieldCheck, Users } from "lucide-react";
+import { Building2, LayoutDashboard, LogOut, Monitor, ShieldCheck, Users } from "lucide-react";
 import { cn } from "@/components/ui";
 import { api } from "@/lib/client";
+import { getDesktop } from "@/lib/desktop-bridge";
 
 const NAV = [
   { href: "/platform", label: "Overview", icon: LayoutDashboard, exact: true },
   { href: "/platform/pharmacies", label: "Pharmacies", icon: Building2 },
   { href: "/platform/accounts", label: "Accounts", icon: Users },
 ];
+const DESKTOP_NAV = { href: "/platform/desktop", label: "This computer", icon: Monitor };
 
 /** Developer console frame: dark header so it is never mistaken for a pharmacy's own app. */
 export function ConsoleShell({ dev, children }: { dev: { name: string; email: string }; children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
+  // known only in the browser, after the first render
+  const [inDesktopApp, setInDesktopApp] = useState(false);
+  useEffect(() => setInDesktopApp(getDesktop() !== null), []);
+  const nav = inDesktopApp ? [...NAV, DESKTOP_NAV] : NAV;
 
   async function logout() {
     await api("/api/platform/auth/logout", { body: {} }).catch(() => {});
@@ -28,8 +35,8 @@ export function ConsoleShell({ dev, children }: { dev: { name: string; email: st
         <div className="mx-auto flex h-14 max-w-7xl items-center gap-6 px-4">
           <span className="flex items-center gap-2 font-semibold"><ShieldCheck className="h-5 w-5 text-brand-300" aria-hidden /> Developer console</span>
           <nav aria-label="Console" className="flex flex-1 items-center gap-1 overflow-x-auto">
-            {NAV.map((n) => {
-              const active = n.exact ? pathname === n.href : pathname.startsWith(n.href);
+            {nav.map((n) => {
+              const active = "exact" in n && n.exact ? pathname === n.href : pathname.startsWith(n.href);
               return (
                 <Link key={n.href} href={n.href} aria-current={active ? "page" : undefined}
                   className={cn("flex items-center gap-2 whitespace-nowrap rounded-lg px-3 py-1.5 text-sm", active ? "bg-slate-700 text-white" : "text-slate-300 hover:bg-slate-800")}>

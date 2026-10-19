@@ -21,6 +21,8 @@ const common = {
 };
 
 await build({ ...common, entryPoints: ["src/worker.ts"], outfile: "dist/worker.js" });
-await build({ ...common, entryPoints: ["src/ops-cli.ts"], outfile: "dist/ops.js" });
+// recover-owner loads the identity module, whose session helpers import next/headers (never called here);
+// Next stays external and comes from the same node_modules as the server
+await build({ ...common, entryPoints: ["src/ops-cli.ts"], outfile: "dist/ops.js", external: [...common.external, "next", "next/*"] });
 await build({ ...common, entryPoints: ["src/ops-lib.ts"], outfile: "dist/ops-lib.js" });
 console.log("built dist/worker.js, dist/ops.js and dist/ops-lib.js");

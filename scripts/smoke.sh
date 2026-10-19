@@ -74,6 +74,7 @@ if [ -n "$PLATFORM_OWNER_EMAIL" ] && [ -n "$PLATFORM_OWNER_PASSWORD" ]; then
   # codes are single use: wait until a new 30 s step starts
   next_step(){ S=$(python3 -c "import time;print(int(time.time())//30)"); while [ "$(python3 -c "import time;print(int(time.time())//30)")" = "$S" ]; do sleep 1; done; }
   ok "Console API needs a Developer session" "$(code $B/api/platform/auth/me)" 401
+  ok "Desktop controls need a Developer session" "$(code -X POST $B/api/platform/desktop/authorize -H 'content-type: application/json' -d '{"action":"backup"}')" 401
   ok "Staff session is not a Developer session" "$(code -b /tmp/smoke_admin.jar $B/api/platform/auth/me)" 401
   ok "Console page redirects without a Developer session" "$(code -b /tmp/smoke_admin.jar $B/platform)" 307
   ok "Developer wrong password rejected" "$(code -X POST $B/api/platform/auth/login -H 'content-type: application/json' -d "{\"email\":\"$PLATFORM_OWNER_EMAIL\",\"password\":\"wrong-password\"}")" 401
@@ -85,6 +86,8 @@ if [ -n "$PLATFORM_OWNER_EMAIL" ] && [ -n "$PLATFORM_OWNER_PASSWORD" ]; then
   CODES=$(curl -s -b /tmp/smoke_dev.jar -c /tmp/smoke_dev.jar -X POST $B/api/platform/auth/enrol -H 'content-type: application/json' -d "{\"code\":\"$(totp "$SECRET")\"}" | js "len(d['recoveryCodes'])")
   ok "Two-factor enrolled, recovery codes issued" "$CODES" 10
   ok "Developer session reaches the console" "$(code -b /tmp/smoke_dev.jar $B/platform)" 200
+  ok "Desktop controls do not exist on a server install" "$(code -b /tmp/smoke_dev.jar -X POST $B/api/platform/desktop/authorize -H 'content-type: application/json' -d '{"action":"backup"}')" 404
+  ok "Desktop page renders outside the desktop app" "$(code -b /tmp/smoke_dev.jar $B/platform/desktop)" 200
   ok "Developer session is not a staff session" "$(code -b /tmp/smoke_dev.jar $B/api/medicines)" 401
   SLUG="smoke-$(date +%s)"
   NEWP=$(curl -s -b /tmp/smoke_dev.jar -X POST $B/api/platform/pharmacies -H 'content-type: application/json' -H "Origin: $B" -d "{\"pharmacy\":{\"name\":\"Smoke Pharmacy\",\"slug\":\"$SLUG\"},\"plan\":{},\"features\":[\"ocr\"],\"admin\":{\"name\":\"Smoke Admin\",\"username\":\"smokeadmin\",\"email\":\"$SLUG@example.com\"},\"credentials\":\"invite\"}")

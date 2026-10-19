@@ -4,7 +4,7 @@ import { cpSync, mkdtempSync, rmSync, writeFileSync, mkdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Client } from "pg";
-import { applyMigrations, pendingMigrations, readMigrations } from "@/lib/migrations/runner";
+import { applyMigrations, migrationStatus, pendingMigrations, readMigrations } from "@/lib/migrations/runner";
 
 /** A throwaway database next to the test database. */
 const base = new URL(process.env.DATABASE_URL!);
@@ -49,6 +49,16 @@ describe("built-in migration runner", () => {
 
     const rows = (await sql(target, `SELECT migration_name, checksum, applied_steps_count FROM "_prisma_migrations" ORDER BY migration_name`)).rows;
     expect(rows.map((r) => [r.migration_name, r.checksum, r.applied_steps_count])).toEqual(files.map((f) => [f.name, f.checksum, 1]));
+
+    // an app that is one migration behind sees the database as newer than itself
+    const dir = mkdtempSync(join(tmpdir(), "migr-old-"));
+    try {
+      cpSync(MIGRATIONS, dir, { recursive: true });
+      rmSync(join(dir, files[files.length - 1].name), { recursive: true });
+      expect(await migrationStatus(target, dir)).toEqual({ pending: [], unknown: [files[files.length - 1].name] });
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
 
     // Prisma itself agrees the database is up to date
     const status = execSync("npx prisma migrate status", { env: { ...process.env, DATABASE_URL: target }, encoding: "utf8" });
