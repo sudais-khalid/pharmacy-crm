@@ -1,6 +1,7 @@
 "use client";
 import { useCallback, useEffect, useState } from "react";
-import { FolderOpen, HardDrive, History, RotateCcw, Save, Usb } from "lucide-react";
+import QRCode from "qrcode";
+import { FolderOpen, HardDrive, History, RotateCcw, Save, Usb, Wifi } from "lucide-react";
 import { Badge, Button, Card, EmptyState, ErrorBox, Field, Input, Modal, PageHeader, Spinner, TableWrap, useToast } from "@/components/ui";
 import { formatDateTime } from "@/lib/client";
 import { DesktopError, desktopCall, formatBytes, getDesktop, type DesktopBackup, type DesktopStatus } from "@/lib/desktop-bridge";
@@ -100,6 +101,9 @@ export default function DesktopPage() {
             </Card>
           </div>
 
+          <ShopNetwork lan={status.lan} busy={busy === "lan"} disabled={Boolean(busy)}
+            onChange={(enabled) => run("lan", () => desktopCall(desktop.setLan(enabled)), enabled ? "Shop network access is on" : "Shop network access is off")} />
+
           <Card>
             <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border p-4">
               <h2 className="font-semibold">Restore</h2>
@@ -126,6 +130,45 @@ export default function DesktopPage() {
       )}
       {target && <RestoreDialog target={target} onClose={() => setTarget(null)} />}
     </>
+  );
+}
+
+/** Lets tablets and other PCs on the shop network open the app; the address is shown as a QR code. */
+function ShopNetwork({ lan, busy, disabled, onChange }: { lan: DesktopStatus["lan"]; busy: boolean; disabled: boolean; onChange: (enabled: boolean) => void }) {
+  const [codes, setCodes] = useState<Record<string, string>>({});
+  useEffect(() => {
+    let live = true;
+    Promise.all(lan.urls.map(async (u) => [u, await QRCode.toString(u, { type: "svg", margin: 1 })] as const)).then((pairs) => live && setCodes(Object.fromEntries(pairs)));
+    return () => {
+      live = false;
+    };
+  }, [lan.urls]);
+  return (
+    <Card className="p-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h2 className="mb-1 flex items-center gap-2 font-semibold"><Wifi className="h-4 w-4 text-primary" aria-hidden /> Shop network</h2>
+          <p className="max-w-2xl text-sm text-fg-muted">{lan.enabled
+            ? "Tablets and other computers on this shop's network can open Pharmacy CRM at the address below, with their own staff sign-in."
+            : "Only this computer can open Pharmacy CRM. Turn this on to let tablets and other computers on the shop's Wi-Fi use it too."}</p>
+        </div>
+        <Button size="sm" variant={lan.enabled ? "secondary" : "primary"} loading={busy} disabled={disabled} onClick={() => onChange(!lan.enabled)}>{lan.enabled ? "Turn off" : "Turn on"}</Button>
+      </div>
+      {lan.enabled && (
+        <>
+          {lan.firewall === "missing" && <p className="mt-3 text-sm text-danger">Windows Firewall does not allow the connection yet. Turn access off and on again, and accept the administrator prompt.</p>}
+          {!lan.urls.length && <p className="mt-3 text-sm text-danger">This computer is not connected to a network.</p>}
+          <div className="mt-3 flex flex-wrap gap-4">
+            {lan.urls.map((u) => (
+              <div key={u} className="flex items-center gap-3 rounded-lg border border-border p-3">
+                {codes[u] && <div className="h-28 w-28 rounded bg-white p-1" role="img" aria-label={`QR code for ${u}`} dangerouslySetInnerHTML={{ __html: codes[u] }} />}
+                <span className="font-mono text-sm">{u}</span>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+    </Card>
   );
 }
 

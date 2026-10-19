@@ -17,7 +17,9 @@ export const BLOCKED_STATUSES: string[] = ["SUSPENDED", "DEACTIVATED"];
 const cookieOptions = (realm: SessionRealm) => ({
   httpOnly: true,
   sameSite: "lax" as const,
-  secure: process.env.NODE_ENV === "production",
+  // The desktop app serves plain http on the shop network (tablets at http://192.168.x.x), where browsers
+  // drop Secure cookies; it sets SESSION_COOKIE_SECURE=0. Servers behind HTTPS keep the default.
+  secure: process.env.NODE_ENV === "production" && process.env.SESSION_COOKIE_SECURE !== "0",
   path: "/",
   maxAge: SESSION_MAX_AGE_S[realm],
 });

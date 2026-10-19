@@ -14,7 +14,10 @@ export type DesktopStatus = {
   lastBackup: { at: string; reason: string; file: string; size: number; mirror: { ok: boolean; dir: string; error?: string } | null } | null;
   lastBackupError: { at: string; reason: string; error: string } | null;
   backups: DesktopBackup[];
+  lan: DesktopLan;
 };
+/** Shop network access: off, the server listens on 127.0.0.1 only; on, also on the PC's network addresses. */
+export type DesktopLan = { enabled: boolean; port: number; urls: string[]; firewall: "allowed" | "missing" | "unknown" };
 type Result<T> = { ok: true; data: T } | { ok: false; error: string; needsKey?: boolean; fields?: Record<string, string> | null };
 
 export type DesktopBridge = {
@@ -26,6 +29,7 @@ export type DesktopBridge = {
   pickBackupFile(): Promise<Result<{ id: string; name: string; createdAt: string; size: number; needsKey: boolean } | null>>;
   restore(id: string, recoveryKey: string | null, code: string): Promise<Result<{ createdAt: string; migratedAfter: number }>>;
   openFolder(which: "backups" | "logs" | "data" | "mirror"): Promise<Result<null>>;
+  setLan(enabled: boolean): Promise<Result<DesktopLan>>;
   onProgress(fn: (text: string) => void): () => void;
 };
 
