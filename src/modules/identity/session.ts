@@ -4,6 +4,7 @@ import { SESSION_COOKIES, SESSION_MAX_AGE_S, signSession, verifySession, needsRe
 import type { Permission } from "./permissions";
 import { roleSelect, sessionRole, type SessionRole } from "./roles";
 import { loadSupportSession, type SupportInfo } from "./support";
+import { pendingSecondFactor } from "./staff-mfa";
 
 export type SessionUser = {
   id: string; name: string; email: string; username: string; pharmacyId: string; mustChangePassword: boolean;
@@ -12,6 +13,8 @@ export type SessionUser = {
   permissions: Permission[];
   /** Set when the Developer is working inside the pharmacy (platform support). */
   support?: SupportInfo;
+  /** Still to do after the password: enter an authenticator code, or set one up (pharmacy requires it). */
+  secondFactor?: "verify" | "enrol" | null;
 };
 export type PlatformSessionUser = { id: string; name: string; email: string; mfa: boolean; totpEnabled: boolean; sessionVersion: number };
 
@@ -42,8 +45,9 @@ export async function clearSession(realm: SessionRealm) {
 
 // ---------------------------------------------------------------- staff realm
 
-export async function setStaffSession(user: { id: string; pharmacyId: string; sessionVersion: number }) {
-  await writeToken("staff", await signSession("staff", { sub: user.id, pid: user.pharmacyId, sv: user.sessionVersion }));
+/** mfa: the second factor was entered in this session (it only matters for accounts that use one). */
+export async function setStaffSession(user: { id: string; pharmacyId: string; sessionVersion: number }, mfa = false) {
+  await writeToken("staff", await signSession("staff", { sub: user.id, pid: user.pharmacyId, sv: user.sessionVersion, mfa }));
 }
 
 /**
@@ -51,16 +55,17 @@ export async function setStaffSession(user: { id: string; pharmacyId: string; se
  * deactivation, a role change, a password reset or a forced logout (all bump sessionVersion) end the
  * session at once. System accounts never have staff sessions.
  */
-export async function loadStaffSession(session: VerifiedSession | null): Promise<(SessionUser & { sessionVersion: number }) | null> {
+export async function loadStaffSession(session: VerifiedSession | null): Promise<(SessionUser & { sessionVersion: number; mfa: boolean }) | null> {
   if (!session?.pid) return null;
   const user = await platformDb.user.findUnique({
     where: { id: session.sub },
-    select: { id: true, name: true, email: true, username: true, role: { select: roleSelect }, active: true, isSystem: true, pharmacyId: true, sessionVersion: true, mustChangePassword: true, pharmacy: { select: { status: true } } },
+    select: { id: true, name: true, email: true, username: true, role: { select: roleSelect }, active: true, isSystem: true, pharmacyId: true, sessionVersion: true, mustChangePassword: true, totpEnabledAt: true, pharmacy: { select: { status: true, settings: { select: { requireStaffTotp: true } } } } },
   });
   if (!user || !user.active || user.isSystem) return null;
   if (user.pharmacyId !== session.pid || user.sessionVersion !== session.sv) return null;
   if (BLOCKED_STATUSES.includes(user.pharmacy.status)) return null;
-  return { id: user.id, name: user.name, email: user.email, username: user.username, ...sessionRole(user.role), pharmacyId: user.pharmacyId, mustChangePassword: user.mustChangePassword, sessionVersion: user.sessionVersion };
+  return { id: user.id, name: user.name, email: user.email, username: user.username, ...sessionRole(user.role), pharmacyId: user.pharmacyId, mustChangePassword: user.mustChangePassword, sessionVersion: user.sessionVersion,
+    secondFactor: pendingSecondFactor(user, user.pharmacy.settings?.requireStaffTotp ?? false, session.mfa === true), mfa: session.mfa === true };
 }
 
 /**
@@ -77,8 +82,8 @@ export async function getSessionUser(opts: { refresh?: boolean } = {}): Promise<
   const session = await verifySession("staff", await readToken("staff"));
   const user = await loadStaffSession(session);
   if (!user) return null;
-  if (opts.refresh && session && needsRefresh(session)) await setStaffSession(user);
-  const { sessionVersion: _sv, ...rest } = user;
+  if (opts.refresh && session && needsRefresh(session)) await setStaffSession(user, user.mfa);
+  const { sessionVersion: _sv, mfa: _mfa, ...rest } = user;
   return rest;
 }
 

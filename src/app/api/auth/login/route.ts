@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
 import { platformDb } from "@/lib/platform-db";
-import { BLOCKED_STATUSES, roleSelect, staffLoginSchema, setStaffSession } from "@/modules/identity";
+import { BLOCKED_STATUSES, pendingSecondFactor, roleSelect, staffLoginSchema, setStaffSession } from "@/modules/identity";
 import { errorResponse, readJson } from "@/lib/api";
 import { AppError } from "@/lib/errors";
 import { isLimited, recordHit, clearBucket } from "@/lib/rate-limit";
@@ -31,7 +31,7 @@ export async function POST(req: NextRequest) {
 
     const user = await platformDb.user.findFirst({
       where: { pharmacy: { slug }, isSystem: false, OR: [{ username }, { email: username }] },
-      include: { pharmacy: { select: { status: true } }, role: { select: roleSelect } },
+      include: { pharmacy: { select: { status: true, settings: { select: { requireStaffTotp: true } } } }, role: { select: roleSelect } },
     });
     const ok = await bcrypt.compare(password, user?.passwordHash ?? DUMMY_HASH);
     if (!user || !ok) {
@@ -47,7 +47,9 @@ export async function POST(req: NextRequest) {
     await clearBucket(bucket);
     await platformDb.user.update({ where: { id: user.id }, data: { lastLoginAt: new Date() } });
     await setStaffSession(user);
-    return NextResponse.json({ user: { id: user.id, name: user.name, username: user.username, role: user.role.name }, mustChangePassword: user.mustChangePassword });
+    // with two-factor sign-in the session stays "pending" until /api/auth/2fa/verify (or set-up)
+    const secondFactor = pendingSecondFactor(user, user.pharmacy.settings?.requireStaffTotp ?? false, false);
+    return NextResponse.json({ user: { id: user.id, name: user.name, username: user.username, role: user.role.name }, mustChangePassword: user.mustChangePassword, secondFactor });
   } catch (e) {
     return errorResponse(e);
   }

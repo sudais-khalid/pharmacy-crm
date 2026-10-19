@@ -7,6 +7,8 @@ export const dynamic = "force-dynamic";
 export default async function Home() {
   const user = await getSessionUser();
   if (!user) redirect("/login");
+  if (user.secondFactor === "verify") redirect("/account/two-factor");
   if (user.mustChangePassword && !user.support) redirect("/account/password");
+  if (user.secondFactor === "enrol") redirect("/account/two-factor");
   redirect(landingFor(user.role, user.permissions));
 }

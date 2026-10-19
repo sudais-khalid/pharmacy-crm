@@ -1,6 +1,6 @@
 "use client";
 import { useState } from "react";
-import { Check, Copy, KeyRound, Link2, LogOut, Pencil, Plus, Power } from "lucide-react";
+import { Check, Copy, KeyRound, Link2, LogOut, Pencil, Plus, Power, ShieldOff } from "lucide-react";
 import { Badge, Button, Card, ConfirmDialog, EmptyState, ErrorBox, Field, Input, Modal, PageHeader, Select, TableSkeleton, TableWrap, useToast } from "@/components/ui";
 import { useApp } from "@/components/app-context";
 import { ApiError, api, formatDateTime, useApi } from "@/lib/client";
@@ -8,11 +8,11 @@ import { ApiError, api, formatDateTime, useApi } from "@/lib/client";
 type Role = { id: string; name: string; key: string; system: boolean; description: string | null; assignable: boolean };
 type Staff = {
   id: string; name: string; username: string; email: string; active: boolean; mustChangePassword: boolean; lastLoginAt: string | null;
-  role: { id: string; key: string; name: string; system: boolean }; manageable: boolean;
+  role: { id: string; key: string; name: string; system: boolean }; manageable: boolean; totpEnabledAt: string | null;
 };
-type List = { seats: { used: number; max: number }; items: Staff[] };
+type List = { seats: { used: number; max: number }; requireStaffTotp: boolean; items: Staff[] };
 type Secret = { title: string; label: string; value: string; note: string };
-type Pending = { kind: "deactivate" | "activate" | "logout" | "temporary-password"; user: Staff } | null;
+type Pending = { kind: "deactivate" | "activate" | "logout" | "temporary-password" | "reset-2fa"; user: Staff } | null;
 
 const blank = { name: "", email: "", username: "", roleId: "", credentials: "invite" as "invite" | "password" };
 
@@ -68,6 +68,9 @@ export default function UsersPage() {
       if (kind === "activate" || kind === "deactivate") {
         await api(`/api/users/${u.id}`, { method: "PUT", body: { active: kind === "activate" } });
         toast.success(kind === "activate" ? "Account activated" : "Account deactivated");
+      } else if (kind === "reset-2fa") {
+        await api(`/api/users/${u.id}/reset-2fa`, { body: {} });
+        toast.success(`${u.name} can set up two-factor sign-in again`);
       } else if (kind === "logout") {
         await api(`/api/users/${u.id}/logout`, { body: {} });
         toast.success(`${u.name} is signed out everywhere`);
@@ -96,6 +99,7 @@ export default function UsersPage() {
     deactivate: ["Deactivate account", "They are signed out at once and cannot sign in until the account is activated again.", "Deactivate"],
     activate: ["Activate account", "They can sign in again with their current password.", "Activate"],
     logout: ["Sign out everywhere", "Every open session of this account ends on its next request.", "Sign out"],
+    "reset-2fa": ["Reset two-factor sign-in", "For a lost or replaced phone: their authenticator is removed and their sessions end. They set it up again at the next sign-in if your pharmacy requires it.", "Reset"],
     "temporary-password": ["Set a temporary password", "Their current password stops working and their sessions end. You will see the new password once.", "Set password"],
   };
 
@@ -103,6 +107,18 @@ export default function UsersPage() {
     <>
       <PageHeader title="Users" subtitle={data ? `Staff accounts and their roles. ${data.seats.used} of ${data.seats.max} active accounts used.` : "Staff accounts and their roles."}
         actions={<Button onClick={() => open("new")} disabled={full || !assignable.length} title={full ? "The plan's account limit is reached" : "Alt+N"} data-shortcut="new" aria-keyshortcuts="Alt+N"><Plus className="h-4 w-4" aria-hidden /> Add user</Button>} />
+      {data && (
+        <label className="mb-3 flex items-center gap-2 text-sm">
+          <input type="checkbox" checked={data.requireStaffTotp} onChange={async (e) => {
+            try {
+              await api("/api/users/security", { method: "PUT", body: { requireStaffTotp: e.target.checked } });
+              toast.success(e.target.checked ? "Everyone will need an authenticator code to sign in" : "Two-factor sign-in is now optional");
+              reload();
+            } catch (err) { toast.error((err as Error).message); }
+          }} />
+          Require two-factor sign-in (authenticator app) for every staff account
+        </label>
+      )}
       <Card>
         {error ? <ErrorBox message={error} onRetry={reload} /> : loading && !data ? <TableSkeleton /> : !data?.items.length ? <EmptyState title="No staff accounts" /> : (
           <TableWrap>
@@ -112,7 +128,7 @@ export default function UsersPage() {
                 <tr key={u.id} className="border-b border-border/60">
                   <td className="td"><span className="font-medium">{u.name}</span>{u.id === me.id && <span className="ml-2 text-xs text-fg-muted">(you)</span>}<span className="block text-xs text-fg-muted"><span className="font-mono">{u.username}</span> · {u.email}</span></td>
                   <td className="td"><Badge tone={u.role.key === "PHARMACY_ADMIN" ? "blue" : "slate"}>{u.role.name}</Badge></td>
-                  <td className="td"><span className="flex flex-wrap gap-1">{u.active ? <Badge tone="green">Active</Badge> : <Badge>Inactive</Badge>}{u.mustChangePassword && <Badge tone="amber">Must change password</Badge>}</span></td>
+                  <td className="td"><span className="flex flex-wrap gap-1">{u.active ? <Badge tone="green">Active</Badge> : <Badge>Inactive</Badge>}{u.mustChangePassword && <Badge tone="amber">Must change password</Badge>}{u.totpEnabledAt && <Badge tone="blue">2FA</Badge>}</span></td>
                   <td className="td whitespace-nowrap">{u.lastLoginAt ? formatDateTime(u.lastLoginAt) : "Never"}</td>
                   <td className="td">
                     {(u.manageable || u.id === me.id) && (
@@ -121,6 +137,7 @@ export default function UsersPage() {
                         {u.manageable && <>
                           <Button size="sm" variant="ghost" title="Send a password reset link" aria-label={`Reset link for ${u.name}`} onClick={() => resetLink(u)}><Link2 className="h-4 w-4" /></Button>
                           <Button size="sm" variant="ghost" title="Set a temporary password" aria-label={`Temporary password for ${u.name}`} onClick={() => setPending({ kind: "temporary-password", user: u })}><KeyRound className="h-4 w-4" /></Button>
+                          {u.totpEnabledAt && <Button size="sm" variant="ghost" title="Reset two-factor sign-in" aria-label={`Reset two-factor sign-in for ${u.name}`} onClick={() => setPending({ kind: "reset-2fa", user: u })}><ShieldOff className="h-4 w-4" /></Button>}
                           <Button size="sm" variant="ghost" title="Sign out everywhere" aria-label={`Sign ${u.name} out everywhere`} onClick={() => setPending({ kind: "logout", user: u })}><LogOut className="h-4 w-4" /></Button>
                           <Button size="sm" variant="ghost" title={u.active ? "Deactivate" : "Activate"} aria-label={`${u.active ? "Deactivate" : "Activate"} ${u.name}`} onClick={() => setPending({ kind: u.active ? "deactivate" : "activate", user: u })}>
                             <Power className={u.active ? "h-4 w-4 text-danger" : "h-4 w-4 text-success"} />

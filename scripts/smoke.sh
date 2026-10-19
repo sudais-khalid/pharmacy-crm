@@ -47,6 +47,13 @@ ok "No logo yet on the sign-in page" "$(code $B/api/auth/pharmacy/demo/logo)" 40
 ok "Admin reads the activity history" "$(curl -s -b /tmp/smoke_admin.jar "$B/api/audit?entity=Pharmacy" | js "d['items'][0]['action']")" pharmacy.profile.update
 ok "Cashier cannot read the activity history" "$(code -b /tmp/smoke_cashier.jar $B/api/audit)" 403
 for p in /branding /activity /roles /users; do ok "Page $p renders" "$(code -b /tmp/smoke_admin.jar $B$p)" 200; done
+FORGOT_A=$(curl -s -X POST $B/api/auth/forgot -H 'content-type: application/json' -d '{"pharmacy":"demo","username":"cashier"}' | js "d['message']")
+FORGOT_B=$(curl -s -X POST $B/api/auth/forgot -H 'content-type: application/json' -d '{"pharmacy":"demo","username":"nobody-here"}' | js "d['message']")
+ok "Forgot password answers the same for unknown accounts" "$([ "$FORGOT_A" = "$FORGOT_B" ] && [ -n "$FORGOT_A" ] && echo same)" same
+ok "The reset request reaches the admin" "$(curl -s -b /tmp/smoke_admin.jar $B/api/notifications | js "any('asked for a new password' in n['title'] for n in d['items'])")" True
+ok "Cashiers do not see staff notifications" "$(curl -s -b /tmp/smoke_cashier.jar $B/api/notifications | js "len(d['items'])")" 0
+ok "Two-factor status for staff" "$(curl -s -b /tmp/smoke_cashier.jar $B/api/auth/2fa | js "d['enabled']")" False
+ok "Two-factor page renders" "$(code -b /tmp/smoke_cashier.jar $B/account/two-factor)" 200
 
 MID=$(curl -s -b /tmp/smoke_admin.jar "$B/api/medicines?q=Panadol" | js "d['items'][0]['id']")
 ok "Cashier cannot delete medicine" "$(code -b /tmp/smoke_cashier.jar -X DELETE $B/api/medicines/$MID)" 403

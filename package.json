@@ -23,7 +23,8 @@
     "postinstall": "prisma generate",
     "test:smoke": "bash scripts/smoke.sh",
     "platform:recover-owner": "tsx scripts/recover-owner.ts",
-    "test:isolation": "node scripts/isolation-check.mjs"
+    "test:isolation": "node scripts/isolation-check.mjs",
+    "db:check:local": "node scripts/db-check-local.mjs"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"

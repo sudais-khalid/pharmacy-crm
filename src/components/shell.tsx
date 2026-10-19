@@ -6,6 +6,7 @@ import { useTheme } from "next-themes";
 import { LogOut, Menu, Moon, Pill, Sun, X } from "lucide-react";
 import { AppContext, type AppCtx } from "./app-context";
 import { MnemonicLabel, ShortcutHelpButton, ShortcutProvider } from "./shortcuts";
+import { NotificationBell } from "./notification-bell";
 import { cn } from "./ui";
 import { api } from "@/lib/client";
 import { NAV_GROUPS, STAFF_NAV } from "@/lib/navigation";
@@ -91,12 +92,13 @@ export function Shell({ ctx, children }: { ctx: AppCtx; children: React.ReactNod
           <button onClick={() => setOpen(true)} aria-label="Open menu" className="rounded p-2 hover:bg-slate-100 dark:hover:bg-slate-800 lg:hidden"><Menu className="h-5 w-5" /></button>
           <div className="hidden text-sm text-slate-500 lg:block">{new Date().toLocaleDateString("en-GB", { weekday: "long", day: "2-digit", month: "long", year: "numeric" })}</div>
           <div className="flex items-center gap-2">
+            {!ctx.support && <NotificationBell className="rounded-lg p-2 text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800" />}
             <ShortcutHelpButton className="hidden rounded-lg p-2 text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800 sm:block" />
             <button onClick={() => setTheme(resolvedTheme === "dark" ? "light" : "dark")} aria-label="Toggle dark mode" className="rounded-lg p-2 text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800">
               {mounted && resolvedTheme === "dark" ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
             </button>
             <div className="hidden text-right leading-tight sm:block">
-              <p className="text-sm font-medium">{ctx.user.name}</p>
+              <p className="text-sm font-medium">{ctx.support ? ctx.user.name : <Link href="/account/two-factor" className="hover:underline" title="Your sign-in security">{ctx.user.name}</Link>}</p>
               <p className="text-xs text-slate-500">{ctx.user.role.name}</p>
             </div>
             <button onClick={ctx.support ? endSupport : logout} className="inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800">

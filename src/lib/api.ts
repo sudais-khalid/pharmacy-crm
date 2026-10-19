@@ -25,6 +25,8 @@ type RouteOptions = {
   idempotent?: boolean;
   /** Reachable while the account still has to replace a temporary password (only the change itself). */
   allowPasswordChange?: boolean;
+  /** Reachable while the second factor is still to be entered or set up (the two-factor endpoints). */
+  allowSecondFactor?: boolean;
 };
 
 /** Client address and user agent for the audit log. */
@@ -49,8 +51,13 @@ export function route(permission: Permission | null, fn: (ctx: Ctx) => Promise<u
       assertSameOrigin(req);
       const user = await getSessionUser({ refresh: true });
       if (!user) throw new AppError(401, "You are not signed in.");
+      // a second factor first, then a temporary password, then (if the pharmacy requires it) setting one up
+      if (user.secondFactor === "verify" && !options.allowSecondFactor) throw new AppError(403, "Enter the code from your authenticator app first.", { code: "SECOND_FACTOR_REQUIRED" });
       if (user.mustChangePassword && !options.allowPasswordChange) {
         throw new AppError(403, "Choose a new password before continuing.", { code: "PASSWORD_CHANGE_REQUIRED" });
+      }
+      if (user.secondFactor === "enrol" && !options.allowSecondFactor && !options.allowPasswordChange) {
+        throw new AppError(403, "Your pharmacy requires two-factor sign-in. Set it up to continue.", { code: "SECOND_FACTOR_SETUP_REQUIRED" });
       }
       if (permission && !can(user, permission)) throw new AppError(403, "You do not have permission to do this.");
       const svc = serviceContext(user, user.pharmacyId, requestMeta(req));

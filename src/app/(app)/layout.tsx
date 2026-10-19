@@ -10,7 +10,9 @@ export const dynamic = "force-dynamic";
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const user = await getSessionUser();
   if (!user) redirect("/login");
+  if (user.secondFactor === "verify") redirect("/account/two-factor");
   if (user.mustChangePassword && !user.support) redirect("/account/password");
+  if (user.secondFactor === "enrol") redirect("/account/two-factor");
   const { settings, status } = await tenantTransaction(user.pharmacyId, async (tx) => ({
     settings: await getSettings(tx, user.pharmacyId),
     status: (await tx.pharmacy.findUniqueOrThrow({ where: { id: user.pharmacyId }, select: { status: true } })).status,

@@ -1,5 +1,5 @@
 import bcrypt from "bcryptjs";
-import { createHash, randomBytes } from "node:crypto";
+import { randomBytes } from "node:crypto";
 import QRCode from "qrcode";
 import { platformDb } from "@/lib/platform-db";
 import { AppError } from "@/lib/errors";
@@ -7,6 +7,7 @@ import { seal, open } from "@/lib/secret-box";
 import { newTotpSecret, otpauthUri, verifyTotp } from "@/lib/totp";
 import { isLimited, recordHit, clearBucket } from "@/lib/rate-limit";
 import { audit } from "@/modules/platform";
+import { hashRecoveryCode, newRecoveryCodes } from "./second-factor";
 
 /**
  * The Developer (platform owner) account: bootstrap from server configuration, password and mandatory
@@ -14,7 +15,6 @@ import { audit } from "@/modules/platform";
  * or delete a PlatformUser (docs/plan/02-architecture.md, section 5.4).
  */
 const BCRYPT_COST = 12;
-const RECOVERY_CODES = 10;
 const WINDOW_MS = 15 * 60 * 1000;
 const DUMMY_HASH = "$2a$12$CwTycUXWue0Thq9StjUM0uJ8e4PzBzAGOr2lCzPzkXY0bR0wC8o2S";
 
@@ -79,15 +79,7 @@ export async function startTotpEnrolment(devId: string) {
   return { secret: secret.replace(/(.{4})/g, "$1 ").trim(), uri, qrSvg };
 }
 
-const hashCode = (code: string) => createHash("sha256").update(code.replace(/[\s-]/g, "").toUpperCase()).digest("hex");
-
-function newRecoveryCodes(): string[] {
-  const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
-  return Array.from({ length: RECOVERY_CODES }, () => {
-    const raw = Array.from(randomBytes(10), (b) => alphabet[b % alphabet.length]).join("");
-    return `${raw.slice(0, 5)}-${raw.slice(5)}`;
-  });
-}
+const hashCode = hashRecoveryCode;
 
 /** Finishes enrolment with a first code; returns the recovery codes, shown once. */
 export async function confirmTotpEnrolment(devId: string, code: string, meta: Meta = {}) {

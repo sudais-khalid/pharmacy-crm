@@ -9,4 +9,5 @@ export { loginSchema, staffLoginSchema, userCreateSchema, userUpdateSchema, user
 export { listStaff, createUser, updateUser, forceLogout, issueStaffReset, setTemporaryPassword, usernameFromEmail, type UserCreateInput, type UserUpdateInput } from "./service";
 export { ensurePlatformOwner, reauthenticateDeveloper, platformPasswordLogin, startTotpEnrolment, confirmTotpEnrolment, verifySecondFactor, recoverPlatformOwner } from "./platform-auth";
 export { issueStaffToken, inspectStaffToken, redeemStaffToken, changeOwnPassword, checkNewPassword, temporaryPassword, type TokenPurpose, type Issuer } from "./tokens";
+export { pendingSecondFactor, startStaffEnrolment, confirmStaffEnrolment, verifyStaffSecondFactor, disableOwnSecondFactor, resetStaffSecondFactor, setStaffTotpRequired } from "./staff-mfa";
 export { startSupportSession, endSupportSession, loadSupportSession, ensureSupportAccount, SUPPORT_USERNAME, type SupportInfo } from "./support";

@@ -2,7 +2,7 @@ import bcrypt from "bcryptjs";
 import { runInTx } from "@/lib/db";
 import { AppError } from "@/lib/errors";
 import type { Tx } from "@/lib/prisma";
-import { audit } from "@/modules/platform";
+import { audit, resolveNotifications } from "@/modules/platform";
 import type { ServiceContext } from "./context";
 import { ADMIN_ROLE_ID, missingPermissions, rolePermissions } from "./permissions";
 import { roleSelect } from "./roles";
@@ -15,7 +15,7 @@ import { issueStaffToken, temporaryPassword } from "./tokens";
  */
 const BCRYPT_COST = 10;
 export const staffSelect = {
-  id: true, name: true, username: true, email: true, active: true, mustChangePassword: true, lastLoginAt: true, createdAt: true,
+  id: true, name: true, username: true, email: true, active: true, mustChangePassword: true, lastLoginAt: true, createdAt: true, totpEnabledAt: true,
   role: { select: { id: true, key: true, name: true, system: true } },
 } as const;
 
@@ -75,10 +75,11 @@ export async function listStaff(ctx: ServiceContext) {
   return runInTx(ctx, async (tx) => {
     const [users, pharmacy] = await Promise.all([
       tx.user.findMany({ where: { isSystem: false }, orderBy: [{ active: "desc" }, { name: "asc" }], select: { ...staffSelect, role: { select: roleSelect } } }),
-      tx.pharmacy.findUniqueOrThrow({ where: { id: ctx.pharmacyId }, select: { maxUsers: true } }),
+      tx.pharmacy.findUniqueOrThrow({ where: { id: ctx.pharmacyId }, select: { maxUsers: true, settings: { select: { requireStaffTotp: true } } } }),
     ]);
     return {
       seats: { used: users.filter((u) => u.active).length, max: pharmacy.maxUsers },
+      requireStaffTotp: pharmacy.settings?.requireStaffTotp ?? false,
       items: users.map(({ role, ...u }) => ({
         ...u,
         role: { id: role.id, key: role.key, name: role.name, system: role.system },
@@ -155,7 +156,10 @@ export async function forceLogout(ctx: ServiceContext, id: string) {
 
 /** A password reset link for a staff member (shown once to the person issuing it). */
 export async function issueStaffReset(ctx: ServiceContext, id: string) {
-  await runInTx(ctx, (tx) => manageable(ctx, tx, id));
+  await runInTx(ctx, async (tx) => {
+    await manageable(ctx, tx, id);
+    await resolveNotifications(tx, ctx.pharmacyId, [`reset-request:${id}`]);
+  });
   const link = await issueStaffToken(id, "RESET", { realm: ctx.realm ?? "STAFF", id: ctx.auditActorId ?? ctx.actor.id, meta: ctx.meta });
   return { path: link.path, expiresAt: link.expiresAt };
 }
@@ -167,6 +171,7 @@ export async function setTemporaryPassword(ctx: ServiceContext, id: string) {
   return runInTx(ctx, async (tx) => {
     await manageable(ctx, tx, id);
     await tx.user.update({ where: { id }, data: { passwordHash, mustChangePassword: true, sessionVersion: { increment: 1 } } });
+    await resolveNotifications(tx, ctx.pharmacyId, [`reset-request:${id}`]);
     await audit(tx, ctx, { action: "user.password.temporary", entity: "User", entityId: id });
     return { password };
   });

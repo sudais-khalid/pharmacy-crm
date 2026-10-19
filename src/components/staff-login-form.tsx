@@ -21,14 +21,15 @@ export function StaffLoginForm({ pharmacy, onChangePharmacy }: { pharmacy: { slu
     setLoading(true);
     setError("");
     try {
-      const r = await api<{ mustChangePassword: boolean }>("/api/auth/login", { body: { pharmacy: pharmacy.slug, username, password } });
+      const r = await api<{ mustChangePassword: boolean; secondFactor: "verify" | "enrol" | null }>("/api/auth/login", { body: { pharmacy: pharmacy.slug, username, password } });
       try {
         localStorage.setItem(REMEMBERED_PHARMACY, pharmacy.slug);
       } catch {
         // storage can be unavailable (private mode); remembering is only a convenience
       }
       const next = params.get("next");
-      router.replace(r.mustChangePassword ? "/account/password" : next && next.startsWith("/") && !next.startsWith("//") ? next : "/home");
+      // the code first; a temporary password is replaced next; then (if required) the authenticator is set up
+      router.replace(r.secondFactor === "verify" ? "/account/two-factor" : r.mustChangePassword ? "/account/password" : r.secondFactor === "enrol" ? "/account/two-factor" : next && next.startsWith("/") && !next.startsWith("//") ? next : "/home");
       router.refresh();
     } catch (err) {
       setError((err as Error).message);
@@ -54,10 +55,39 @@ export function StaffLoginForm({ pharmacy, onChangePharmacy }: { pharmacy: { slu
           {error && <p role="alert" className="rounded-lg bg-red-50 p-2.5 text-sm text-red-700 dark:bg-red-950 dark:text-red-300">{error}</p>}
           <Button type="submit" className="w-full" loading={loading}>Sign in</Button>
         </form>
+        <ForgotPassword slug={pharmacy.slug} username={username} />
         {onChangePharmacy && (
           <button type="button" onClick={onChangePharmacy} className="mt-4 w-full text-center text-sm text-primary hover:underline">Not {pharmacy.name}? Change pharmacy</button>
         )}
       </Card>
     </main>
+  );
+}
+
+/** "Forgot password?": tells the pharmacy's admins, who send a reset link or a temporary password (task 3.5). */
+function ForgotPassword({ slug, username }: { slug: string; username: string }) {
+  const [open, setOpen] = useState(false);
+  const [name, setName] = useState(username);
+  const [answer, setAnswer] = useState("");
+  const [busy, setBusy] = useState(false);
+  if (!open) return <button type="button" onClick={() => { setName(username); setOpen(true); }} className="mt-3 w-full text-center text-sm text-primary hover:underline">Forgot password?</button>;
+  return (
+    <form className="mt-4 space-y-3 border-t border-border pt-4" onSubmit={async (e) => {
+      e.preventDefault();
+      setBusy(true);
+      try {
+        setAnswer((await api<{ message: string }>("/api/auth/forgot", { body: { pharmacy: slug, username: name } })).message);
+      } catch (err) {
+        setAnswer((err as Error).message);
+      } finally {
+        setBusy(false);
+      }
+    }}>
+      {answer ? <p role="status" className="text-sm">{answer}</p> : <>
+        <p className="text-sm text-fg-muted">Your pharmacy&apos;s admin will be told and can give you a new way to sign in.</p>
+        <Field label="Your username"><Input value={name} onChange={(e) => setName(e.target.value)} autoCapitalize="none" required /></Field>
+        <Button type="submit" variant="secondary" className="w-full" loading={busy}>Tell my admin</Button>
+      </>}
+    </form>
   );
 }

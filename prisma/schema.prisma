@@ -48,6 +48,10 @@ model User {
   isSystem           Boolean   @default(false) // hidden account used for platform support sessions
   sessionVersion     Int       @default(1)
   mustChangePassword Boolean   @default(false)
+  totpSecret         String? // sealed (secret-box); set while enrolling, kept once confirmed
+  totpEnabledAt      DateTime?
+  totpLastStep       BigInt? // each code works once
+  recoveryCodes      String[]  @default([]) // sha256 of the one-time recovery codes
   lastLoginAt        DateTime?
   createdAt          DateTime  @default(now())
   updatedAt          DateTime  @updatedAt
@@ -510,6 +514,7 @@ model Pharmacy {
   logo            StoredFile?       @relation("PharmacyLogo", fields: [logoFileId], references: [id], onDelete: SetNull)
   logoIcon        StoredFile?       @relation("PharmacyLogoIcon", fields: [logoIconFileId], references: [id], onDelete: SetNull)
   files           StoredFile[]      @relation("PharmacyFiles")
+  notifications   Notification[]
   counters        TenantCounter[]
   featureFlags    FeatureFlag[]
   supportSessions SupportSession[]
@@ -538,6 +543,7 @@ model Pharmacy {
 model PharmacySettings {
   pharmacyId        String   @id
   receiptHeader     String   @default("")
+  requireStaffTotp  Boolean  @default(false) // every staff account needs an authenticator code to sign in
   invoiceFooter     String   @default("Thank you for your purchase. Get well soon!")
   expiryWarningDays Int      @default(90)
   expiryAlertDays   Int      @default(30)
@@ -640,4 +646,38 @@ model StoredFile {
   logoIconOf Pharmacy[] @relation("PharmacyLogoIcon")
 
   @@index([pharmacyId, sha256])
+}
+
+// Something a pharmacy's staff should see or act on (data model, section 5). Each one goes to people
+// holding audiencePermission; dedupeKey keeps a repeated condition to one open notification.
+model Notification {
+  id                 String    @id @default(uuid())
+  pharmacyId         String    @default(dbgenerated("current_setting('app.pharmacy_id'::text, true)"))
+  type               String // RESET_REQUEST, EXPIRY_30, EXPIRY_7, EXPIRED, LOW_STOCK, INTAKE_READY, ...
+  severity           String    @default("INFO") // INFO, WARNING, CRITICAL
+  title              String
+  body               String    @default("")
+  link               String?
+  audiencePermission String
+  dedupeKey          String
+  createdAt          DateTime  @default(now())
+  resolvedAt         DateTime?
+
+  pharmacy Pharmacy           @relation(fields: [pharmacyId], references: [id])
+  reads    NotificationRead[]
+
+  @@unique([pharmacyId, dedupeKey])
+  @@index([pharmacyId, createdAt])
+}
+
+model NotificationRead {
+  notificationId String
+  userId         String
+  pharmacyId     String   @default(dbgenerated("current_setting('app.pharmacy_id'::text, true)"))
+  readAt         DateTime @default(now())
+
+  notification Notification @relation(fields: [notificationId], references: [id], onDelete: Cascade)
+
+  @@id([notificationId, userId])
+  @@index([pharmacyId])
 }
