@@ -6,7 +6,8 @@
   "main": "src/main.mjs",
   "scripts": {
     "start": "node scripts/run-electron.mjs",
-    "selftest": "node scripts/selftest.mjs"
+    "selftest": "node scripts/selftest.mjs",
+    "test": "node --test \"test/*.test.mjs\""
   },
   "dependencies": {
     "@embedded-postgres/windows-x64": "16.14.0-beta.17",

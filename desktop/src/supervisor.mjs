@@ -13,12 +13,12 @@ import { fileURLToPath } from "node:url";
 import { DB_NAME, LocalDatabase, freePort, portIsFree } from "./database.mjs";
 import { createLogger } from "./log.mjs";
 import { layout, prepareDataRoot } from "./paths.mjs";
+import { Replica } from "./replica.mjs";
 import { ChildService, readyWhenHealthy, readyWhenOutput } from "./services.mjs";
 import { ConfigStore, SecretStore } from "./store.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const random = (bytes = 32) => randomBytes(bytes).toString("base64url");
-const stamp = () => new Date().toISOString().replace(/[:.]/g, "-");
 
 /** Where the server bundle and PostgreSQL binaries are: inside the installed app, or in this repository. */
 export function locateBundle() {
@@ -109,6 +109,13 @@ export class Supervisor {
       log.info(secrets.unreadable.has("backupKey") ? "backup key was unreadable; created a new one" : "backup key created");
     }
     this.backupKey = Buffer.from(backupKey.value, "base64");
+    this.replica = new Replica({
+      dir: paths.backups,
+      config,
+      log,
+      create: (file) => ops.createBackup(superUrl, file, this.backupKey, { appVersion: app.getVersion() }),
+      verify: (file) => ops.verifyBackup(file, this.backupKey),
+    });
 
     // Migrations, after a safety backup when this database already holds data
     const all = ops.readMigrations(bundle.migrations);
@@ -116,7 +123,7 @@ export class Supervisor {
     if (pending.length) {
       if (pending.length < all.length) {
         this.status("Backing up before updating the database");
-        const file = await this.backup("pre-update");
+        const { file } = await this.replica.snapshot("pre-update");
         log.info("backup before migrations", { file, pending });
       }
       this.status("Updating the database");
@@ -170,6 +177,7 @@ export class Supervisor {
     await this.web.start();
     await this.worker.start();
     this.restarts = [];
+    this.replica.startSchedule();
     this.state = "running";
     log.info("running", { url: this.baseUrl, database: `127.0.0.1:${db.port}/${DB_NAME}` });
     return this.baseUrl;
@@ -204,11 +212,9 @@ export class Supervisor {
     }
   }
 
-  /** Writes an encrypted snapshot to the backups folder and returns its path. */
-  async backup(reason) {
-    const file = path.join(this.paths.backups, `${stamp()}-${reason}.pcrmbak`);
-    await this.ops.createBackup(this.superUrl, file, this.backupKey, { appVersion: app.getVersion() });
-    return file;
+  /** The recovery key for the current backup key, as people write it down. */
+  recoveryKey() {
+    return this.ops.formatRecoveryKey(this.backupKey);
   }
 
   async stop() {
@@ -217,8 +223,15 @@ export class Supervisor {
     this.state = "stopping";
     const log = this.log;
     log?.info("stopping", { from: previous });
+    this.replica?.stopSchedule();
     await this.worker?.stop().catch((e) => log?.error("worker stop failed", { error: String(e) }));
     await this.web?.stop().catch((e) => log?.error("web server stop failed", { error: String(e) }));
+    if ((previous === "running" || previous === "failed") && this.replica) {
+      // nothing writes any more: this snapshot holds the last change of the session
+      this.status("Saving a backup");
+      await this.replica.running?.catch(() => {});
+      await this.replica.snapshot("on-close").catch(() => {}); // logged and recorded by the replica
+    }
     await this.db?.stop().catch((e) => log?.error("PostgreSQL stop failed", { error: String(e) }));
     log?.info("stopped");
     this.state = "stopped";

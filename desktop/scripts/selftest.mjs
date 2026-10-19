@@ -62,11 +62,18 @@ try {
   check("secrets are stored DPAPI-protected", sealed.every((b) => b.subarray(0, 3).toString() === "v10" && b.length > 30), sealed.map((b) => b.subarray(0, 8).toString("hex")).join(" "));
   const config = JSON.parse(readFileSync(path.join(dataDir, "config.json"), "utf8"));
   check("ports are stored for the installation", config.pgPort > 0 && config.webPort > 0, JSON.stringify(config));
+  const firstBackups = readdirSync(path.join(dataDir, "backups"));
+  check("a first snapshot is taken at start and another on close", firstBackups.some((f) => f.endsWith("-scheduled.pcrmbak")) && firstBackups.some((f) => f.endsWith("-on-close.pcrmbak")), firstBackups.join(" "));
+  check("the last backup is recorded", config.lastBackup?.reason === "on-close" && config.lastBackup.size > 0 && !config.lastBackupError, JSON.stringify(config.lastBackup));
+  check("the recovery key is still waiting to be shown", config.recoveryKeyShown === false);
   const acl = execFileSync("icacls", [dataDir], { encoding: "utf8" });
   check("data folder is not open to other users", !/(Everyone|Users|Authenticated Users):/i.test(acl) && /S-1-5-18|SYSTEM/i.test(acl), acl);
 
-  // 2. restart keeps the data and the ports
+  // 2. restart keeps the data and the ports; backups are also copied to a mirror folder
+  const mirror = path.join(root, "usb", "PharmacyCRM backups");
+  writeFileSync(path.join(dataDir, "config.json"), JSON.stringify({ ...config, mirrorDir: mirror }, null, 2));
   const second = await runApp();
+  check("snapshots are copied to the mirror folder", existsSync(mirror) && readdirSync(mirror).some((f) => f.endsWith("-on-close.pcrmbak")), existsSync(mirror) ? readdirSync(mirror).join(" ") : "no mirror folder");
   check("restart succeeds and keeps data", second.code === 0 && second.report?.selftestRuns === 2 && !second.report.events.includes("database-created"), JSON.stringify(second.report));
   check("restart uses the same ports", second.report?.pgPort === config.pgPort && second.report?.baseUrl.endsWith(`:${config.webPort}`));
 

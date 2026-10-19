@@ -9,7 +9,8 @@ const TEAL = { r: 0x1f, g: 0x7f, b: 0x78 };
 const page = `<!doctype html><html><head><meta charset="utf-8"><title>Pharmacy CRM</title>
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'">
 <style>
-  html,body{margin:0;height:100%;font-family:"Segoe UI",system-ui,sans-serif;background:#fff;color:#12312f}
+  html,body{margin:0;height:100%;overflow:hidden;font-family:"Segoe UI",system-ui,sans-serif;background:#fff;color:#12312f}
+  *{box-sizing:border-box}
   body{display:flex;flex-direction:column;justify-content:center;padding:0 32px;border-top:6px solid rgb(${TEAL.r},${TEAL.g},${TEAL.b})}
   h1{font-size:20px;margin:0 0 6px}
   #status{font-size:13px;color:#4a6563;min-height:18px}

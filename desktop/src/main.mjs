@@ -5,9 +5,10 @@
  *
  *   --selftest   start hidden, check health, write logs\selftest.json and quit (used by tests and CI)
  */
-import { app, BrowserWindow, Menu, Tray, dialog, shell } from "electron";
+import { app, BrowserWindow, Menu, Notification, Tray, dialog, shell } from "electron";
 import { writeFileSync } from "node:fs";
 import path from "node:path";
+import { showRecoveryKey } from "./recovery.mjs";
 import { appIcon, showSplash } from "./splash.mjs";
 import { Supervisor } from "./supervisor.mjs";
 
@@ -56,19 +57,56 @@ function openWindow(baseUrl) {
   return win.loadURL(baseUrl);
 }
 
-function createTray() {
-  tray = new Tray(appIcon(32));
-  tray.setToolTip("Pharmacy CRM");
-  const show = () => {
-    if (!win) return;
-    if (win.isMinimized()) win.restore();
-    win.show();
-    win.focus();
-  };
-  tray.on("click", show);
+function showWindow() {
+  if (!win) return;
+  if (win.isMinimized()) win.restore();
+  win.show();
+  win.focus();
+}
+
+function notify(title, body) {
+  if (Notification.isSupported()) new Notification({ title, body, icon: appIcon(64) }).show();
+}
+
+const when = (iso) => (iso ? new Date(iso).toLocaleString() : "never");
+
+async function backupNow() {
+  try {
+    const r = await supervisor.replica.snapshot("manual");
+    const mirrored = r.mirror ? (r.mirror.ok ? " and copied to the mirror folder" : `, but the mirror folder could not be reached`) : "";
+    notify("Backup saved", `Saved in the backups folder${mirrored}.`);
+  } catch (e) {
+    notify("Backup failed", String(e?.message ?? e));
+  }
+  refreshTray();
+}
+
+async function chooseMirror() {
+  const r = await dialog.showOpenDialog(win ?? undefined, {
+    title: "Choose a second place for backups",
+    message: "Pick a folder on another drive, a USB stick or a synced cloud folder.",
+    properties: ["openDirectory", "createDirectory"],
+  });
+  if (r.canceled || !r.filePaths[0]) return;
+  supervisor.config.set({ mirrorDir: r.filePaths[0] });
+  await backupNow();
+}
+
+function refreshTray() {
+  if (!tray) return;
+  const last = supervisor.config.get("lastBackup");
+  const failed = supervisor.config.get("lastBackupError");
+  const mirror = supervisor.config.get("mirrorDir");
   tray.setContextMenu(
     Menu.buildFromTemplate([
-      { label: "Open Pharmacy CRM", click: show },
+      { label: "Open Pharmacy CRM", click: showWindow },
+      { type: "separator" },
+      { label: `Last backup: ${when(last?.at)}`, enabled: false },
+      ...(failed ? [{ label: `Last attempt failed: ${when(failed.at)}`, enabled: false }] : []),
+      { label: "Back up now", click: () => void backupNow() },
+      { label: mirror ? `Mirror folder: ${mirror}` : "Also copy backups to a folder...", click: () => void chooseMirror() },
+      ...(mirror ? [{ label: "Stop copying to the mirror folder", click: () => (supervisor.config.set({ mirrorDir: null }), refreshTray()) }] : []),
+      { label: "Open backups folder", click: () => void shell.openPath(supervisor.paths.backups) },
       { type: "separator" },
       { label: "Open data folder", click: () => void shell.openPath(supervisor.paths.root) },
       { label: "Open logs folder", click: () => void shell.openPath(supervisor.paths.logs) },
@@ -76,6 +114,14 @@ function createTray() {
       { label: "Quit", click: () => app.quit() },
     ]),
   );
+}
+
+function createTray() {
+  tray = new Tray(appIcon(32));
+  tray.setToolTip("Pharmacy CRM");
+  tray.on("click", showWindow);
+  tray.on("right-click", refreshTray);
+  refreshTray();
 }
 
 async function selftest(baseUrl) {
@@ -127,6 +173,10 @@ async function boot() {
       return;
     }
     createTray();
+    if (supervisor.config.get("recoveryKeyShown") === false) {
+      const confirmed = await showRecoveryKey(win, supervisor.recoveryKey());
+      if (confirmed) supervisor.config.set({ recoveryKeyShown: true });
+    }
   } catch (e) {
     splash.close();
     supervisor.log?.error("start failed", { error: String(e?.stack ?? e) });
@@ -140,12 +190,7 @@ async function boot() {
 if (!app.requestSingleInstanceLock()) {
   app.quit();
 } else {
-  app.on("second-instance", () => {
-    if (!win) return;
-    if (win.isMinimized()) win.restore();
-    win.show();
-    win.focus();
-  });
+  app.on("second-instance", showWindow);
   app.whenReady().then(boot);
   app.on("window-all-closed", () => app.quit());
   app.on("before-quit", (event) => {
@@ -153,6 +198,16 @@ if (!app.requestSingleInstanceLock()) {
     event.preventDefault();
     quitting = true;
     tray?.destroy();
-    (supervisor?.stop() ?? Promise.resolve()).finally(() => app.exit(process.exitCode ?? 0));
+    const closing = supervisor?.state === "running" && !SELFTEST ? showSplash() : Promise.resolve(null);
+    closing
+      .then((splash) => {
+        if (splash) {
+          splash.status("Closing");
+          supervisor.status = (t) => splash.status(t);
+        }
+        return supervisor?.stop();
+      })
+      .catch(() => {})
+      .finally(() => app.exit(process.exitCode ?? 0));
   });
 }
