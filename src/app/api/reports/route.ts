@@ -1,6 +1,7 @@
 import { Prisma } from "@prisma/client";
 import { route, AppError } from "@/lib/api";
-import { TZ, todayStr } from "@/lib/dates";
+import { todayStr } from "@/lib/dates";
+import { localDate, localTime } from "@/lib/sql-dates";
 import { D } from "@/lib/money";
 import { COST_FIELDS } from "@/lib/cost-fields";
 import { can } from "@/modules/identity";
@@ -31,10 +32,10 @@ export const GET = route("reports.view", async ({ req, db, user }) => {
   switch (type) {
     case "sales": {
       const rows = await db.$queryRaw<Record<string, unknown>[]>`
-        SELECT to_char(date_trunc(${unit}::text, s."createdAt" AT TIME ZONE ${TZ}), ${fmt}::text) AS period,
+        SELECT to_char(date_trunc(${unit}::text, ${localTime(Prisma.sql`s."createdAt"`)}), ${fmt}::text) AS period,
                COUNT(*)::int AS invoices, SUM(s.subtotal) AS subtotal, SUM(s.discount) AS discount, SUM(s.total) AS total,
                SUM(s."amountPaid") AS paid, SUM(s.total - s."amountPaid") AS credit
-        FROM "Sale" s WHERE s.status='COMPLETED' AND (s."createdAt" AT TIME ZONE ${TZ})::date BETWEEN ${fromD}::date AND ${toD}::date
+        FROM "Sale" s WHERE s.status='COMPLETED' AND ${localDate(Prisma.sql`s."createdAt"`)} BETWEEN ${fromD}::date AND ${toD}::date
         GROUP BY 1 ORDER BY 1`;
       r = { title: `Sales (${unit === "month" ? "monthly" : "daily"})`, description: "Completed sales only. Cancelled invoices are excluded.", rows,
         columns: [{ key: "period", label: unit === "month" ? "Month" : "Date" }, { key: "invoices", label: "Invoices", format: "int" }, { key: "subtotal", label: "Subtotal", format: "money" }, { key: "discount", label: "Discount", format: "money" }, { key: "total", label: "Net sales", format: "money" }, { key: "paid", label: "Received", format: "money" }, { key: "credit", label: "On credit", format: "money" }],
@@ -43,11 +44,11 @@ export const GET = route("reports.view", async ({ req, db, user }) => {
     }
     case "profit": {
       const rows = await db.$queryRaw<Record<string, unknown>[]>`
-        SELECT to_char(date_trunc(${unit}::text, s."createdAt" AT TIME ZONE ${TZ}), ${fmt}::text) AS period,
+        SELECT to_char(date_trunc(${unit}::text, ${localTime(Prisma.sql`s."createdAt"`)}), ${fmt}::text) AS period,
                SUM(s.total) AS revenue, COALESCE(SUM(c.cogs),0) AS cogs, SUM(s.total) - COALESCE(SUM(c.cogs),0) AS profit
         FROM "Sale" s
         LEFT JOIN (SELECT "saleId", SUM(quantity*"costPrice") AS cogs FROM "SaleItem" GROUP BY "saleId") c ON c."saleId" = s.id
-        WHERE s.status='COMPLETED' AND (s."createdAt" AT TIME ZONE ${TZ})::date BETWEEN ${fromD}::date AND ${toD}::date
+        WHERE s.status='COMPLETED' AND ${localDate(Prisma.sql`s."createdAt"`)} BETWEEN ${fromD}::date AND ${toD}::date
         GROUP BY 1 ORDER BY 1`;
       r = { title: `Profit (${unit === "month" ? "monthly" : "daily"})`, description: "Gross profit = net sales (after discounts) − cost of goods sold. Cost of goods sold uses the purchase price of the exact batches sold.", rows,
         columns: [{ key: "period", label: unit === "month" ? "Month" : "Date" }, { key: "revenue", label: "Net sales", format: "money" }, { key: "cogs", label: "Cost of goods", format: "money" }, { key: "profit", label: "Gross profit", format: "money" }],

@@ -1,7 +1,8 @@
 import { Prisma } from "@prisma/client";
 import { route } from "@/lib/api";
 import { getSettings } from "@/modules/platform";
-import { TZ, todayStr, addDays, dateOnly } from "@/lib/dates";
+import { todayStr, addDays, dateOnly } from "@/lib/dates";
+import { localDate } from "@/lib/sql-dates";
 import { can } from "@/modules/identity";
 import { D } from "@/lib/money";
 
@@ -15,7 +16,7 @@ export const GET = route("dashboard.view", async ({ user, db }) => {
     db.$queryRaw<{ total: Prisma.Decimal; count: number; cogs: Prisma.Decimal }[]>`
       SELECT COALESCE(SUM(s.total),0) AS total, COUNT(*)::int AS count,
              COALESCE(SUM((SELECT SUM(i.quantity*i."costPrice") FROM "SaleItem" i WHERE i."saleId"=s.id)),0) AS cogs
-      FROM "Sale" s WHERE s.status='COMPLETED' AND (s."createdAt" AT TIME ZONE ${TZ})::date = ${today}::date`,
+      FROM "Sale" s WHERE s.status='COMPLETED' AND ${localDate(Prisma.sql`s."createdAt"`)} = ${today}::date`,
     db.customer.count({ where: { active: true } }),
     db.medicine.count({ where: { active: true } }),
     db.$queryRaw<{ id: string; name: string; minStock: number; stock: number; total: number }[]>`
@@ -34,12 +35,12 @@ export const GET = route("dashboard.view", async ({ user, db }) => {
     db.$queryRaw<{ label: string; day: string; total: Prisma.Decimal; invoices: number }[]>`
       SELECT to_char(d, 'DD Mon') AS label, to_char(d, 'YYYY-MM-DD') AS day, COALESCE(SUM(s.total),0) AS total, COUNT(s.id)::int AS invoices
       FROM generate_series(${today}::date - 13, ${today}::date, '1 day'::interval) AS d
-      LEFT JOIN "Sale" s ON (s."createdAt" AT TIME ZONE ${TZ})::date = d::date AND s.status = 'COMPLETED'
+      LEFT JOIN "Sale" s ON ${localDate(Prisma.sql`s."createdAt"`)} = d::date AND s.status = 'COMPLETED'
       GROUP BY d ORDER BY d`,
     db.$queryRaw<{ name: string; qty: number; revenue: Prisma.Decimal }[]>`
       SELECT m.name, SUM(i.quantity)::int AS qty, SUM(i."lineTotal") AS revenue
       FROM "SaleItem" i JOIN "Sale" s ON s.id = i."saleId" JOIN "Medicine" m ON m.id = i."medicineId"
-      WHERE s.status = 'COMPLETED' AND (s."createdAt" AT TIME ZONE ${TZ})::date >= ${addDays(today, -29)}::date
+      WHERE s.status = 'COMPLETED' AND ${localDate(Prisma.sql`s."createdAt"`)} >= ${addDays(today, -29)}::date
       GROUP BY m.name ORDER BY qty DESC LIMIT 5`,
     full
       ? Promise.all([
