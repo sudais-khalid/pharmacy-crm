@@ -553,7 +553,9 @@ pg-boss is chosen because it runs on the existing PostgreSQL. No Redis to instal
 
 ### 7.7 File storage
 
-`StorageAdapter { put, get, signedUrl, delete }`. Local adapter writes to a Docker volume; S3 adapter works with MinIO, Cloudflare R2 or AWS. Files are served through an API route that checks permission, never from a public folder. Uploads are validated by magic bytes, size-limited and stored under random keys.
+Files (logos, bill and stock list photos) are stored in PostgreSQL in a `StoredFile` table (bytea), with `pharmacyId` and Row-Level Security like every other tenant table (`src/lib/files.ts`: `storeFile`, `readFile`, `fileResponse`). Uploads are validated by magic bytes, size-limited, de-duplicated by SHA-256 per pharmacy and stored under random ids; they are served through API routes that check permission, never from a public folder. Photos of discarded entries are deleted by the nightly `files.cleanup` job (photos of posted entries are kept as evidence).
+
+Keeping files in the database means one backup, one restore and one isolation rule cover them, which matters most on the desktop install (ADR-16). An S3-compatible adapter (MinIO, Cloudflare R2, AWS) is planned with offsite backups in Phase 9, for hosted installs where photo volume makes the database too large; the file helpers are the only code that would change.
 
 ## 8. Security
 
@@ -610,3 +612,5 @@ Future proofing without building it now:
 | ADR-13 | Windows desktop installer with Electron and embedded PostgreSQL, alongside Docker server mode | Desktop-only app with SQLite; web-only hosting | Works offline in a shop with one PC, same database features as the server, one codebase for both |
 | ADR-14 | Encrypted, data-only backups through COPY, restored by rebuilding the schema with migrations | pg_dump and pg_restore shipped with the installer; copying the data folder | No extra binaries, works across versions and between desktop and server, smaller, and encryption and integrity are built in |
 | ADR-15 | Alt plus letter navigation with underlined mnemonics and a shortcut help overlay | Single-key shortcuts; command palette only | Familiar to Windows users, does not fire while typing, discoverable without training |
+| ADR-16 | Uploaded files in PostgreSQL (`StoredFile`, bytea) first; S3-compatible storage later for hosted installs | Local disk folder; S3 from day one | Backups, restore and Row-Level Security cover files with no extra code; a pharmacy uploads a few MB a day, well within PostgreSQL's comfort |
+| ADR-17 | Local Tesseract reader by default, a cloud vision model only when the Developer allows it and the pharmacy chooses it | Cloud only; local only | Works offline and keeps photos in the pharmacy by default; the cloud reader handles handwriting, and sending photos out is an explicit choice |

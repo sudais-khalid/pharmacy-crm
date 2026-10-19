@@ -182,22 +182,23 @@ Tasks, part A: manual entry and the shared draft (days 1 to 4):
 
 - [x] 4.1 Purchase line additions: bonus quantity, trade discount, tax, effective cost; unique supplier invoice number per supplier (data model, section 4.3)
 - [x] 4.2 `StockIntake`, `StockIntakePage`, `StockIntakeLine` and the `SE` counter (data model, section 4.5)
-- [ ] 4.3 Stock entry list (drafts, needs review, posted) and the manual keyboard grid with autosave, inline "new medicine", warnings and blocking rules (architecture, section 6.1.1; UI plan, section 4.2)
+- [x] 4.3 Stock entry list (drafts, needs review, posted) and the manual keyboard grid with autosave, inline "new medicine", warnings and blocking rules (architecture, section 6.1.1; UI plan, section 4.2)
 - [x] 4.4 Posting: `PURCHASE_BILL` through `createPurchase`; `STOCK_LIST` as opening batches with `OPENING` movements; one transaction; idempotency key
-- [ ] 4.5 File import (Excel or CSV) into a draft, with a column mapping step, for opening stock and supplier price lists
-- [ ] 4.6 Replace the old "New purchase" page with stock entry; keep the purchases list and detail pages
+- [x] 4.5 File import (Excel or CSV) into a draft, with a column mapping step, for opening stock and supplier price lists
+- [x] 4.6 Replace the old "New purchase" page with stock entry; keep the purchases list and detail pages
 
 Tasks, part B: OCR (days 5 to 12):
 
-- [ ] 4.7 `StorageAdapter` with local volume and S3-compatible implementations; protected file route; keys prefixed by pharmacy
-- [ ] 4.8 Upload endpoint: magic byte check, size limit, hash de-duplication, multi-page, `StoredFile` and `StockIntakePage` rows
-- [ ] 4.9 Phone upload screen: kind choice (bill or stock list), camera capture, crop and rotate, add page, client-side resize, progress, "you can leave this screen"
-- [ ] 4.10 `OcrProvider` interface; local adapter (Tesseract) and one cloud adapter; allowed providers and monthly page limit per pharmacy from the platform console; usage counter
-- [ ] 4.11 Normaliser to `ExtractedDocument`; bill parser (header fields, column mapping by header keywords, local number and date formats) and stock list parser (loose line formats, handwriting tolerant)
-- [ ] 4.12 Matching pipeline: barcode, alias, trigram, manual (supplier codes join in P7); alias learning on post
-- [ ] 4.13 OCR review on the same grid: photo pane with row highlight, confidence colouring, match tags, totals check, step indicator
-- [ ] 4.14 Retry, failure fallback to manual grid with the photo beside it, discard, `files.cleanup` job, "ready for review" notification
-- [ ] 4.15 Sample set (at least 20 real anonymised supplier bills and 5 stock list photos from pilot pharmacies) and an accuracy script reporting field-level accuracy per provider
+- [x] 4.7 File storage: `StoredFile` in PostgreSQL with RLS, protected file routes, random ids (ADR-16); the S3-compatible adapter moves to Phase 9 with offsite backups
+- [x] 4.8 Upload endpoint: magic byte check, size limit, hash de-duplication, multi-page, `StoredFile` and `StockIntakePage` rows
+- [x] 4.9 Phone upload screen: kind choice (bill or stock list), camera capture, crop and rotate, add page, client-side resize, progress, "you can leave this screen"
+- [x] 4.10 `OcrProvider` interface; local adapter (Tesseract) and one cloud adapter; allowed providers and monthly page limit per pharmacy from the platform console; usage counter
+- [x] 4.11 Normaliser to `ExtractedDocument`; bill parser (header fields, column mapping by header keywords, local number and date formats) and stock list parser (loose line formats, handwriting tolerant)
+- [x] 4.12 Matching pipeline: barcode, alias, trigram, manual (supplier codes join in P7); alias learning on post
+- [x] 4.13 OCR review on the same grid: photo pane with row highlight, confidence colouring, match tags, totals check, step indicator
+- [x] 4.14 Retry, failure fallback to manual grid with the photo beside it, discard, `files.cleanup` job, "ready for review" notification
+- [x] 4.15 Accuracy script reporting field-level accuracy per provider (`node scripts/ocr-accuracy.mjs`, synthetic bills and lists rendered with known contents)
+- [ ] 4.15b Real sample set (at least 20 anonymised supplier bills and 5 stock list photos from pilot pharmacies) scored with `scripts/ocr-accuracy/score.mts`; waiting for pilot photos
 
 Acceptance criteria:
 
@@ -357,8 +358,8 @@ Environment variables introduced by the plan (added to `.env.example` in the pha
 | `TOTP_ENCRYPTION_KEY` | P1 | Encrypts 2FA secrets at rest |
 | `APP_BASE_URL` | P1 | Builds invite and reset links |
 | `MAIL_*` (optional) | P1 | Email adapter for invites and resets |
-| `STORAGE_DRIVER`, `S3_*` | P4 | File storage adapter for stock entry photos and logos |
-| `OCR_PROVIDER`, provider keys | P4 | OCR adapters |
+| `STORAGE_DRIVER`, `S3_*` | P9 | S3-compatible file storage for hosted installs (files are in PostgreSQL until then) |
+| `ANTHROPIC_API_KEY`, `OCR_CLOUD_MODEL` | P4 | Cloud photo reader (server installs; the desktop app keeps the key encrypted itself) |
 | `BACKUP_*` | P9 | Offsite backup target |
 | `DEPLOY_MODE` | P0 | `server` or `desktop` |
 | `OWNER_EMAIL_BUILD`, `OWNER_HASH_BUILD` (CI secrets) | P2 | Owner account baked into the desktop installer at build time |
