@@ -8,7 +8,7 @@ import { api } from "@/lib/client";
 export const REMEMBERED_PHARMACY = "pcrm.pharmacy";
 
 /** Staff sign-in. With `pharmacy` fixed (per-pharmacy page) only username and password are asked. */
-export function StaffLoginForm({ pharmacy, onChangePharmacy }: { pharmacy: { slug: string; name: string; suspended?: boolean }; onChangePharmacy?: () => void }) {
+export function StaffLoginForm({ pharmacy, onChangePharmacy }: { pharmacy: { slug: string; name: string; suspended?: boolean; hasLogo?: boolean }; onChangePharmacy?: () => void }) {
   const router = useRouter();
   const params = useSearchParams();
   const [username, setUsername] = useState("");
@@ -40,7 +40,10 @@ export function StaffLoginForm({ pharmacy, onChangePharmacy }: { pharmacy: { slu
     <main className="flex min-h-screen items-center justify-center bg-gradient-to-br from-brand-50 to-slate-100 p-4 dark:from-slate-950 dark:to-slate-900">
       <Card className="w-full max-w-sm p-6">
         <div className="mb-6 flex flex-col items-center gap-2 text-center">
-          <span className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary text-on-primary"><Pill className="h-6 w-6" aria-hidden /></span>
+          {pharmacy.hasLogo
+            ? /* eslint-disable-next-line @next/next/no-img-element -- a small logo from our own API */
+              <img src={`/api/auth/pharmacy/${encodeURIComponent(pharmacy.slug)}/logo?size=icon`} alt="" className="h-12 w-12 rounded-xl object-contain" />
+            : <span className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary text-on-primary"><Pill className="h-6 w-6" aria-hidden /></span>}
           <h1 className="text-xl font-semibold">{pharmacy.name}</h1>
           <p className="text-sm text-fg-muted">Sign in to continue</p>
         </div>

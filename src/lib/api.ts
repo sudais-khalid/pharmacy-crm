@@ -68,6 +68,7 @@ export function route(permission: Permission | null, fn: (ctx: Ctx) => Promise<u
       }
 
       const data = await tenantTransaction(user.pharmacyId, run);
+      if (data instanceof Response) return data; // files and other raw bodies
       return respond(user, data ?? { ok: true });
     } catch (e) {
       return errorResponse(e);

@@ -4,10 +4,13 @@
 
 /*
  * Design tokens (docs/plan/04-ui-ux.md, section 2.2), stored as "R G B" channels.
- * Light is the default; .dark is set by next-themes. A pharmacy brand colour will override --primary.
+ * Light is the default; .dark is set by next-themes. A pharmacy's brand colour overrides the brand scale
+ * and the primary tokens from a style element in the app layout (src/lib/brand.ts).
  */
 @layer base {
   :root {
+    --brand-50: 239 250 248;  --brand-100: 211 243 238; --brand-200: 169 230 221; --brand-300: 118 210 199; --brand-400: 69 184 173;
+    --brand-500: 42 157 147;  --brand-600: 31 127 120;  --brand-700: 29 101 96;   --brand-800: 28 81 78;    --brand-900: 27 69 67;
     --bg: 248 250 252;        /* #F8FAFC */
     --surface: 255 255 255;   /* #FFFFFF */
     --muted: 241 245 249;     /* #F1F5F9 */

@@ -10,7 +10,8 @@ import { createSale, cancelSale } from "@/modules/sales";
 import { createPurchase } from "@/modules/procurement";
 import { adjustStock } from "@/modules/inventory";
 import { receiveCustomerPayment } from "@/modules/customers";
-import { updateSettings, getSettings } from "@/modules/platform";
+import { updateSettings, getSettings, setLogo } from "@/modules/platform";
+import { testPng } from "./png";
 import { SYSTEM_ROLES, createRole } from "@/modules/identity";
 import { resetDb, makePharmacy, makeUser, makeMedicine, makeBatch, makeCustomer, makeSupplier, ctxOf, inDays } from "./helpers";
 
@@ -40,7 +41,8 @@ async function populate(pharmacyId: string) {
   await adjustStock(ctx, { batchId: b.id, kind: "DAMAGE", quantity: 1, note: "broken" });
   await createRole(ctx, { name: "Senior Cashier", permissions: [...SYSTEM_ROLES.CASHIER.permissions, "sales.cancel"], landingPath: "/pos" });
   const settings = await tenantTransaction(pharmacyId, (tx) => getSettings(tx, pharmacyId));
-  await updateSettings(ctx, { ...settings, invoiceFooter: `footer ${pharmacyId}` });
+  await updateSettings(ctx, { expiryWarningDays: settings.expiryWarningDays + 1, currency: settings.currency });
+  await setLogo(ctx, { logo: testPng(256, `logo ${pharmacyId}`), icon: testPng(64, `icon ${pharmacyId}`) });
   // platform-written tenant rows
   await platformDb.featureFlag.create({ data: { pharmacyId, key: "ocr", enabled: true } });
   const dev = await platformDb.platformUser.upsert({ where: { email: "dev@t.test" }, update: {}, create: { name: "Dev", email: "dev@t.test", passwordHash: "x" } });

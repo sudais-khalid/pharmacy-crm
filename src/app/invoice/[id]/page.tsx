@@ -1,24 +1,28 @@
 "use client";
-import { Suspense, useEffect } from "react";
+import { Suspense, useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams, useSearchParams } from "next/navigation";
 import { ArrowLeft, Printer } from "lucide-react";
 import { Button, ErrorBox, Spinner } from "@/components/ui";
 import { formatDate, formatDateTime, useApi } from "@/lib/client";
+import { HistoryList } from "@/components/history";
 
 type Sale = {
   id: string; invoiceNo: string; createdAt: string; status: "COMPLETED" | "CANCELLED"; subtotal: string; discount: string; total: string; amountPaid: string; paymentMethod: string; cancelReason: string | null;
   customer: { name: string; phone: string | null; address: string | null } | null; user: { name: string };
   items: { id: string; quantity: number; unitPrice: string; lineTotal: string; medicine: { name: string; unit: string }; batch: { batchNumber: string; expiryDate: string } }[];
 };
-type Settings = { pharmacyName: string; address: string; phone: string; email: string; invoiceFooter: string; currency: string };
+type Settings = { pharmacyName: string; legalName: string; address: string; city: string; phone: string; whatsapp: string; email: string; licenseNumber: string; taxNumber: string; receiptHeader: string; invoiceFooter: string; currency: string; logoFileId: string | null };
 
 function InvoiceInner() {
   const { id } = useParams<{ id: string }>();
   const print = useSearchParams().get("print") === "1";
   const sale = useApi<Sale>(`/api/sales/${id}`);
-  const settings = useApi<Settings>("/api/settings");
+  const settings = useApi<Settings>("/api/branding");
   const ready = !!sale.data && !!settings.data;
+  // the History section only for people who may see the activity history (audit.view)
+  const [history, setHistory] = useState(false);
+  useEffect(() => { fetch(`/api/audit?entity=Sale&entityId=${id}&pageSize=1`, { credentials: "same-origin" }).then((r) => setHistory(r.ok), () => {}); }, [id]);
   useEffect(() => { if (ready && print) setTimeout(() => window.print(), 400); }, [ready, print]);
 
   if (sale.error) return <div className="mx-auto max-w-xl p-6"><ErrorBox message={sale.error} /></div>;
@@ -36,10 +40,17 @@ function InvoiceInner() {
       <article className="print-area relative mx-auto max-w-3xl rounded-xl bg-white p-8 text-slate-900 shadow">
         {s.status === "CANCELLED" && <div aria-hidden className="pointer-events-none absolute inset-0 flex items-center justify-center text-7xl font-black uppercase tracking-widest text-red-500/20 [transform:rotate(-20deg)]">Cancelled</div>}
         <header className="flex items-start justify-between gap-4 border-b border-slate-300 pb-4">
-          <div>
-            <h1 className="text-2xl font-bold">{st.pharmacyName}</h1>
-            {st.address && <p className="text-sm text-slate-600">{st.address}</p>}
-            <p className="text-sm text-slate-600">{[st.phone, st.email].filter(Boolean).join(" · ")}</p>
+          <div className="flex items-start gap-4">
+            {/* eslint-disable-next-line @next/next/no-img-element -- the pharmacy's logo from our file route */}
+            {st.logoFileId && <img src={`/api/files/${st.logoFileId}`} alt="" className="h-16 w-16 object-contain" />}
+            <div>
+              <h1 className="text-2xl font-bold">{st.pharmacyName}</h1>
+              {st.legalName && st.legalName !== st.pharmacyName && <p className="text-sm text-slate-600">{st.legalName}</p>}
+              {(st.address || st.city) && <p className="text-sm text-slate-600">{[st.address, st.city].filter(Boolean).join(", ")}</p>}
+              <p className="text-sm text-slate-600">{[st.phone, st.whatsapp && `WhatsApp ${st.whatsapp}`, st.email].filter(Boolean).join(" · ")}</p>
+              {(st.licenseNumber || st.taxNumber) && <p className="text-xs text-slate-500">{[st.licenseNumber && `Drug licence ${st.licenseNumber}`, st.taxNumber && `Tax no. ${st.taxNumber}`].filter(Boolean).join(" · ")}</p>}
+              {st.receiptHeader && <p className="mt-1 text-sm font-medium" style={{ color: "rgb(var(--brand-700))" }}>{st.receiptHeader}</p>}
+            </div>
           </div>
           <div className="text-right">
             <p className="text-xs uppercase tracking-wider text-slate-500">Invoice</p>
@@ -66,6 +77,7 @@ function InvoiceInner() {
         {s.status === "CANCELLED" && <p className="mt-4 text-sm font-medium text-red-600">This invoice was cancelled{s.cancelReason ? `: ${s.cancelReason}` : "."}</p>}
         {st.invoiceFooter && <footer className="mt-8 border-t border-slate-200 pt-3 text-center text-xs text-slate-500">{st.invoiceFooter}</footer>}
       </article>
+      {history && <section className="no-print mx-auto mt-4 max-w-3xl rounded-xl bg-white text-slate-900 shadow"><h2 className="border-b border-slate-200 p-4 font-semibold">History</h2><HistoryList entity="Sale" entityId={s.id} /></section>}
     </div>
   );
 }

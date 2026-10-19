@@ -266,7 +266,7 @@ export async function setFeatureFlag(c: DevContext, id: string, key: FeatureKey,
 
 /** What a sign-in page may show about a pharmacy before anyone signs in. */
 export async function publicPharmacyInfo(slug: string) {
-  const p = await platformDb.pharmacy.findUnique({ where: { slug: slug.toLowerCase() }, select: { slug: true, name: true, city: true, status: true } });
+  const p = await platformDb.pharmacy.findUnique({ where: { slug: slug.toLowerCase() }, select: { slug: true, name: true, city: true, status: true, brandColor: true, logoFileId: true } });
   if (!p || p.status === "DEACTIVATED") return null;
-  return { slug: p.slug, name: p.name, city: p.city, suspended: p.status === "SUSPENDED" };
+  return { slug: p.slug, name: p.name, city: p.city, suspended: p.status === "SUSPENDED", brandColor: p.brandColor, hasLogo: !!p.logoFileId };
 }

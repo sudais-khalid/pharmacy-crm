@@ -491,6 +491,9 @@ model Pharmacy {
   email              String?
   licenseNumber      String?
   taxNumber          String?
+  brandColor         String? // hex; applied to the app, sign-in page and receipts (src/lib/brand.ts)
+  logoFileId         String? // 512 px PNG
+  logoIconFileId     String? // 128 px PNG for the header and small receipts
   status             PharmacyStatus @default(ACTIVE)
   statusReason       String?
   plan               String         @default("STANDARD")
@@ -504,6 +507,9 @@ model Pharmacy {
   updatedAt          DateTime       @updatedAt
 
   settings        PharmacySettings?
+  logo            StoredFile?       @relation("PharmacyLogo", fields: [logoFileId], references: [id], onDelete: SetNull)
+  logoIcon        StoredFile?       @relation("PharmacyLogoIcon", fields: [logoIconFileId], references: [id], onDelete: SetNull)
+  files           StoredFile[]      @relation("PharmacyFiles")
   counters        TenantCounter[]
   featureFlags    FeatureFlag[]
   supportSessions SupportSession[]
@@ -531,6 +537,7 @@ model Pharmacy {
 // Operational settings, one row per pharmacy.
 model PharmacySettings {
   pharmacyId        String   @id
+  receiptHeader     String   @default("")
   invoiceFooter     String   @default("Thank you for your purchase. Get well soon!")
   expiryWarningDays Int      @default(90)
   expiryAlertDays   Int      @default(30)
@@ -610,4 +617,27 @@ model FeatureFlag {
   pharmacy Pharmacy @relation(fields: [pharmacyId], references: [id], onDelete: Cascade)
 
   @@id([pharmacyId, key])
+}
+
+// A file kept in the database (docs/plan/02-architecture.md, section 7.7): logos now, bill photos and
+// receipts later. Stored in PostgreSQL so desktop backups, restores and row-level security cover files
+// exactly as they cover the data that refers to them.
+model StoredFile {
+  id           String   @id @default(uuid())
+  pharmacyId   String   @default(dbgenerated("current_setting('app.pharmacy_id'::text, true)"))
+  purpose      String // LOGO, LOGO_ICON, BILL, STOCK_LIST, IMPORT
+  mime         String
+  size         Int
+  sha256       String
+  width        Int?
+  height       Int?
+  data         Bytes
+  uploadedById String?
+  createdAt    DateTime @default(now())
+
+  pharmacy   Pharmacy   @relation("PharmacyFiles", fields: [pharmacyId], references: [id])
+  logoOf     Pharmacy[] @relation("PharmacyLogo")
+  logoIconOf Pharmacy[] @relation("PharmacyLogoIcon")
+
+  @@index([pharmacyId, sha256])
 }

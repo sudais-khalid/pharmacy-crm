@@ -32,6 +32,7 @@ const ROUTES = {
   "suppliers/[id]/payments": [["POST", "/api/suppliers/{supplier}/payments", { amount: 1, method: "CASH" }]],
   "users/[id]": [["PUT", "/api/users/{user}", { name: "Hijacked" }]],
   "users/[id]/[action]": [["POST", "/api/users/{user}/reset-link"], ["POST", "/api/users/{user}/temporary-password"], ["POST", "/api/users/{user}/logout"]],
+  "files/[id]": [["GET", "/api/files/{file}"]],
   "roles/[id]": [["PUT", "/api/roles/{role}", { name: "Hijacked", permissions: ["pos.use"], landingPath: "/pos" }], ["DELETE", "/api/roles/{role}"]],
 };
 /** Writes that take another pharmacy's ids in the body. */
@@ -95,6 +96,7 @@ async function idsOf(client) {
   return {
     medicine: await pick("/api/medicines"), customer: await pick("/api/customers"), supplier: await pick("/api/suppliers"),
     sale: await pick("/api/sales"), purchase: await pick("/api/purchases"), batch: await pick("/api/inventory/batches"), user: await pick("/api/users", "items"), role: (await client.req("GET", "/api/roles")).data?.roles?.find((r) => !r.system)?.id,
+    file: (await client.req("GET", "/api/branding")).data?.logoFileId,
   };
 }
 

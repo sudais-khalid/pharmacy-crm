@@ -24,6 +24,9 @@ async function main() {
   });
   const ctx = serviceContext({ id: admin.id, permissions: ALL_PERMISSIONS }, pharmacyId);
   const role = await createRole(ctx, { name: "Bravo Only Role", permissions: ["pos.use"], landingPath: "/pos" });
+  const { setLogo } = await import("../src/modules/platform");
+  const { testPng } = await import("../tests/png");
+  const logo = await setLogo(ctx, { logo: testPng(128, slug), icon: testPng(64, slug) });
   const medicine = await platformDb.medicine.create({ data: { pharmacyId, name: "Bravo Only Syrup", barcode: `B-${slug}`, salePrice: 90, purchasePrice: 60 } });
   const batch = await platformDb.batch.create({
     data: { pharmacyId, medicineId: medicine.id, batchNumber: "BRAVO-1", expiryDate: dateOnly(addDays(todayStr(), 300)), quantity: 40, salePrice: 90, purchasePrice: 60 },
@@ -39,7 +42,7 @@ async function main() {
   console.log(JSON.stringify({
     pharmacy: slug,
     admin: { username: "badmin", password },
-    ids: { medicine: medicine.id, batch: batch.id, customer: customer.id, supplier: supplier.id, sale: sale.id, purchase: purchase.id, user: admin.id, role: role.id },
+    ids: { medicine: medicine.id, batch: batch.id, customer: customer.id, supplier: supplier.id, sale: sale.id, purchase: purchase.id, user: admin.id, role: role.id, file: logo.logoFileId },
     names: { medicine: medicine.name, customer: customer.name, supplier: supplier.name, invoice: sale.invoiceNo, purchase: purchase.number },
   }));
   process.exit(0);

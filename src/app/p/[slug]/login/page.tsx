@@ -2,6 +2,7 @@ import { Suspense } from "react";
 import { notFound } from "next/navigation";
 import { publicPharmacyInfo } from "@/modules/tenancy";
 import { StaffLoginForm } from "@/components/staff-login-form";
+import { BrandStyle } from "@/components/brand-style";
 
 export const dynamic = "force-dynamic";
 
@@ -11,6 +12,7 @@ export default async function PharmacyLoginPage({ params }: { params: Promise<{ 
   if (!info) notFound();
   return (
     <Suspense>
+      <BrandStyle color={info.brandColor} />
       <StaffLoginForm pharmacy={info} />
     </Suspense>
   );

@@ -23,8 +23,8 @@ const config: Config = {
         danger: token("danger"),
         info: token("info"),
         ring: token("ring"),
-        // Brand scale kept for existing screens; new code should prefer the tokens above.
-        brand: { 50: "#effaf8", 100: "#d3f3ee", 200: "#a9e6dd", 300: "#76d2c7", 400: "#45b8ad", 500: "#2a9d93", 600: "#1f7f78", 700: "#1d6560", 800: "#1c514e", 900: "#1b4543" },
+        // Brand scale, also variables: a pharmacy's brand colour replaces it (src/lib/brand.ts)
+        brand: Object.fromEntries([50, 100, 200, 300, 400, 500, 600, 700, 800, 900].map((s) => [s, token(`brand-${s}`)])),
       },
       fontFamily: {
         sans: ["var(--font-sans)", ...fontFamily.sans],

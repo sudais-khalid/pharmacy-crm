@@ -48,10 +48,10 @@ describe("pharmacy settings", () => {
     const u = await makeUser("ADMIN");
     const before = await tenantTransaction(pharmacyId, (tx) => getSettings(tx, pharmacyId));
     expect(before).toMatchObject({ pharmacyName: "Pharmacy test", currency: "PKR", expiryWarningDays: 90 });
-    const after = await updateSettings(ctxOf(u), { ...before, pharmacyName: "City Care", expiryWarningDays: 60, email: "" });
-    expect(after).toMatchObject({ pharmacyName: "City Care", expiryWarningDays: 60, email: "" });
+    const after = await updateSettings(ctxOf(u), { expiryWarningDays: 60, currency: "Rs" });
+    expect(after).toMatchObject({ pharmacyName: "Pharmacy test", expiryWarningDays: 60, currency: "Rs" });
     const row = await platformDb.auditLog.findFirstOrThrow({ where: { action: "settings.update" } });
     expect(row.pharmacyId).toBe(pharmacyId);
-    expect(row.after).toMatchObject({ pharmacyName: "City Care" });
+    expect(row.after).toEqual({ expiryWarningDays: 60, currency: "Rs" });
   });
 });
