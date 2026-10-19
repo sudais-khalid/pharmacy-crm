@@ -12,6 +12,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { DB_NAME, LocalDatabase, freePort, portIsFree } from "./database.mjs";
 import { createLogger } from "./log.mjs";
+import { allowThroughFirewall, firewallState, lanAddresses } from "./network.mjs";
 import { layout, prepareDataRoot } from "./paths.mjs";
 import { Replica, listBackups } from "./replica.mjs";
 import { ChildService, readyWhenHealthy, readyWhenOutput } from "./services.mjs";
@@ -187,6 +188,7 @@ export class Supervisor {
 
     // Web server and worker
     const webPort = await this.choosePort("webPort", config.get("webPort") ?? 0);
+    this.webPort = webPort;
     this.baseUrl = `http://127.0.0.1:${webPort}`;
     const env = {
       DEPLOY_MODE: "desktop",
@@ -197,13 +199,15 @@ export class Supervisor {
       TOTP_ENCRYPTION_KEY: totpKey.value,
       APP_TIMEZONE: config.get("timezone") ?? "Asia/Karachi",
       DATA_DIR: paths.root,
+      // plain http on loopback and on the shop network: browsers would drop Secure cookies there
+      SESSION_COOKIE_SECURE: "0",
       ...this.ownerEnv(),
     };
     this.web = new ChildService({
       name: "web server",
       script: bundle.serverJs,
       cwd: bundle.server,
-      env: { ...env, PORT: String(webPort), HOSTNAME: "127.0.0.1", LOG_SERVICE: "web" },
+      env: { ...env, PORT: String(webPort), HOSTNAME: this.listenAddress(), LOG_SERVICE: "web" },
       logFile: path.join(paths.logs, "web.log"),
       ready: readyWhenHealthy(`${this.baseUrl}/api/health`),
       onExit: (code) => this.onChildExit(this.web, code),
@@ -255,6 +259,35 @@ export class Supervisor {
     } catch (e) {
       this.log.error(`${svc.name} could not be restarted`, { error: String(e) });
     }
+  }
+
+  /** 127.0.0.1 only, or every interface when shop network access is on (PostgreSQL never leaves loopback). */
+  listenAddress() {
+    return this.config.get("lanEnabled") ? "0.0.0.0" : "127.0.0.1";
+  }
+
+  async lanStatus({ refresh = false } = {}) {
+    const enabled = Boolean(this.config.get("lanEnabled"));
+    if (enabled && (refresh || !this.firewall)) this.firewall = process.env.PCRM_SKIP_FIREWALL === "1" ? "unknown" : await firewallState(this.webPort);
+    return { enabled, port: this.webPort, urls: enabled ? lanAddresses().map((ip) => `http://${ip}:${this.webPort}`) : [], firewall: enabled ? this.firewall : "unknown" };
+  }
+
+  /**
+   * Turns shop network access on or off: the web server restarts on the new address. Turning it on asks
+   * Windows (administrator prompt) for a firewall rule when there is none for this port. Turning it off
+   * leaves the rule: nothing listens on the network any more.
+   */
+  async setLanAccess(enabled) {
+    this.config.set({ lanEnabled: Boolean(enabled) });
+    this.log.info(enabled ? "shop network access on" : "shop network access off");
+    await this.web.stop();
+    this.web.env.HOSTNAME = this.listenAddress();
+    await this.web.start();
+    if (enabled && process.env.PCRM_SKIP_FIREWALL !== "1" && (await firewallState(this.webPort)) !== "allowed") {
+      const added = await allowThroughFirewall(this.webPort, process.execPath);
+      this.log.info(added ? "firewall rule added" : "firewall rule not added (administrator prompt declined)");
+    }
+    return this.lanStatus({ refresh: true });
   }
 
   versionInfo() {
@@ -380,7 +413,8 @@ export class Supervisor {
     }
   }
 
-  async stop() {
+  /** backup: false skips the closing snapshot (the updater has just taken one). */
+  async stop({ backup = true } = {}) {
     if (this.state === "stopping" || this.state === "stopped") return;
     const previous = this.state;
     this.state = "stopping";
@@ -389,7 +423,7 @@ export class Supervisor {
     this.replica?.stopSchedule();
     await this.worker?.stop().catch((e) => log?.error("worker stop failed", { error: String(e) }));
     await this.web?.stop().catch((e) => log?.error("web server stop failed", { error: String(e) }));
-    if ((previous === "running" || previous === "failed") && this.replica) {
+    if (backup && (previous === "running" || previous === "failed") && this.replica) {
       // nothing writes any more: this snapshot holds the last change of the session
       this.status("Saving a backup");
       await this.replica.running?.catch(() => {});

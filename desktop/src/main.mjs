@@ -7,31 +7,45 @@
  *   --selftest   start hidden, check health, write logs\selftest.json and quit (used by tests and CI).
  *                On a new data folder PCRM_SELFTEST_FIRST_START picks "fresh" (default) or "latest" (restore
  *                the newest backup, with PCRM_SELFTEST_RECOVERY_KEY when the key is not held here).
+ *                PCRM_SELFTEST_CLIENT_URL runs it in client mode against that server instead.
+ *
+ * A PC without pharmacy data asks once whether it runs the pharmacy or connects to the one that does
+ * (client mode: only the window, see client.mjs).
  */
 import { app, BrowserWindow, Menu, Notification, Tray, dialog, shell } from "electron";
-import { writeFileSync } from "node:fs";
+import { existsSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { chooseMode, isPharmacyServer, normalizeServerUrl, readClientConfig, saveClientConfig, showLanAddresses } from "./client.mjs";
 import { installConsoleBridge } from "./console-bridge.mjs";
 import { keyFor, runFirstStart } from "./first-start.mjs";
 import { consoleScenario } from "./selftest-console.mjs";
 import { explainNotAdmin, isElevatedAdmin, recoverOwner, relaunchElevated, showRecovered } from "./recover-owner.mjs";
 import { showRecoveryKey } from "./recovery.mjs";
+import { lanAddresses } from "./network.mjs";
+import { layout } from "./paths.mjs";
 import { appIcon, showSplash } from "./splash.mjs";
 import { Supervisor } from "./supervisor.mjs";
+import { startUpdater } from "./updater.mjs";
 
 const SELFTEST = process.argv.includes("--selftest");
 const RECOVER_OWNER = process.argv.includes("--recover-owner");
 // Only a throwaway data folder (PCRM_DATA_DIR) may have test markers written or the recovery key reported.
 const TEST_FOLDER = SELFTEST && Boolean(process.env.PCRM_DATA_DIR);
 const here = path.dirname(fileURLToPath(import.meta.url));
+// a separate profile (and single-instance lock): lets the self-test run a client next to a server
+if (process.env.PCRM_USER_DATA_DIR) app.setPath("userData", path.resolve(process.env.PCRM_USER_DATA_DIR));
 
 let supervisor;
 let win = null;
 let tray = null;
 let quitting = false;
+let updateReady = null; // version downloaded and ready to install
+let installUpdate = null;
+let updating = false; // everything is stopped and backed up; the installer takes over
 
-function openWindow(baseUrl) {
+/** bridge: the desktop controls for the Developer console, only on the computer that runs the pharmacy. */
+function openWindow(baseUrl, { bridge = true } = {}) {
   win = new BrowserWindow({
     width: 1366,
     height: 860,
@@ -41,7 +55,7 @@ function openWindow(baseUrl) {
     title: "Pharmacy CRM",
     icon: appIcon(64),
     autoHideMenuBar: true,
-    webPreferences: { contextIsolation: true, sandbox: true, nodeIntegration: false, spellcheck: false, preload: path.join(here, "preload-app.cjs") },
+    webPreferences: { contextIsolation: true, sandbox: true, nodeIntegration: false, spellcheck: false, ...(bridge ? { preload: path.join(here, "preload-app.cjs") } : {}) },
   });
   const sameOrigin = (url) => {
     try {
@@ -112,6 +126,7 @@ function refreshTray() {
   tray.setContextMenu(
     Menu.buildFromTemplate([
       { label: "Open Pharmacy CRM", click: showWindow },
+      ...(updateReady ? [{ label: `Restart to install version ${updateReady}`, click: () => void installUpdate?.(() => (updating = true)) }] : []),
       { type: "separator" },
       { label: `Last backup: ${when(last?.at)}`, enabled: false },
       ...(failed ? [{ label: `Last attempt failed: ${when(failed.at)}`, enabled: false }] : []),
@@ -120,6 +135,7 @@ function refreshTray() {
       ...(mirror ? [{ label: "Stop copying to the mirror folder", click: () => (supervisor.config.set({ mirrorDir: null }), refreshTray()) }] : []),
       { label: "Open backups folder", click: () => void shell.openPath(supervisor.paths.backups) },
       { type: "separator" },
+      ...(supervisor.config.get("lanEnabled") ? [{ label: "Address for tablets...", click: async () => void showLanAddresses((await supervisor.lanStatus()).urls) }] : []),
       { label: "Open data folder", click: () => void shell.openPath(supervisor.paths.root) },
       { label: "Open logs folder", click: () => void shell.openPath(supervisor.paths.logs) },
       { type: "separator" },
@@ -134,6 +150,22 @@ function createTray() {
   tray.on("click", showWindow);
   tray.on("right-click", refreshTray);
   refreshTray();
+}
+
+/** With shop network access on: the server answers on a network address, and sign-in cookies work there. */
+async function lanReport(lan) {
+  // with access off, probe the address it would have, which must not answer
+  const ip = lanAddresses()[0];
+  const url = lan.urls[0] ?? (ip ? `http://${ip}:${lan.port}` : null);
+  if (!url) return { ...lan, reachable: null };
+  const health = await fetch(`${url}/api/health`).then((r) => r.ok || r.status === 503).catch(() => false);
+  const login = await fetch(`${url}/api/platform/auth/login`, {
+    method: "POST",
+    headers: { "content-type": "application/json", origin: url },
+    body: JSON.stringify({ email: process.env.PLATFORM_OWNER_EMAIL, password: process.env.PLATFORM_OWNER_PASSWORD }),
+  }).catch(() => null);
+  const cookie = login?.headers.get("set-cookie") ?? "";
+  return { ...lan, reachable: health, loginStatus: login?.status ?? null, cookieSet: /pcrm_platform=/.test(cookie), cookieSecure: /;\s*secure/i.test(cookie) };
 }
 
 async function selftest(baseUrl) {
@@ -165,6 +197,7 @@ async function selftest(baseUrl) {
     auditMarkers: markers,
     recoveryKey: TEST_FOLDER ? supervisor.recoveryKey() : undefined,
     console: consoleResult,
+    lan: TEST_FOLDER ? await lanReport(await supervisor.lanStatus()) : undefined,
     health,
     loginStatus: login.status,
     windowTitle: win?.getTitle(),
@@ -205,8 +238,80 @@ async function bootRecovery() {
   app.quit();
 }
 
+/** Keeps a self-test server running for a while, so a client self-test can connect to it. */
+const stay = () => new Promise((ok) => setTimeout(ok, Number(process.env.PCRM_SELFTEST_STAY ?? 0) * 1000));
+
+/** Client mode: only the window onto the pharmacy computer. */
+async function bootClient(serverUrl) {
+  let url = serverUrl;
+  if (!(await isPharmacyServer(url))) {
+    try {
+      url = (await chooseMode({ reconnect: true, address: url })).serverUrl;
+    } catch {
+      app.quit();
+      return;
+    }
+  }
+  await openWindow(url, { bridge: false });
+  const reconnect = async () => {
+    try {
+      const r = await chooseMode({ reconnect: true, address: url });
+      url = r.serverUrl;
+      await win?.loadURL(url);
+    } catch {
+      // closed: stay as it is
+    }
+  };
+  win.webContents.on("did-fail-load", (_e, _code, _desc, _url, isMainFrame) => {
+    if (isMainFrame) void reconnect();
+  });
+  tray = new Tray(appIcon(32));
+  tray.setToolTip(`Pharmacy CRM (${url})`);
+  tray.on("click", showWindow);
+  tray.setContextMenu(Menu.buildFromTemplate([
+    { label: "Open Pharmacy CRM", click: showWindow },
+    { label: "Connect to another pharmacy computer...", click: () => void reconnect() },
+    { type: "separator" },
+    { label: "Quit", click: () => app.quit() },
+  ]));
+}
+
+async function selftestClient() {
+  const given = normalizeServerUrl(process.env.PCRM_SELFTEST_CLIENT_URL ?? "");
+  if (given && (await isPharmacyServer(given))) saveClientConfig(given);
+  const url = readClientConfig()?.serverUrl;
+  const report = { mode: "client", serverUrl: url ?? null, reachable: url ? await isPharmacyServer(url) : false };
+  if (report.reachable) {
+    await openWindow(url, { bridge: false });
+    report.page = win.webContents.getURL();
+    report.desktopControls = await win.webContents.executeJavaScript("typeof window.pcrmDesktop");
+    report.login = (await fetch(`${url}/login`)).status;
+  }
+  report.ok = report.reachable && report.desktopControls === "undefined" && report.login === 200;
+  writeFileSync(path.join(app.getPath("userData"), "selftest.json"), JSON.stringify(report, null, 2));
+  process.exitCode = report.ok ? 0 : 1;
+  app.quit();
+}
+
 async function boot() {
   if (app.isPackaged) Menu.setApplicationMenu(null);
+  if (SELFTEST && process.env.PCRM_SELFTEST_CLIENT_URL !== undefined) return selftestClient();
+  if (!SELFTEST && !existsSync(path.join(layout().pgdata, "PG_VERSION"))) {
+    const saved = readClientConfig();
+    if (saved) return bootClient(saved.serverUrl);
+    let choice;
+    try {
+      choice = await chooseMode();
+    } catch {
+      app.quit();
+      return;
+    }
+    if (choice.mode === "client") return bootClient(choice.serverUrl);
+  }
+  return bootServer();
+}
+
+async function bootServer() {
   const splash = await showSplash({ show: !SELFTEST });
   supervisor = new Supervisor({ status: (t) => splash.status(t), echoLogs: !app.isPackaged, firstStart: SELFTEST ? selftestFirstStart : runFirstStart });
   supervisor.onFailure = (e) => {
@@ -225,10 +330,19 @@ async function boot() {
         return false;
       });
       process.exitCode = ok ? 0 : 1;
+      await stay();
       app.quit();
       return;
     }
     createTray();
+    installUpdate = startUpdater({
+      supervisor,
+      onReady: (version) => {
+        updateReady = version;
+        refreshTray();
+        notify("Update ready", `Pharmacy CRM ${version} is ready. Choose "Restart to install" in the tray menu when the counter is free; a backup is taken first.`);
+      },
+    });
     if (supervisor.config.get("recoveryKeyShown") === false) {
       const confirmed = await showRecoveryKey(win, supervisor.recoveryKey());
       if (confirmed) supervisor.config.set({ recoveryKeyShown: true });
@@ -257,6 +371,7 @@ if (!app.requestSingleInstanceLock()) {
   app.whenReady().then(RECOVER_OWNER ? bootRecovery : boot);
   app.on("window-all-closed", () => app.quit());
   app.on("before-quit", (event) => {
+    if (updating) return;
     // every quit request waits for the shutdown below, which ends with app.exit()
     event.preventDefault();
     if (quitting) return;

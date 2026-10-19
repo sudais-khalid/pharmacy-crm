@@ -11,6 +11,7 @@ contextBridge.exposeInMainWorld("pcrmDesktop", {
   pickBackupFile: () => ipcRenderer.invoke("desktop:pick-file"),
   restore: (id, recoveryKey, code) => ipcRenderer.invoke("desktop:restore", { id, recoveryKey: recoveryKey ?? null, code: code ?? "" }),
   openFolder: (which) => ipcRenderer.invoke("desktop:open-folder", which),
+  setLan: (enabled) => ipcRenderer.invoke("desktop:lan", Boolean(enabled)),
   onProgress: (fn) => {
     const handler = (_event, text) => fn(String(text));
     ipcRenderer.on("desktop:progress", handler);

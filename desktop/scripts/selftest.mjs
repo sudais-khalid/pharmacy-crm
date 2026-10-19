@@ -49,6 +49,25 @@ function runApp(extraEnv = {}, args = []) {
   });
 }
 
+/** The app in client mode with its own profile folder; an empty url uses the saved one. */
+function runClient(profile, url) {
+  const env = { ...process.env, PCRM_USER_DATA_DIR: profile, PCRM_SELFTEST_CLIENT_URL: url };
+  delete env.ELECTRON_RUN_AS_NODE;
+  delete env.PCRM_DATA_DIR;
+  return new Promise((resolve) => {
+    const p = exe ? spawn(exe, ["--selftest"], { env, stdio: ["ignore", "pipe", "pipe"] }) : spawn(electron, [desktop, "--selftest"], { env, stdio: ["ignore", "pipe", "pipe"] });
+    let out = "";
+    p.stdout.on("data", (d) => (out += d));
+    p.stderr.on("data", (d) => (out += d));
+    p.on("exit", (code) => {
+      const file = path.join(profile, "selftest.json");
+      const report = existsSync(file) ? JSON.parse(readFileSync(file, "utf8")) : null;
+      rmSync(file, { force: true });
+      resolve({ code, report, out });
+    });
+  });
+}
+
 const pgRunning = () => {
   try {
     execFileSync(path.join(pgBin, "pg_ctl.exe"), ["status", "-D", path.join(dataDir, "data")], { stdio: "ignore" });
@@ -170,6 +189,29 @@ try {
   const tenth = await runApp({ ...withMigrations(), PCRM_SELFTEST_CONSOLE: "1", PLATFORM_OWNER_PASSWORD: fresh?.password ?? "x" });
   const c2 = tenth.report?.console ?? {};
   check("after recovery the new password signs in and two-factor is set up again", c2.login === 200 && c2.enrol === 200 && c2.restore === "ok", JSON.stringify(c2));
+
+  // 11. shop network access and a second computer in client mode
+  const lanOff = tenth.report?.lan;
+  if (lanOff?.reachable === null) console.log("      no network address on this computer: skipping the shop network checks");
+  else {
+    check("with shop network access off, the server does not answer on the network", lanOff?.enabled === false && lanOff.reachable === false, JSON.stringify(lanOff));
+    const conf = JSON.parse(readFileSync(path.join(dataDir, "config.json"), "utf8"));
+    writeFileSync(path.join(dataDir, "config.json"), JSON.stringify({ ...conf, lanEnabled: true }, null, 2));
+    // the owner's password changed in the recovery check above
+    const server = runApp({ ...withMigrations(), PCRM_SKIP_FIREWALL: "1", PCRM_SELFTEST_STAY: "60", PLATFORM_OWNER_PASSWORD: fresh?.password ?? "x" });
+    const report = path.join(dataDir, "logs", "selftest.json");
+    for (let i = 0; i < 120 && !existsSync(report); i++) await new Promise((ok) => setTimeout(ok, 500));
+    const lan = existsSync(report) ? JSON.parse(readFileSync(report, "utf8")).lan : null;
+    check("with it on, the server answers on the network address", lan?.enabled === true && lan.reachable === true && lan.urls.length > 0, JSON.stringify(lan));
+    check("sign-in works over plain http on the network (cookie not marked Secure)", lan?.loginStatus === 200 && lan.cookieSet && !lan.cookieSecure, JSON.stringify(lan));
+    const profile = path.join(root, "client-profile");
+    const client = await runClient(profile, lan?.urls[0] ?? "");
+    check("a second computer connects in client mode, without the desktop controls", client.code === 0 && client.report?.ok && client.report.serverUrl === lan?.urls[0], JSON.stringify(client.report) + client.out.slice(-800));
+    const again = await runClient(profile, "");
+    check("client mode remembers the pharmacy computer", again.code === 0 && again.report?.serverUrl === lan?.urls[0] && again.report.reachable, JSON.stringify(again.report));
+    const served = await server;
+    check("the server keeps running normally meanwhile", served.code === 0, served.out.slice(-800));
+  }
 } finally {
   if (pgRunning()) execFileSync(path.join(pgBin, "pg_ctl.exe"), ["stop", "-D", path.join(dataDir, "data"), "-m", "fast"], { stdio: "ignore" });
   if (failures) console.log(`kept ${root} for inspection`);

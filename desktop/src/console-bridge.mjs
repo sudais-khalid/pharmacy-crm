@@ -56,7 +56,8 @@ export function installConsoleBridge({ supervisor, getWindow, baseUrl, onRestore
     return (await call(cookie, "POST", "/api/platform/desktop/authorize", { action, ...extra })).devId;
   }
 
-  const status = () => ({
+  const status = async () => ({
+    lan: await supervisor.lanStatus(),
     version: supervisor.versionInfo(),
     dataRoot: supervisor.paths.root,
     backupsDir: supervisor.paths.backups,
@@ -69,7 +70,11 @@ export function installConsoleBridge({ supervisor, getWindow, baseUrl, onRestore
   const handlers = {
     "desktop:status": async (event) => {
       await requireDeveloper(event);
-      return status();
+      return await status();
+    },
+    "desktop:lan": async (event, enabled) => {
+      await authorize(event, "lan", { detail: { enabled: Boolean(enabled) } });
+      return supervisor.setLanAccess(Boolean(enabled));
     },
     "desktop:backup": async (event) => {
       await authorize(event, "backup");
@@ -87,12 +92,12 @@ export function installConsoleBridge({ supervisor, getWindow, baseUrl, onRestore
       await authorize(event, "mirror", { detail: { mirrorDir: r.filePaths[0] } });
       supervisor.config.set({ mirrorDir: r.filePaths[0] });
       await supervisor.replica.snapshot("manual").catch(() => {});
-      return status();
+      return await status();
     },
     "desktop:mirror-clear": async (event) => {
       await authorize(event, "mirror", { detail: { mirrorDir: null } });
       supervisor.config.set({ mirrorDir: null });
-      return status();
+      return await status();
     },
     "desktop:pick-file": async (event) => {
       await requireDeveloper(event);

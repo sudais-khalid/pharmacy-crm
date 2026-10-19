@@ -83,7 +83,7 @@ The same codebase ships in two ways. Business code does not know which mode it r
 | Web and worker | Next.js standalone server and the worker started as child processes by the Electron main process | `web` and `worker` containers |
 | UI | Electron window loading `http://127.0.0.1:<port>`; other devices use the browser or the same app in client mode | Browser or installed PWA |
 | Backups | `pg_dump` (bundled) to a chosen folder, USB drive or synced cloud folder, plus offsite upload when online | Nightly job to offsite storage |
-| Updates | `electron-updater` from a release feed; automatic backup before every update; migrations run on start | New image, migrations on start |
+| Updates | `electron-updater` from a public release feed, checked at start and every 6 hours; the download installs only when chosen from the tray, after a backup and a clean shutdown; migrations run on start after another backup | New image, migrations on start |
 
 ```mermaid
 flowchart TB
@@ -112,8 +112,8 @@ Design decisions:
 | Developer account on a desktop install | The installer build embeds the owner email and a bcrypt hash of the owner password, taken from build-time secrets that never enter the repository. First login forces TOTP enrolment. Anyone else who installs the exe cannot become Developer; recovery is `PharmacyCRM.exe --recover-owner`, which requires a Windows administrator |
 | After install | The Developer logs in, creates the pharmacy and its admin exactly as in server mode (section 6.7). One installation can host one or several pharmacies |
 | Remote control | None. Each installation has its own local Developer console; the Developer manages it on site. A cloud control plane was considered and left out of scope |
-| Client mode | The same installer offers "This computer runs the pharmacy" or "Connect to a pharmacy server" (LAN address or cloud URL). Client mode is only the window, with no database or server |
-| LAN access | Off by default (server binds to `127.0.0.1`). When the Pharmacy Admin enables it, the server binds to the LAN interface, the installer's firewall rule opens the port for private networks only, and the address is shown as a QR code for tablets |
+| Client mode | On a PC without pharmacy data the app asks once: "This computer runs the pharmacy" or "Connect to the pharmacy computer" (address checked against its health endpoint, remembered per device). Client mode is only the window, with no database, server or desktop controls, and offers to reconnect when the server cannot be reached |
+| LAN access | Off by default (server binds to `127.0.0.1`). It is turned on in the Developer console ("This computer"), because it applies to the whole installation, which can hold several pharmacies. The server then also binds to the network, a Windows Firewall rule for this program and port on private networks only is added through the administrator prompt, and the addresses are shown as QR codes for tablets (also from the tray). Session cookies are not marked Secure in desktop mode, which serves plain http |
 | Ports | Picks free local ports on the first start and keeps them for the installation (a new one only if another program took it); PostgreSQL listens on `127.0.0.1` only, never on the LAN |
 | OCR offline | Local Tesseract adapter works without internet; the cloud adapter is used when online and allowed |
 | Code signing | Installer and app signed with an Authenticode certificate so Windows SmartScreen does not block it |
