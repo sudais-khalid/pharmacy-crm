@@ -31,9 +31,26 @@ const install = () => spawnSync(installer, ["/S"], { env, stdio: "ignore", timeo
 // _?= keeps the uninstaller in place so this waits for it to finish
 const uninstall = (...flags) => spawnSync(uninstaller, ["/currentuser", "/S", ...flags, `_?=${instDir}`], { env, stdio: "ignore", timeout: 180_000 }).status;
 
-function runApp(extra = {}) {
+// A freshly installed, unsigned program can be held for a moment by the virus scanner (spawn UNKNOWN).
+async function runApp(extra = {}) {
+  for (let attempt = 1; ; attempt++) {
+    const r = await runOnce(extra);
+    if (!r.spawnError || attempt === 5) return r;
+    await new Promise((ok) => setTimeout(ok, 3000));
+  }
+}
+
+function runOnce(extra) {
   return new Promise((resolve) => {
-    const p = spawn(exe, ["--selftest"], { env: { ...env, ...extra }, stdio: ["ignore", "pipe", "pipe"] });
+    let p;
+    try {
+      p = spawn(exe, ["--selftest"], { env: { ...env, ...extra }, stdio: ["ignore", "pipe", "pipe"] });
+    } catch (e) {
+      // Windows Smart App Control refuses unsigned programs it has no reputation for (sign the build)
+      resolve({ code: null, report: null, out: String(e), spawnError: true });
+      return;
+    }
+    p.on("error", (e) => resolve({ code: null, report: null, out: String(e), spawnError: true }));
     let out = "";
     p.stdout.on("data", (d) => (out += d));
     p.stderr.on("data", (d) => (out += d));

@@ -31,6 +31,9 @@ node scripts/installer-test.mjs                             # install, uninstall
 All of them use a throwaway data folder (`PCRM_DATA_DIR`), never `%PROGRAMDATA%`. The installer test
 installs the app for the current Windows user and removes it again at the end.
 
+Release builds must be code-signed (`CSC_LINK`, `CSC_KEY_PASSWORD`). Windows 11 Smart App Control blocks
+unsigned programs it does not know, so an unsigned build may not start at all on such a PC.
+
 ## On a pharmacy PC
 
 | What | Where |

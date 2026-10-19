@@ -63,7 +63,7 @@ Phase 2 (Windows desktop app and installer) is complete and tagged `v1.2.0`. Nex
 
 ## Known limitations / not built
 - Not built yet (later phases): customer and supplier returns, OCR stock entry, supplier orders, expenses, notifications centre, global search
-- The installer is unsigned until a code-signing certificate is added to the release secrets, so Windows SmartScreen warns on first run
+- The installer is unsigned until a code-signing certificate is added to the release secrets. SmartScreen then warns on first run, and on Windows 11 PCs with Smart App Control on (as on the development PC) Windows can block the program outright: signing is required before installing at pharmacies
 - Updates have not been tried end to end against a real release feed (no public releases location yet); the feed settings, latest.yml and app-update.yml are built and checked
 - The installer was tested on the development PC only, not yet on clean Windows 10 and 11 machines
 - Sale prices come from the batch being sold; a sale spanning batches with different prices is priced per batch
