@@ -14,3 +14,18 @@ export async function nextNumber(tx: Tx, key: CounterKey): Promise<bigint> {
     RETURNING value`;
   return row.value;
 }
+
+/** Usage counters (for example OCR pages per month): adds `n` and returns the new total. */
+export async function addUsage(tx: Tx, key: `USAGE_${string}`, n: number): Promise<number> {
+  const [row] = await tx.$queryRaw<{ value: bigint }[]>`
+    INSERT INTO "TenantCounter" ("pharmacyId", key, value)
+    VALUES (current_setting('app.pharmacy_id', true), ${key}, ${n})
+    ON CONFLICT ("pharmacyId", key) DO UPDATE SET value = "TenantCounter".value + ${n}
+    RETURNING value`;
+  return Number(row.value);
+}
+
+export async function readUsage(tx: Tx, key: `USAGE_${string}`): Promise<number> {
+  const row = await tx.tenantCounter.findFirst({ where: { key }, select: { value: true } });
+  return row ? Number(row.value) : 0;
+}

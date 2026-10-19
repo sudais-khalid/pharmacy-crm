@@ -8,6 +8,7 @@ import { logger } from "@/lib/logger";
 import { purgeIdempotencyKeys } from "@/lib/idempotency";
 import { purgeRateLimitHits } from "@/lib/rate-limit";
 import { dispatchOutbox, type OutboxHandlers } from "@/modules/platform";
+import { claimNextIntake, cleanupDiscardedPhotos, processIntake } from "@/modules/stockentry";
 
 const workerLog = logger.child({ svc: "worker" });
 const log = (msg: string, extra: Record<string, unknown> = {}) => workerLog.info(extra, msg);
@@ -19,6 +20,7 @@ const handlers: OutboxHandlers = {};
 const schedules: { name: string; cron: string; run: () => Promise<unknown> }[] = [
   { name: "platform.purge-idempotency-keys", cron: "15 * * * *", run: () => purgeIdempotencyKeys() },
   { name: "platform.purge-rate-limit-hits", cron: "20 * * * *", run: () => purgeRateLimitHits() },
+  { name: "files.cleanup", cron: "40 3 * * *", run: () => cleanupDiscardedPhotos() },
 ];
 
 const IDLE_MS = 2000;
@@ -52,6 +54,23 @@ async function outboxLoop() {
   }
 }
 
+/** Reads uploaded stock entry photos one at a time (OCR is slow; one at a time keeps the PC responsive). */
+async function ocrLoop() {
+  while (!stopping) {
+    try {
+      const next = await claimNextIntake();
+      if (next) {
+        const r = await processIntake(next.pharmacyId, next.id);
+        log("stock entry read", { intakeId: next.id, ...r });
+        continue;
+      }
+    } catch (e) {
+      log("ocr error", { error: String(e) });
+    }
+    await new Promise((r) => setTimeout(r, 3000));
+  }
+}
+
 async function main() {
   await waitForSchema();
   const boss = new PgBoss({ connectionString: process.env.DATABASE_URL, schema: "pgboss", application_name: "pharmacy-worker" });
@@ -70,11 +89,13 @@ async function main() {
   log("worker started", { schedules: schedules.map((s) => s.name), tz });
 
   const loop = outboxLoop();
+  const ocr = ocrLoop();
   const shutdown = async (signal: string) => {
     if (stopping) return;
     stopping = true;
     log("stopping", { signal });
     await loop;
+    await ocr;
     await boss.stop({ graceful: true, timeout: 20_000 });
     await platformDb.$disconnect();
     process.exit(0);

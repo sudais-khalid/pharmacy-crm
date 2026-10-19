@@ -8,7 +8,7 @@ import { audit } from "./audit";
  * signed in; this records the action in the audit log before it happens.
  */
 export const desktopActionSchema = z.object({
-  action: z.enum(["backup", "mirror", "restore", "lan"]),
+  action: z.enum(["backup", "mirror", "restore", "lan", "cloudOcr"]),
   code: z.string().trim().max(10).optional(),
   detail: z.record(z.string(), z.union([z.string().max(500), z.number(), z.boolean(), z.null()])).optional(),
 });

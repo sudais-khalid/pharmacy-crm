@@ -15,6 +15,7 @@ export type DesktopStatus = {
   lastBackupError: { at: string; reason: string; error: string } | null;
   backups: DesktopBackup[];
   lan: DesktopLan;
+  cloudOcr: { configured: boolean };
 };
 /** Shop network access: off, the server listens on 127.0.0.1 only; on, also on the PC's network addresses. */
 export type DesktopLan = { enabled: boolean; port: number; urls: string[]; firewall: "allowed" | "missing" | "unknown" };
@@ -30,6 +31,7 @@ export type DesktopBridge = {
   restore(id: string, recoveryKey: string | null, code: string): Promise<Result<{ createdAt: string; migratedAfter: number }>>;
   openFolder(which: "backups" | "logs" | "data" | "mirror"): Promise<Result<null>>;
   setLan(enabled: boolean): Promise<Result<DesktopLan>>;
+  setCloudOcrKey(key: string | null): Promise<Result<{ configured: boolean }>>;
   onProgress(fn: (text: string) => void): () => void;
 };
 

@@ -31,6 +31,7 @@ export const pharmacyPlanSchema = z.object({
   plan: z.string().trim().min(1).max(40).default("STANDARD"),
   maxUsers: z.coerce.number().int().min(1).max(500).default(10),
   ocrMonthlyLimit: z.coerce.number().int().min(0).max(100000).default(300),
+  ocrProviders: z.array(z.enum(["LOCAL", "CLOUD"])).min(1, "Allow at least one photo reader").max(2).default(["LOCAL"]),
   subscriptionEndsAt: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().nullable().or(z.literal("").transform(() => null)),
 });
 

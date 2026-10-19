@@ -33,7 +33,7 @@ export async function createPharmacy(c: DevContext, input: CreatePharmacyInput) 
     const { slug, ...profile } = input.pharmacy;
     const pharmacy = await tx.pharmacy.create({
       data: {
-        slug, ...profile, plan: input.plan.plan, maxUsers: input.plan.maxUsers, ocrMonthlyLimit: input.plan.ocrMonthlyLimit,
+        slug, ...profile, plan: input.plan.plan, maxUsers: input.plan.maxUsers, ocrMonthlyLimit: input.plan.ocrMonthlyLimit, ocrProviders: input.plan.ocrProviders,
         subscriptionEndsAt: input.plan.subscriptionEndsAt ? new Date(`${input.plan.subscriptionEndsAt}T23:59:59Z`) : null,
         createdById: c.devId,
         settings: { create: {} },
@@ -232,17 +232,18 @@ export async function unlockAccount(c: DevContext, id: string) {
 
 // ---------------------------------------------------------------- plan, limits and feature switches
 
-export async function setPharmacyPlan(c: DevContext, id: string, input: { plan: string; maxUsers: number; ocrMonthlyLimit: number; subscriptionEndsAt?: string | null }) {
+export async function setPharmacyPlan(c: DevContext, id: string, input: { plan: string; maxUsers: number; ocrMonthlyLimit: number; ocrProviders?: string[]; subscriptionEndsAt?: string | null }) {
   return platformDb.$transaction(async (tx) => {
-    const before = await tx.pharmacy.findUnique({ where: { id }, select: { plan: true, maxUsers: true, ocrMonthlyLimit: true, subscriptionEndsAt: true } });
+    const before = await tx.pharmacy.findUnique({ where: { id }, select: { plan: true, maxUsers: true, ocrMonthlyLimit: true, ocrProviders: true, subscriptionEndsAt: true } });
     if (!before) throw new AppError(404, "Pharmacy not found.");
     const after = await tx.pharmacy.update({
       where: { id },
       data: {
         plan: input.plan, maxUsers: input.maxUsers, ocrMonthlyLimit: input.ocrMonthlyLimit,
+        ...(input.ocrProviders ? { ocrProviders: [...new Set(input.ocrProviders)] } : {}),
         subscriptionEndsAt: input.subscriptionEndsAt ? new Date(`${input.subscriptionEndsAt}T23:59:59Z`) : null,
       },
-      select: { plan: true, maxUsers: true, ocrMonthlyLimit: true, subscriptionEndsAt: true },
+      select: { plan: true, maxUsers: true, ocrMonthlyLimit: true, ocrProviders: true, subscriptionEndsAt: true },
     });
     await audit(tx, actorOf(c), { action: "pharmacy.plan.update", entity: "Pharmacy", entityId: id, pharmacyId: id, before, after });
     return after;

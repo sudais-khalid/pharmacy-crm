@@ -5,19 +5,20 @@ import { Button, Card, ErrorBox, Field, Input, PageHeader, Spinner, useToast } f
 import { useCan } from "@/components/app-context";
 import { ApiError, api, useApi } from "@/lib/client";
 
-type S = { expiryWarningDays: number; currency: string };
+type S = { expiryWarningDays: number; currency: string; ocrProvider: string };
+type Loaded = S & { ocrProviders: string[]; ocrMonthlyLimit: number; ocrUsedThisMonth: number };
 
 /** Operational settings. The pharmacy's name, contacts, logo and receipt texts are on Profile & branding. */
 export default function SettingsPage() {
   const toast = useToast();
   const canBrand = useCan("branding.manage");
-  const { data, error, reload } = useApi<S>("/api/settings");
+  const { data, error, reload } = useApi<Loaded>("/api/settings");
   const [f, setF] = useState<S | null>(null);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
-  useEffect(() => { if (data) setF({ expiryWarningDays: data.expiryWarningDays, currency: data.currency }); }, [data]);
+  useEffect(() => { if (data) setF({ expiryWarningDays: data.expiryWarningDays, currency: data.currency, ocrProvider: data.ocrProvider }); }, [data]);
   if (error) return <ErrorBox message={error} onRetry={reload} />;
-  if (!f) return <Spinner />;
+  if (!f || !data) return <Spinner />;
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -36,7 +37,7 @@ export default function SettingsPage() {
 
   return (
     <>
-      <PageHeader title="Settings" subtitle="Inventory alerts and how amounts are shown." />
+      <PageHeader title="Settings" subtitle="Inventory alerts, how amounts are shown and how bill photos are read." />
       <form onSubmit={submit} className="max-w-3xl space-y-4">
         <Card className="grid gap-4 p-5 sm:grid-cols-2">
           <Field label="Expiry warning period (days)" error={errors.expiryWarningDays} hint="Used by the dashboard and the Expiry tab">
@@ -45,6 +46,27 @@ export default function SettingsPage() {
           <Field label="Currency label" hint="Shown before amounts, e.g. PKR" error={errors.currency}>
             <Input value={f.currency} onChange={(e) => setF({ ...f, currency: e.target.value })} required maxLength={8} />
           </Field>
+        </Card>
+        <Card className="space-y-3 p-5">
+          <div>
+            <h2 className="font-semibold">Reading bill photos</h2>
+            <p className="text-sm text-fg-muted">{data.ocrUsedThisMonth} of {data.ocrMonthlyLimit} photo pages used this month.</p>
+          </div>
+          {data.ocrProviders.length > 1 ? (
+            <fieldset className="space-y-2 text-sm">
+              <legend className="sr-only">Photo reader</legend>
+              <label className="flex items-start gap-2">
+                <input type="radio" name="ocr" className="mt-1" checked={f.ocrProvider === "LOCAL"} onChange={() => setF({ ...f, ocrProvider: "LOCAL" })} />
+                <span><b>On this computer.</b> Photos never leave your pharmacy. Best on clear printed bills.</span>
+              </label>
+              <label className="flex items-start gap-2">
+                <input type="radio" name="ocr" className="mt-1" checked={f.ocrProvider === "CLOUD"} onChange={() => setF({ ...f, ocrProvider: "CLOUD" })} />
+                <span><b>Cloud reader.</b> Reads handwriting and poor photos better. Photos are sent to an outside service (Anthropic) to be read.</span>
+              </label>
+            </fieldset>
+          ) : (
+            <p className="text-sm">Photos are read {data.ocrProviders[0] === "CLOUD" ? "by the cloud reader" : "on this computer and never leave your pharmacy"}.</p>
+          )}
         </Card>
         <div className="flex items-center gap-4">
           <Button type="submit" loading={saving}>Save settings</Button>

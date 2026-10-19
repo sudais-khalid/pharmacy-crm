@@ -58,6 +58,7 @@ export function installConsoleBridge({ supervisor, getWindow, baseUrl, onRestore
 
   const status = async () => ({
     lan: await supervisor.lanStatus(),
+    cloudOcr: supervisor.cloudOcrStatus(),
     version: supervisor.versionInfo(),
     dataRoot: supervisor.paths.root,
     backupsDir: supervisor.paths.backups,
@@ -75,6 +76,13 @@ export function installConsoleBridge({ supervisor, getWindow, baseUrl, onRestore
     "desktop:lan": async (event, enabled) => {
       await authorize(event, "lan", { detail: { enabled: Boolean(enabled) } });
       return supervisor.setLanAccess(Boolean(enabled));
+    },
+    "desktop:cloud-ocr": async (event, key) => {
+      const value = typeof key === "string" ? key.trim() : "";
+      if (value && !/^[\x21-\x7e]{20,300}$/.test(value)) throw new Error("This does not look like an API key.");
+      // the audit records that a key was set or removed, never the key
+      await authorize(event, "cloudOcr", { detail: { configured: Boolean(value) } });
+      return supervisor.setCloudOcrKey(value || null);
     },
     "desktop:backup": async (event) => {
       await authorize(event, "backup");

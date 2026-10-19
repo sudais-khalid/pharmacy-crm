@@ -52,6 +52,6 @@ describe("pharmacy settings", () => {
     expect(after).toMatchObject({ pharmacyName: "Pharmacy test", expiryWarningDays: 60, currency: "Rs" });
     const row = await platformDb.auditLog.findFirstOrThrow({ where: { action: "settings.update" } });
     expect(row.pharmacyId).toBe(pharmacyId);
-    expect(row.after).toEqual({ expiryWarningDays: 60, currency: "Rs" });
+    expect(row.after).toEqual({ expiryWarningDays: 60, currency: "Rs", ocrProvider: "LOCAL" });
   });
 });

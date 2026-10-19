@@ -11,7 +11,7 @@ type Detail = {
   pharmacy: {
     id: string; slug: string; name: string; legalName: string | null; address: string; city: string | null; phone: string; whatsapp: string | null;
     email: string | null; licenseNumber: string | null; taxNumber: string | null; status: PharmacyStatus; statusReason: string | null; plan: string;
-    subscriptionEndsAt: string | null; maxUsers: number; ocrMonthlyLimit: number; createdAt: string;
+    subscriptionEndsAt: string | null; maxUsers: number; ocrMonthlyLimit: number; ocrProviders: string[]; createdAt: string;
   };
   staff: { id: string; name: string; username: string; email: string; role: { key: string; name: string }; active: boolean; lastLoginAt: string | null; mustChangePassword: boolean }[];
   flags: { key: string; label: string; enabled: boolean }[];
@@ -259,10 +259,15 @@ function SupportButton({ pharmacyId, pharmacyName }: { pharmacyId: string; pharm
   );
 }
 
+const OCR_READERS = [
+  ["LOCAL", "On this computer (free, works offline, best on printed bills)"],
+  ["CLOUD", "Cloud reader (better on handwriting; photos are sent to an outside service and need an API key on the server or desktop)"],
+] as const;
+
 function PlanForm({ detail, onSaved }: { detail: Detail; onSaved: () => void }) {
   const toast = useToast();
   const p = detail.pharmacy;
-  const [f, setF] = useState({ plan: p.plan, maxUsers: String(p.maxUsers), ocrMonthlyLimit: String(p.ocrMonthlyLimit), subscriptionEndsAt: p.subscriptionEndsAt ? p.subscriptionEndsAt.slice(0, 10) : "" });
+  const [f, setF] = useState({ plan: p.plan, maxUsers: String(p.maxUsers), ocrMonthlyLimit: String(p.ocrMonthlyLimit), ocrProviders: p.ocrProviders, subscriptionEndsAt: p.subscriptionEndsAt ? p.subscriptionEndsAt.slice(0, 10) : "" });
   const [saving, setSaving] = useState(false);
   const activeStaff = detail.staff.filter((s) => s.active).length;
   async function save(e: React.FormEvent) {
@@ -287,6 +292,15 @@ function PlanForm({ detail, onSaved }: { detail: Detail; onSaved: () => void }) 
         <Field label="Max active staff" hint={`${activeStaff} active now`}><Input type="number" min={1} value={f.maxUsers} onChange={(e) => setF((s) => ({ ...s, maxUsers: e.target.value }))} /></Field>
         <Field label="OCR pages per month"><Input type="number" min={0} value={f.ocrMonthlyLimit} onChange={(e) => setF((s) => ({ ...s, ocrMonthlyLimit: e.target.value }))} /></Field>
       </div>
+      <fieldset className="space-y-1 text-sm">
+        <legend className="mb-1 font-medium">Photo readers allowed</legend>
+        {OCR_READERS.map(([key, label]) => (
+          <label key={key} className="flex items-start gap-2">
+            <input type="checkbox" className="mt-1" checked={f.ocrProviders.includes(key)} onChange={(e) => setF((s) => ({ ...s, ocrProviders: e.target.checked ? [...s.ocrProviders, key] : s.ocrProviders.filter((x) => x !== key) }))} />
+            <span>{label}</span>
+          </label>
+        ))}
+      </fieldset>
       <Button type="submit" variant="secondary" loading={saving}>Save plan</Button>
     </form>
   );

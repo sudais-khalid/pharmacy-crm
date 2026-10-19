@@ -1,7 +1,7 @@
 "use client";
 import { useCallback, useEffect, useState } from "react";
 import QRCode from "qrcode";
-import { FolderOpen, HardDrive, History, RotateCcw, Save, Usb, Wifi } from "lucide-react";
+import { FolderOpen, HardDrive, History, RotateCcw, Save, ScanText, Usb, Wifi } from "lucide-react";
 import { Badge, Button, Card, EmptyState, ErrorBox, Field, Input, Modal, PageHeader, Spinner, TableWrap, useToast } from "@/components/ui";
 import { formatDateTime } from "@/lib/client";
 import { DesktopError, desktopCall, formatBytes, getDesktop, type DesktopBackup, type DesktopStatus } from "@/lib/desktop-bridge";
@@ -104,6 +104,9 @@ export default function DesktopPage() {
           <ShopNetwork lan={status.lan} busy={busy === "lan"} disabled={Boolean(busy)}
             onChange={(enabled) => run("lan", () => desktopCall(desktop.setLan(enabled)), enabled ? "Shop network access is on" : "Shop network access is off")} />
 
+          <CloudReader configured={status.cloudOcr?.configured ?? false} busy={busy === "cloud-ocr"} disabled={Boolean(busy)}
+            onSave={(key) => run("cloud-ocr", () => desktopCall(desktop.setCloudOcrKey(key)), key ? "Cloud reader key saved" : "Cloud reader key removed")} />
+
           <Card>
             <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border p-4">
               <h2 className="font-semibold">Restore</h2>
@@ -130,6 +133,25 @@ export default function DesktopPage() {
       )}
       {target && <RestoreDialog target={target} onClose={() => setTarget(null)} />}
     </>
+  );
+}
+
+/** The API key for the cloud photo reader, kept by Windows data protection on this computer. */
+function CloudReader({ configured, busy, disabled, onSave }: { configured: boolean; busy: boolean; disabled: boolean; onSave: (key: string | null) => void }) {
+  const [key, setKey] = useState("");
+  return (
+    <Card className="p-4">
+      <h2 className="mb-1 flex items-center gap-2 font-semibold"><ScanText className="h-4 w-4 text-primary" aria-hidden /> Cloud photo reader</h2>
+      <p className="max-w-2xl text-sm text-fg-muted">
+        {configured ? "A key is saved. Pharmacies allowed the cloud reader on their plan can choose it in Settings." : "Bill photos are read on this computer. To offer the cloud reader (better on handwriting), save an Anthropic API key here and allow it on the pharmacy's plan."}
+        {" "}The key is encrypted for this Windows account and is never shown again.
+      </p>
+      <form className="mt-3 flex flex-wrap gap-2" onSubmit={(e) => { e.preventDefault(); if (key.trim()) { onSave(key.trim()); setKey(""); } }}>
+        <Input type="password" autoComplete="off" className="max-w-sm" placeholder={configured ? "Replace the key" : "API key"} aria-label="Cloud reader API key" value={key} onChange={(e) => setKey(e.target.value)} />
+        <Button size="sm" type="submit" variant="secondary" loading={busy} disabled={disabled || !key.trim()}>Save key</Button>
+        {configured && <Button size="sm" type="button" variant="ghost" disabled={disabled} onClick={() => onSave(null)}>Remove key</Button>}
+      </form>
+    </Card>
   );
 }
 

@@ -12,6 +12,7 @@ contextBridge.exposeInMainWorld("pcrmDesktop", {
   restore: (id, recoveryKey, code) => ipcRenderer.invoke("desktop:restore", { id, recoveryKey: recoveryKey ?? null, code: code ?? "" }),
   openFolder: (which) => ipcRenderer.invoke("desktop:open-folder", which),
   setLan: (enabled) => ipcRenderer.invoke("desktop:lan", Boolean(enabled)),
+  setCloudOcrKey: (key) => ipcRenderer.invoke("desktop:cloud-ocr", key ? String(key) : null),
   onProgress: (fn) => {
     const handler = (_event, text) => fn(String(text));
     ipcRenderer.on("desktop:progress", handler);

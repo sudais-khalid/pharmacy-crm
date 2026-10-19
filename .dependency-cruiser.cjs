@@ -62,6 +62,7 @@ module.exports = {
           "^src/instrumentation\\.ts$",
           "^src/lib/(rate-limit|idempotency|platform-db)\\.ts$",
           "^src/worker\\.ts$",
+          "^src/modules/stockentry/(upload|ocr/process)\\.ts$",
           "^src/ops-cli\\.ts$",
           "^src/app/api/(auth|platform)/",
           "^src/app/\\(platform\\)/",

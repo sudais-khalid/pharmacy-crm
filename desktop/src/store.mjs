@@ -64,6 +64,12 @@ export class SecretStore {
     this.unreadable.delete(name);
     writeJsonAtomic(this.file, this.data);
   }
+  remove(name) {
+    if (!(name in this.data.secrets)) return;
+    delete this.data.secrets[name];
+    this.unreadable.delete(name);
+    writeJsonAtomic(this.file, this.data);
+  }
   /** Returns the stored secret, or creates, stores and returns a new one. */
   getOrCreate(name, create) {
     const existing = this.get(name);

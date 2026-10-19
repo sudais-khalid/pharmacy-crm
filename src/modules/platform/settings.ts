@@ -2,6 +2,7 @@ import type { Tx } from "@/lib/prisma";
 import { runInTx, type DbContext } from "@/lib/db";
 import { AppError } from "@/lib/errors";
 import { audit, type AuditContext } from "./audit";
+import { readUsage } from "./counters";
 
 /** Pharmacy profile, branding and operational settings, as the app, receipts and the sign-in page use them. */
 export type PharmacySettingsView = {
@@ -21,6 +22,11 @@ export type PharmacySettingsView = {
   logoIconFileId: string | null;
   expiryWarningDays: number;
   currency: string;
+  /** Photo reading: the providers the Developer allows, the pharmacy's choice and this month's pages. */
+  ocrProviders: string[];
+  ocrProvider: string;
+  ocrMonthlyLimit: number;
+  ocrUsedThisMonth: number;
 };
 
 export async function getSettings(tx: Tx, pharmacyId: string): Promise<PharmacySettingsView> {
@@ -44,20 +50,26 @@ export async function getSettings(tx: Tx, pharmacyId: string): Promise<PharmacyS
     logoIconFileId: pharmacy.logoIconFileId,
     expiryWarningDays: s.expiryWarningDays,
     currency: pharmacy.currency,
+    ocrProviders: pharmacy.ocrProviders,
+    ocrProvider: pharmacy.ocrProviders.includes(s.ocrProvider) ? s.ocrProvider : (pharmacy.ocrProviders[0] ?? "LOCAL"),
+    ocrMonthlyLimit: pharmacy.ocrMonthlyLimit,
+    ocrUsedThisMonth: await readUsage(tx, `USAGE_OCR_${new Date().toISOString().slice(0, 7).replace("-", "")}`),
   };
 }
 
 /** Operational settings (settings.manage). The profile and branding are edited in branding.ts. */
-export async function updateSettings(ctx: DbContext & AuditContext, input: { expiryWarningDays: number; currency: string }) {
+export async function updateSettings(ctx: DbContext & AuditContext, input: { expiryWarningDays: number; currency: string; ocrProvider?: "LOCAL" | "CLOUD" }) {
   return runInTx(ctx, async (tx) => {
     const before = await getSettings(tx, ctx.pharmacyId);
+    const ocrProvider = input.ocrProvider ?? before.ocrProvider;
+    if (!before.ocrProviders.includes(ocrProvider)) throw new AppError(400, "This photo reader is not part of your plan.");
     await tx.pharmacy.update({ where: { id: ctx.pharmacyId }, data: { currency: input.currency } });
-    await tx.pharmacySettings.update({ where: { pharmacyId: ctx.pharmacyId }, data: { expiryWarningDays: input.expiryWarningDays } });
+    await tx.pharmacySettings.update({ where: { pharmacyId: ctx.pharmacyId }, data: { expiryWarningDays: input.expiryWarningDays, ocrProvider } });
     const after = await getSettings(tx, ctx.pharmacyId);
     await audit(tx, ctx, {
       action: "settings.update", entity: "Pharmacy", entityId: ctx.pharmacyId,
-      before: { expiryWarningDays: before.expiryWarningDays, currency: before.currency },
-      after: { expiryWarningDays: after.expiryWarningDays, currency: after.currency },
+      before: { expiryWarningDays: before.expiryWarningDays, currency: before.currency, ocrProvider: before.ocrProvider },
+      after: { expiryWarningDays: after.expiryWarningDays, currency: after.currency, ocrProvider: after.ocrProvider },
     });
     return after;
   });

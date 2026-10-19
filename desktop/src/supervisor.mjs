@@ -216,7 +216,8 @@ export class Supervisor {
       name: "worker",
       script: bundle.workerJs,
       cwd: bundle.server,
-      env: { ...env, DATABASE_URL: superUrl, LOG_SERVICE: "worker" },
+      // only the worker reads photos, so only the worker gets the cloud reader key
+      env: { ...env, DATABASE_URL: superUrl, LOG_SERVICE: "worker", ...this.cloudOcrEnv() },
       logFile: path.join(paths.logs, "worker.log"),
       ipc: true,
       ready: readyWhenOutput("worker started"),
@@ -288,6 +289,28 @@ export class Supervisor {
       this.log.info(added ? "firewall rule added" : "firewall rule not added (administrator prompt declined)");
     }
     return this.lanStatus({ refresh: true });
+  }
+
+  /** The cloud photo reader's API key (Windows DPAPI protected), as worker environment. */
+  cloudOcrEnv() {
+    const key = this.secrets.get("cloudOcrKey");
+    return key ? { ANTHROPIC_API_KEY: key } : {};
+  }
+
+  cloudOcrStatus() {
+    return { configured: Boolean(this.secrets.get("cloudOcrKey")) };
+  }
+
+  /** Stores or removes the cloud reader key and restarts the worker with it. */
+  async setCloudOcrKey(key) {
+    if (key) this.secrets.set("cloudOcrKey", key);
+    else this.secrets.remove("cloudOcrKey");
+    this.log.info(key ? "cloud photo reader key saved" : "cloud photo reader key removed");
+    await this.worker.stop();
+    const { ANTHROPIC_API_KEY: _old, ...rest } = this.worker.env;
+    this.worker.env = { ...rest, ...this.cloudOcrEnv() };
+    await this.worker.start();
+    return this.cloudOcrStatus();
   }
 
   versionInfo() {
