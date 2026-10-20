@@ -319,6 +319,8 @@ Rules enforced in the service, with the sale row locked: total returned quantity
 
 `MovementType` gains `SALE_RETURN` and `SUPPLIER_RETURN`.
 
+`Batch` gains `setAsideAt` and `setAsideNote` (Phase 6): a batch set aside for return to the supplier stays in stock but is skipped by FEFO selling, POS search and stock counts until it is written off, returned or put back.
+
 ## 4. Procurement
 
 ### 4.1 Supplier catalog (price list maintained by pharmacists)

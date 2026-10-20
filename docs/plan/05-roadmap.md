@@ -243,14 +243,14 @@ Acceptance criteria:
 
 Tasks:
 
-- [ ] 6.1 `expiryAlertDays` setting, default 30
-- [ ] 6.2 `expiry.scan` and `stock.scan` jobs, fanned out per active pharmacy, with de-duplicated notifications (30 days, 7 days, expired; low stock, out of stock)
-- [ ] 6.3 Notification bell and drawer; mark read; actions link to the fix
-- [ ] 6.4 Expiry write-off flow (movement `EXPIRY`) and "mark for supplier return" list
-- [ ] 6.5 Stock card report: opening, in by type, out by type, closing, per medicine and date range (R2)
-- [ ] 6.6 Batch trace: which stock entries brought a batch in and which invoices sold it (for recalls)
-- [ ] 6.7 Global search endpoint and Ctrl+K command palette
-- [ ] 6.8 Medicine detail page: batches, stock card, price history, suppliers, history tab
+- [x] 6.1 `expiryAlertDays` setting, default 30
+- [x] 6.2 `expiry.scan` and `stock.scan` jobs, fanned out per active pharmacy, with de-duplicated notifications (30 days, 7 days, expired; low stock, out of stock)
+- [x] 6.3 Notification bell and drawer; mark read; actions link to the fix
+- [x] 6.4 Expiry write-off flow (movement `EXPIRY`) and "mark for supplier return" list
+- [x] 6.5 Stock card report: opening, in by type, out by type, closing, per medicine and date range (R2)
+- [x] 6.6 Batch trace: which stock entries brought a batch in and which invoices sold it (for recalls)
+- [x] 6.7 Global search endpoint and Ctrl+K command palette
+- [x] 6.8 Medicine detail page: batches, stock card, price history, suppliers, history tab
 
 Acceptance criteria:
 

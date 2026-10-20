@@ -1,7 +1,39 @@
 # Project status
 
 ## Current phase
-Phase 2 (Windows desktop app and installer) is complete and tagged `v1.2.0`. Next: Phase 3, pharmacy accounts, roles and branding (see `docs/plan/05-roadmap.md`).
+Phases 3 to 6 are complete (tags `v1.3.0` to `v1.6.0`). Next: Phase 7, suppliers, catalog and orders (see `docs/plan/05-roadmap.md`).
+
+## Phase 6 delivered (stock intelligence)
+- Expiry alerts at the pharmacy's alert window (default 30 days), at 7 days and on expiry; low and out of stock alerts for medicines that have been stocked. Raised once per stage (not daily), resolved by themselves when the condition clears; the worker scans daily, every half hour, at start, and after each sale, return or stock entry
+- Notification drawer with counts per kind (expiry, stock, other), mark read, and links to the fix
+- Expiry write-off of whole batches, and batches set aside for return to the supplier (not sold meanwhile), with a printable list per supplier
+- Stock card per medicine and date range: opening, in and out by type, running balance, closing (always equal to the stock on the shelf for a range ending today)
+- Batch trace for recalls: purchases and stock entries that brought it in, invoices that sold it, and who still holds some, with phone numbers
+- Global search and Ctrl+K palette across medicines, customers, suppliers, invoices, stock entries and batches, within each person's permissions (p95 37 ms on 20,000 medicines, `npm run bench:search`)
+- Medicine page: batches with trace, stock card, sales, purchase prices, suppliers and history
+- Fix: reports and the dashboard now date sales by the pharmacy's local day (a sale after midnight was counted on the day before)
+- 177 integration tests, 298 smoke and HTTP isolation checks (run with `node scripts/smoke-local.mjs`)
+
+## Phase 5 delivered (POS and billing)
+- Full-screen counter with the keyboard map (F2, arrows and Enter, plus and minus, Delete, F5 to F7, F8, F9, Esc, Ctrl+P), idempotent completion and printing in place
+- Walk-in name and phone on the bill; the account owning a phone number is suggested; save a walk-in as a customer
+- Cash drawer sessions (feature switch): open with a float, pay-in and pay-out, count and close; expected cash is float plus cash taken minus cash refunds plus pay-ins minus pay-outs; a large difference needs a note and notifies managers
+- Receipts in 80 mm, 58 mm and A4 with the pharmacy's branding and a QR code of the invoice number; optional batch and expiry lines; reprints keep the original format
+- Sales returns by invoice number or QR scan: partial quantities, back to the original batch or written off as damaged, refund in cash, by card or as a credit note, return slip; never more than was sold or paid
+- Cashiers see and reprint only their own invoices (new permission `sales.viewAll`); returns need `returns.create`
+- Customer timeline (purchases, cancellations, returns, payments) and a medicine's sales history
+
+## Phase 4 delivered (stock entry, manual and OCR)
+- One stock entry workflow for typed bills, photos of bills and stock lists, and Excel or CSV import, posting through the existing purchase code or as opening stock
+- Keyboard grid with autosave, inline new medicine, match tags, warnings and blocking checks; bonus, trade discount and tax with effective cost per unit
+- Phone photo upload with crop, rotate and resize; local reading with Tesseract (offline, shipped with the app) or a cloud vision model when the Developer allows it and the pharmacy chooses it; monthly page limits and usage
+- Matching by barcode, learned supplier aliases and trigram similarity; aliases learned on post
+- Accuracy script on synthetic bills and lists (`npm run ocr:accuracy`); a real pilot sample set is still needed
+
+## Phase 3 delivered (pharmacy accounts, roles and branding)
+- Roles as data: three templates and custom roles from a permission catalog, with no-escalation and last-admin rules; cost prices and profit hidden from roles without `cost.view`
+- Staff management with invites or temporary passwords, forced sign-out, staff two-factor sign-in, forgot-password requests as notifications
+- Pharmacy profile and branding (logo, brand colour with contrast checks) on the app, sign-in page and receipts; activity history
 
 ## Phase 2 delivered
 - Windows installer (`desktop/`, `npm run package`): per-user NSIS setup with shortcuts; Electron supervises an embedded PostgreSQL 16 on loopback, the web server and the worker, with splash, tray and logs
@@ -62,7 +94,8 @@ Phase 2 (Windows desktop app and installer) is complete and tagged `v1.2.0`. Nex
 - `npm run test:smoke`: 47 HTTP checks against the running app (auth, RBAC, validation, sale/cancel flow, reports, all pages return 200)
 
 ## Known limitations / not built
-- Not built yet (later phases): customer and supplier returns, OCR stock entry, supplier orders, expenses, notifications centre, global search
+- Not built yet (later phases): supplier returns with credit notes, supplier orders, expenses, offsite backups
+- OCR accuracy has only been measured on synthetic printed pages; real phone photos of pilot pharmacies' bills are needed (task 4.15b)
 - The installer is unsigned until a code-signing certificate is added to the release secrets. SmartScreen then warns on first run, and on Windows 11 PCs with Smart App Control on (as on the development PC) Windows can block the program outright: signing is required before installing at pharmacies
 - Updates have not been tried end to end against a real release feed (no public releases location yet); the feed settings, latest.yml and app-update.yml are built and checked
 - The installer was tested on the development PC only, not yet on clean Windows 10 and 11 machines
