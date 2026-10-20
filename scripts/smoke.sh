@@ -193,7 +193,7 @@ ok "Suppliers with balances are added at once" "$(curl -s -b /tmp/smoke_admin.ja
 ok "A cashier cannot add customers in bulk" "$(code -b /tmp/smoke_cashier.jar -X POST $B/api/customers/import -H 'content-type: application/json' -d '{"rows":[{"name":"X"}]}')" 403
 ok "A cashier cannot give a new customer an opening balance" "$(code -b /tmp/smoke_cashier.jar -X POST $B/api/customers -H 'content-type: application/json' -d '{"name":"Smoke Fake Debt","openingBalance":900}')" 403
 ok "Setup can be finished" "$(code -b /tmp/smoke_admin.jar -X POST $B/api/setup/done -H 'content-type: application/json' -d '{}')" 200
-for p in /expenses "/reports?type=pnl" /setup; do ok "Page $p renders" "$(code -b /tmp/smoke_admin.jar "$B$p")" 200; done
+for p in /expenses "/reports?type=pnl" /setup /invoice/shortcuts; do ok "Page $p renders" "$(code -b /tmp/smoke_admin.jar "$B$p")" 200; done
 ok "Report rejects bad range" "$(code -b /tmp/smoke_admin.jar "$B/api/reports?type=sales&from=2030-01-01&to=2020-01-01")" 400
 ok "Cross-site write blocked" "$(code -b /tmp/smoke_admin.jar -X POST $B/api/categories -H 'content-type: application/json' -H 'Origin: https://evil.example' -d '{"name":"x"}')" 403
 ok "Same-origin write allowed" "$(code -b /tmp/smoke_admin.jar -X POST $B/api/categories -H 'content-type: application/json' -H "Origin: $B" -d "{\"name\":\"Smoke $(date +%s)\"}")" 200

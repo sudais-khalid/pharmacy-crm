@@ -110,6 +110,7 @@ export function ShortcutProvider({ nav, palette = false, children }: { nav: NavI
               <li className="flex items-center justify-between gap-3"><span>Show this list</span><Keys keys="?" /></li>
               <li className="flex items-center justify-between gap-3"><span>Close a dialog</span><Keys keys="Esc" /></li>
             </ul>
+            <a href="/invoice/shortcuts" target="_blank" rel="noreferrer" className="mt-5 inline-block text-sm text-primary hover:underline">Print a shortcut card for the counter</a>
           </section>
         </div>
       </Modal>

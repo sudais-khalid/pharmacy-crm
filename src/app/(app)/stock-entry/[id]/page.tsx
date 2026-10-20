@@ -1,4 +1,5 @@
 "use client";
+import { STOCK_ENTRY_KEYS } from "@/lib/shortcut-cards";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
@@ -149,7 +150,7 @@ export default function StockEntryEditor() {
   }
 
   // F2: the medicine cell of the current row; Ctrl+Enter: post
-  useShortcutHelp([{ keys: "F2", label: "Go to the medicine cell" }, { keys: "Enter", label: "Next cell (a new row at the end)" }, { keys: "Ctrl+D", label: "Copy the cell above" }, { keys: "Ctrl+Enter", label: "Post the stock entry" }]);
+  useShortcutHelp(STOCK_ENTRY_KEYS);
   const postRef = useRef<() => void>(() => {});
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {

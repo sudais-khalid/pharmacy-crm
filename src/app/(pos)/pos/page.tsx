@@ -1,4 +1,5 @@
 "use client";
+import { POS_KEYS } from "@/lib/shortcut-cards";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AlertTriangle, Minus, Plus, Printer, ShoppingCart, Trash2, UserPlus, UserRound, Wallet, X } from "lucide-react";
 import { Badge, Button, Card, Checkbox, EmptyState, Input, Select, useToast, cn } from "@/components/ui";
@@ -157,17 +158,7 @@ export default function PosPage() {
     } catch (e) { toast.error((e as Error).message); }
   }
 
-  useShortcutHelp([
-    { keys: "F2", label: "Search or scan a barcode" },
-    { keys: "Up / Down, Enter", label: "Choose a search result and add it" },
-    { keys: "+ / -", label: "Change the quantity of the selected line" },
-    { keys: "Delete", label: "Remove the selected line" },
-    { keys: "F5 / F6 / F7", label: "Pay by cash, card or credit" },
-    { keys: "F8", label: "Cash received" },
-    { keys: "F9", label: "Complete the sale" },
-    { keys: "Esc", label: "Clear the search" },
-    { keys: "Ctrl+P", label: "Reprint the last receipt" },
-  ]);
+  useShortcutHelp(POS_KEYS);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
