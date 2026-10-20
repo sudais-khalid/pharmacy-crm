@@ -129,7 +129,27 @@ export async function platformOverview() {
     endingSoon,
     newest,
     recent: recent.map((r) => ({ ...r, id: r.id.toString() })),
+    usage: await platformUsage(),
   };
+}
+
+/**
+ * Usage per pharmacy (roadmap 8.9): invoices this month and last, staff who signed in within 30 days,
+ * OCR pages read this month and the space its stored files take. Counts only, never business figures.
+ */
+export async function platformUsage(now = new Date()) {
+  const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+  const lastMonthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 1, 1));
+  const ocrKey = `USAGE_OCR_${now.toISOString().slice(0, 7).replace("-", "")}`;
+  const rows = await platformDb.$queryRaw<{ id: string; name: string; slug: string; status: string; invoices: number; invoicesLastMonth: number; activeUsers: number; ocrPages: bigint; storageBytes: bigint }[]>`
+    SELECT p.id, p.name, p.slug, p.status::text AS status,
+           (SELECT COUNT(*) FROM "Sale" s WHERE s."pharmacyId" = p.id AND s.status = 'COMPLETED' AND s."createdAt" >= ${monthStart})::int AS invoices,
+           (SELECT COUNT(*) FROM "Sale" s WHERE s."pharmacyId" = p.id AND s.status = 'COMPLETED' AND s."createdAt" >= ${lastMonthStart} AND s."createdAt" < ${monthStart})::int AS "invoicesLastMonth",
+           (SELECT COUNT(*) FROM "User" u WHERE u."pharmacyId" = p.id AND u.active AND NOT u."isSystem" AND u."lastLoginAt" >= ${new Date(now.getTime() - 30 * 86400000)})::int AS "activeUsers",
+           COALESCE((SELECT c.value FROM "TenantCounter" c WHERE c."pharmacyId" = p.id AND c.key = ${ocrKey}), 0)::bigint AS "ocrPages",
+           COALESCE((SELECT SUM(f.size) FROM "StoredFile" f WHERE f."pharmacyId" = p.id), 0)::bigint AS "storageBytes"
+    FROM "Pharmacy" p ORDER BY p.name`;
+  return rows.map((r) => ({ ...r, ocrPages: Number(r.ocrPages), storageBytes: Number(r.storageBytes) }));
 }
 
 /** Changes a pharmacy's status. Staff sessions of a suspended or deactivated pharmacy end on their next request. */

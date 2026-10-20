@@ -1,8 +1,8 @@
 "use client";
 import Link from "next/link";
 import { AlertTriangle, Ban, Building2, Clock } from "lucide-react";
-import { Card, EmptyState, ErrorBox, PageHeader, Spinner, StatCard } from "@/components/ui";
-import { formatDate, formatDateTime, useApi } from "@/lib/client";
+import { Card, EmptyState, ErrorBox, PageHeader, Spinner, StatCard, TableWrap } from "@/components/ui";
+import { formatDate, formatDateTime, formatNum, useApi } from "@/lib/client";
 import { StatusBadge, type PharmacyStatus } from "./status-badge";
 
 type Overview = {
@@ -10,7 +10,9 @@ type Overview = {
   endingSoon: { id: string; name: string; slug: string; subscriptionEndsAt: string; status: PharmacyStatus }[];
   newest: { id: string; name: string; slug: string; createdAt: string; status: PharmacyStatus }[];
   recent: { id: string; at: string; action: string; entity: string; pharmacyId: string | null }[];
+  usage: { id: string; name: string; status: PharmacyStatus; invoices: number; invoicesLastMonth: number; activeUsers: number; ocrPages: number; storageBytes: number }[];
 };
+const size = (b: number) => (b < 1024 * 1024 ? `${Math.ceil(b / 1024)} KB` : b < 1024 ** 3 ? `${(b / 1024 / 1024).toFixed(1)} MB` : `${(b / 1024 ** 3).toFixed(2)} GB`);
 
 export default function ConsoleOverviewPage() {
   const { data, error, loading, reload } = useApi<Overview>("/api/platform/overview");
@@ -55,6 +57,22 @@ export default function ConsoleOverviewPage() {
               )}
             </Card>
           </div>
+          <Card>
+            <h2 className="border-b border-border px-4 py-3 font-semibold">Usage this month</h2>
+            {data.usage.length === 0 ? <EmptyState title="No pharmacies yet" /> : (
+              <TableWrap><thead><tr className="border-b border-border"><th className="th">Pharmacy</th><th className="th text-right">Invoices</th><th className="th text-right">Last month</th><th className="th text-right">Active staff (30 days)</th><th className="th text-right">OCR pages</th><th className="th text-right">Storage</th></tr></thead>
+                <tbody>{data.usage.map((u) => (
+                  <tr key={u.id} className="border-b border-border/60">
+                    <td className="td"><Link href={`/platform/pharmacies/${u.id}`} className="font-medium text-primary hover:underline">{u.name}</Link> <StatusBadge status={u.status} /></td>
+                    <td className="td text-right">{formatNum(u.invoices)}</td><td className="td text-right">{formatNum(u.invoicesLastMonth)}</td>
+                    <td className="td text-right">{formatNum(u.activeUsers)}</td><td className="td text-right">{formatNum(u.ocrPages)}</td><td className="td text-right">{size(u.storageBytes)}</td>
+                  </tr>))}</tbody>
+                <tfoot><tr className="border-t-2 border-border font-semibold"><td className="td">All pharmacies</td>
+                  <td className="td text-right">{formatNum(data.usage.reduce((s, u) => s + u.invoices, 0))}</td><td className="td text-right">{formatNum(data.usage.reduce((s, u) => s + u.invoicesLastMonth, 0))}</td>
+                  <td className="td text-right">{formatNum(data.usage.reduce((s, u) => s + u.activeUsers, 0))}</td><td className="td text-right">{formatNum(data.usage.reduce((s, u) => s + u.ocrPages, 0))}</td><td className="td text-right">{size(data.usage.reduce((s, u) => s + u.storageBytes, 0))}</td></tr></tfoot>
+              </TableWrap>
+            )}
+          </Card>
           <Card>
             <h2 className="border-b border-border px-4 py-3 font-semibold">Recent Developer actions</h2>
             {data.recent.length === 0 ? <EmptyState title="No actions yet" /> : (
