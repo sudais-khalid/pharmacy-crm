@@ -10,6 +10,7 @@ import { NotificationBell } from "./notification-bell";
 import { CommandPalette, openCommandPalette } from "./command-palette";
 import { cn } from "./ui";
 import { api, formatDate } from "@/lib/client";
+import { useServiceWorker } from "./pwa";
 import { NAV_GROUPS, STAFF_NAV, navVisible } from "@/lib/navigation";
 
 export function Shell({ ctx, children }: { ctx: AppCtx; children: React.ReactNode }) {
@@ -21,6 +22,7 @@ export function Shell({ ctx, children }: { ctx: AppCtx; children: React.ReactNod
   useEffect(() => setMounted(true), []);
   useEffect(() => setOpen(false), [pathname]);
 
+  useServiceWorker();
   const items = STAFF_NAV.filter((n) => navVisible(n, ctx.permissions, ctx.settings));
 
   async function logout() {

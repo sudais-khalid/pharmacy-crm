@@ -10,6 +10,7 @@ import { NotificationBell } from "./notification-bell";
 import { CommandPalette } from "./command-palette";
 import { cn } from "./ui";
 import { api } from "@/lib/client";
+import { useServiceWorker } from "./pwa";
 import { STAFF_NAV, navVisible } from "@/lib/navigation";
 
 export type DrawerSummary = { openingFloat: number; cashSales: number; cardSales: number; creditSales: number; salesCount: number; cashRefunds: number; payIns: number; payOuts: number; expectedCash: number };
@@ -36,6 +37,7 @@ export function PosShell({ ctx, children }: { ctx: AppCtx; children: React.React
   }, []);
   useEffect(() => { void reload(); }, [reload]);
 
+  useServiceWorker();
   const items = STAFF_NAV.filter((n) => navVisible(n, ctx.permissions, ctx.settings));
   const money = (n: number) => `${ctx.settings.currency} ${n.toLocaleString("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`;
   const backOffice = items.find((n) => n.href === "/dashboard") ?? items.find((n) => n.href !== "/pos");
