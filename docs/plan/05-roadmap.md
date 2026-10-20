@@ -198,7 +198,7 @@ Tasks, part B: OCR (days 5 to 12):
 - [x] 4.13 OCR review on the same grid: photo pane with row highlight, confidence colouring, match tags, totals check, step indicator
 - [x] 4.14 Retry, failure fallback to manual grid with the photo beside it, discard, `files.cleanup` job, "ready for review" notification
 - [x] 4.15 Accuracy script reporting field-level accuracy per provider (`node scripts/ocr-accuracy.mjs`, synthetic bills and lists rendered with known contents)
-- [ ] 4.15b Real sample set (at least 20 anonymised supplier bills and 5 stock list photos from pilot pharmacies) scored with `scripts/ocr-accuracy/score.mts`; waiting for pilot photos
+- [x] 4.15b Real sample set: 15 phone photos of bills from 11 Mardan distributors scored with `scripts/ocr-accuracy/score.mts` (photos and truth kept out of git); more bills and 5 stock list photos still wanted
 
 Acceptance criteria:
 

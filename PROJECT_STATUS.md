@@ -95,7 +95,7 @@ Phases 3 to 6 are complete: tags `phase-3`, `phase-4` and `phase-5` mark each ph
 
 ## Known limitations / not built
 - Not built yet (later phases): supplier returns with credit notes, supplier orders, expenses, offsite backups
-- OCR accuracy has only been measured on synthetic printed pages; real phone photos of pilot pharmacies' bills are needed (task 4.15b)
+- Local photo reading on 15 real bill photos (11 distributors, 98 lines): lines found 74%, quantity 59%, expiry 57%, rate 45%, batch 27%, invoice number 53%, bill total 69%. Every line still goes through the review grid. Not readable locally: a handwritten Urdu bill, a sideways photo, a dot-matrix print and a thermal slip; these need the cloud reader, which has not yet been scored on the real bills (needs an API key)
 - The installer is unsigned until a code-signing certificate is added to the release secrets. SmartScreen then warns on first run, and on Windows 11 PCs with Smart App Control on (as on the development PC) Windows can block the program outright: signing is required before installing at pharmacies
 - Updates have not been tried end to end against a real release feed (no public releases location yet); the feed settings, latest.yml and app-update.yml are built and checked
 - The installer was tested on the development PC only, not yet on clean Windows 10 and 11 machines
