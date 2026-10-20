@@ -60,6 +60,8 @@ Once a month, prove that the backups can be restored. Do it on another computer,
 3. Sign in to the console and to one pharmacy, and check a recent invoice and today's stock of one medicine.
 4. Write down the date, the backup's name, how long the restore took and anything that went wrong. Fix problems before the next drill.
 
+The project also runs the same drill automatically: `npm run restore:drill`. It backs up seeded data, drops the database, restores the backup into a new one and runs the full smoke and isolation suites against it.
+
 ## 6. Subscriptions, suspension and reactivation
 
 - A pharmacy whose subscription end date has passed moves to **grace** on the next nightly check. Staff keep working and see a banner with the date sign-in stops.
