@@ -22,6 +22,8 @@ export type PharmacySettingsView = {
   logoFileId: string | null;
   logoIconFileId: string | null;
   expiryWarningDays: number;
+  /** Days before expiry when a batch raises an alert (roadmap 6.1). */
+  expiryAlertDays: number;
   currency: string;
   /** Photo reading: the providers the Developer allows, the pharmacy's choice and this month's pages. */
   ocrProviders: string[];
@@ -64,6 +66,7 @@ export async function getSettings(tx: Tx, pharmacyId: string): Promise<PharmacyS
     logoFileId: pharmacy.logoFileId,
     logoIconFileId: pharmacy.logoIconFileId,
     expiryWarningDays: s.expiryWarningDays,
+    expiryAlertDays: s.expiryAlertDays,
     currency: pharmacy.currency,
     ocrProviders: pharmacy.ocrProviders,
     ocrProvider: pharmacy.ocrProviders.includes(s.ocrProvider) ? s.ocrProvider : (pharmacy.ocrProviders[0] ?? "LOCAL"),
@@ -81,6 +84,7 @@ export async function getSettings(tx: Tx, pharmacyId: string): Promise<PharmacyS
 
 export type SettingsInput = {
   expiryWarningDays: number;
+  expiryAlertDays?: number;
   currency: string;
   ocrProvider?: "LOCAL" | "CLOUD";
   receiptFormat?: ReceiptFormat;
@@ -89,7 +93,7 @@ export type SettingsInput = {
   requireCashSession?: boolean;
   cashDiffThreshold?: number;
 };
-const AUDITED = ["expiryWarningDays", "currency", "ocrProvider", "receiptFormat", "autoPrintReceipt", "receiptBatchLines", "requireCashSession", "cashDiffThreshold"] as const;
+const AUDITED = ["expiryWarningDays", "expiryAlertDays", "currency", "ocrProvider", "receiptFormat", "autoPrintReceipt", "receiptBatchLines", "requireCashSession", "cashDiffThreshold"] as const;
 
 /** Operational settings (settings.manage). The profile and branding are edited in branding.ts. Fields left out keep their value. */
 export async function updateSettings(ctx: DbContext & AuditContext, input: SettingsInput) {
@@ -102,6 +106,7 @@ export async function updateSettings(ctx: DbContext & AuditContext, input: Setti
       where: { pharmacyId: ctx.pharmacyId },
       data: {
         expiryWarningDays: input.expiryWarningDays, ocrProvider,
+        expiryAlertDays: input.expiryAlertDays ?? before.expiryAlertDays,
         receiptFormat: input.receiptFormat ?? before.receiptFormat,
         autoPrintReceipt: input.autoPrintReceipt ?? before.autoPrintReceipt,
         receiptBatchLines: input.receiptBatchLines ?? before.receiptBatchLines,
