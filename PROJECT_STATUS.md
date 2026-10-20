@@ -1,7 +1,7 @@
 # Project status
 
 ## Current phase
-All roadmap phases (0 to 9) are complete. Tags `phase-3`, `phase-4` and `phase-5` mark those phases, `v1.6.0` is the release with Phases 3 to 6, and Phases 7 to 9 follow it on the branch. What comes next is the backlog after go-live in `docs/plan/05-roadmap.md`, section 5, and the real-pharmacy pilot.
+All roadmap phases (0 to 9) are complete. Tags `phase-3`, `phase-4` and `phase-5` mark those phases, `v1.6.0` is the release with Phases 3 to 6 and `v2.0.0` the go-live release with Phases 7 to 9. What comes next is the backlog after go-live in `docs/plan/05-roadmap.md`, section 5, and the real-pharmacy pilot.
 
 ## Phase 9 delivered (hardening and go-live)
 - Production setup: Caddy with automatic HTTPS in front; the app and worker in a non-root image on read-only file systems, with resource limits and rotated logs. Tested end to end on this machine, restore included
