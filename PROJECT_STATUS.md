@@ -1,7 +1,7 @@
 # Project status
 
 ## Current phase
-Phases 3 to 6 are complete (tags `v1.3.0` to `v1.6.0`). Next: Phase 7, suppliers, catalog and orders (see `docs/plan/05-roadmap.md`).
+Phases 3 to 6 are complete: tags `phase-3`, `phase-4` and `phase-5` mark each phase, and `v1.6.0` is the release with all four. Next: Phase 7, suppliers, catalog and orders (see `docs/plan/05-roadmap.md`).
 
 ## Phase 6 delivered (stock intelligence)
 - Expiry alerts at the pharmacy's alert window (default 30 days), at 7 days and on expiry; low and out of stock alerts for medicines that have been stocked. Raised once per stage (not daily), resolved by themselves when the condition clears; the worker scans daily, every half hour, at start, and after each sale, return or stock entry
