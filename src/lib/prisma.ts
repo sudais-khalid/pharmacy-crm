@@ -14,10 +14,16 @@ export const APP_DB_ROLE = "pcrm_app";
  * With APP_DATABASE_URL (a dedicated login role that is a member of pcrm_app) the role cannot be changed
  * from the connection at all; otherwise the owner URL is used with the role set at connection start.
  */
+/**
+ * Connections the tenant client may hold. Every sale or stock entry keeps one for its whole transaction, so
+ * the pg default of 10 made the eleventh counter wait (roadmap 9.8). DB_POOL_MAX raises or lowers it.
+ */
+export const POOL_MAX = Math.max(2, Number(process.env.DB_POOL_MAX) || 20);
+
 function create() {
   const dedicated = process.env.APP_DATABASE_URL;
   const adapter = new PrismaPg(
-    dedicated ? { connectionString: dedicated } : { connectionString: process.env.DATABASE_URL, options: `-c role=${APP_DB_ROLE}` },
+    dedicated ? { connectionString: dedicated, max: POOL_MAX } : { connectionString: process.env.DATABASE_URL, options: `-c role=${APP_DB_ROLE}`, max: POOL_MAX },
   );
   return new PrismaClient({ adapter });
 }

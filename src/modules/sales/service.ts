@@ -5,7 +5,7 @@ import { todayStr } from "@/lib/dates";
 import { D, ZERO } from "@/lib/money";
 import { customerBalance } from "@/modules/customers";
 import { can, type ServiceContext } from "@/modules/identity";
-import { audit, emit, getSettings, nextNumber } from "@/modules/platform";
+import { audit, emit, nextNumber, RECEIPT_FORMATS } from "@/modules/platform";
 import { sessionForPayment } from "./cash";
 
 export type SaleInput = {
@@ -23,7 +23,7 @@ export type SaleInput = {
   customerPhone?: string | null;
 };
 
-type BatchRow = { id: string; batchNumber: string; quantity: number; salePrice: Prisma.Decimal.Value; purchasePrice: Prisma.Decimal.Value };
+type BatchRow = { id: string; medicineId: string; batchNumber: string; quantity: number; salePrice: Prisma.Decimal.Value; purchasePrice: Prisma.Decimal.Value };
 
 /**
  * Creates a sale. Everything happens in ONE transaction:
@@ -46,18 +46,20 @@ export async function createSale(ctx: ServiceContext, input: SaleInput, opts: { 
 
     const lines: { medicineId: string; batchId: string; batchNumber: string; quantity: number; unitPrice: Prisma.Decimal; costPrice: Prisma.Decimal; lineTotal: Prisma.Decimal; newBalance: number }[] = [];
 
+    // one query for the medicines and one for their batches, whatever the number of lines (roadmap 9.8)
+    const meds = new Map((await tx.medicine.findMany({ where: { id: { in: medicineIds } } })).map((m) => [m.id, m]));
+    const locked = await tx.$queryRaw<BatchRow[]>(Prisma.sql`
+      SELECT id, "medicineId", "batchNumber", quantity, "salePrice", "purchasePrice"
+      FROM "Batch"
+      WHERE "medicineId" = ANY(${medicineIds}::text[]) AND quantity > 0 AND "expiryDate" >= ${today}::date AND "setAsideAt" IS NULL
+      ORDER BY "medicineId", "expiryDate" ASC, "createdAt" ASC
+      FOR UPDATE`);
     for (const medicineId of medicineIds) {
       const qty = wanted.get(medicineId)!;
-      const med = await tx.medicine.findUnique({ where: { id: medicineId } });
+      const med = meds.get(medicineId);
       if (!med) throw new AppError(404, "Medicine not found.");
       if (!med.active) throw new AppError(409, `${med.name} is archived and cannot be sold.`);
-
-      const batches = await tx.$queryRaw<BatchRow[]>(Prisma.sql`
-        SELECT id, "batchNumber", quantity, "salePrice", "purchasePrice"
-        FROM "Batch"
-        WHERE "medicineId" = ${medicineId} AND quantity > 0 AND "expiryDate" >= ${today}::date AND "setAsideAt" IS NULL
-        ORDER BY "expiryDate" ASC, "createdAt" ASC
-        FOR UPDATE`);
+      const batches = locked.filter((b) => b.medicineId === medicineId);
 
       const available = batches.reduce((s, b) => s + b.quantity, 0);
       if (available < qty) {
@@ -104,7 +106,8 @@ export async function createSale(ctx: ServiceContext, input: SaleInput, opts: { 
 
     // money in the drawer: cash sales and the down payment on a credit sale
     const cashSessionId = await sessionForPayment(tx, ctx, input.paymentMethod !== "CARD" && paid.gt(0));
-    const { receiptFormat } = await getSettings(tx, ctx.pharmacyId);
+    const stored = (await tx.pharmacySettings.findUnique({ where: { pharmacyId: ctx.pharmacyId }, select: { receiptFormat: true } }))?.receiptFormat;
+    const receiptFormat = (RECEIPT_FORMATS as readonly string[]).includes(stored ?? "") ? stored! : "THERMAL_80";
 
     const n = await nextNumber(tx, "INVOICE");
     const invoiceNo = `INV-${today.replace(/-/g, "")}-${String(n).padStart(5, "0")}`;
@@ -119,12 +122,14 @@ export async function createSale(ctx: ServiceContext, input: SaleInput, opts: { 
       },
     });
 
-    for (const l of lines) {
-      await tx.batch.update({ where: { id: l.batchId }, data: { quantity: { decrement: l.quantity } } });
-      await tx.stockMovement.create({
-        data: { medicineId: l.medicineId, batchId: l.batchId, type: "SALE", quantity: -l.quantity, balanceAfter: l.newBalance, reference: invoiceNo, userId: user.id, ...(opts.createdAt ? { createdAt: opts.createdAt } : {}) },
-      });
-    }
+    // every batch in one statement (the rows are locked above), then the movements together
+    await tx.$executeRaw(Prisma.sql`
+      UPDATE "Batch" b SET quantity = b.quantity - v.qty, "updatedAt" = now()
+      FROM unnest(${lines.map((l) => l.batchId)}::text[], ${lines.map((l) => l.quantity)}::int[]) AS v(id, qty)
+      WHERE b.id = v.id`);
+    await tx.stockMovement.createMany({
+      data: lines.map((l) => ({ medicineId: l.medicineId, batchId: l.batchId, type: "SALE" as const, quantity: -l.quantity, balanceAfter: l.newBalance, reference: invoiceNo, userId: user.id, ...(opts.createdAt ? { createdAt: opts.createdAt } : {}) })),
+    });
 
     if (customer) {
       const at = opts.createdAt ? { createdAt: opts.createdAt } : {};
