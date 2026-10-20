@@ -227,7 +227,7 @@ export default function StockEntryEditor() {
           {" "}Enter what arrived: quantities below what was ordered leave the rest pending on the order, and free units go in Bonus.
         </Card>
       )}
-      {data.status === "POSTED" && data.purchase && <Card className="p-4 text-sm">Posted as purchase <Link className="text-primary hover:underline" href="/purchases">{data.purchase.number}</Link>.</Card>}
+      {data.status === "POSTED" && data.purchase && <Card className="p-4 text-sm">Posted as purchase <Link className="text-primary underline" href="/purchases">{data.purchase.number}</Link>.</Card>}
 
       <div className={cn("grid gap-4", hasPhotos && "xl:grid-cols-[minmax(320px,40%)_minmax(0,1fr)]")}>
         {hasPhotos && <PhotoPane pages={data.pages} box={lines[selected]?.boxes} />}
@@ -309,10 +309,10 @@ export default function StockEntryEditor() {
             <div className="space-y-2 text-sm">
               <div className="flex justify-between"><span>Lines total</span><b>{money(checks?.linesTotal ?? 0)}</b></div>
               {bill && <>
-                <div className="flex items-center justify-between gap-2"><span>Bill discount</span><Input className="w-28 text-right" inputMode="decimal" value={header.billDiscount} disabled={readOnly} onChange={(e) => setH({ billDiscount: e.target.value })} /></div>
+                <div className="flex items-center justify-between gap-2"><span>Bill discount</span><Input aria-label="Bill discount" className="w-28 text-right" inputMode="decimal" value={header.billDiscount} disabled={readOnly} onChange={(e) => setH({ billDiscount: e.target.value })} /></div>
                 <div className="flex justify-between"><span>Total</span><b>{money(checks?.total ?? 0)}</b></div>
                 {header.billTotal && <div className="flex justify-between"><span>Bill total</span><span>{money(header.billTotal)}</span></div>}
-                <div className="flex items-center justify-between gap-2"><span>Paid now</span><span className="flex gap-1"><Select className="w-24" value={header.paymentMethod} disabled={readOnly} onChange={(e) => setH({ paymentMethod: e.target.value })}><option value="CASH">Cash</option><option value="CARD">Card</option></Select><Input className="w-28 text-right" inputMode="decimal" value={header.paid} disabled={readOnly} onChange={(e) => setH({ paid: e.target.value })} /></span></div>
+                <div className="flex items-center justify-between gap-2"><span>Paid now</span><span className="flex gap-1"><Select aria-label="Paid by" className="w-24" value={header.paymentMethod} disabled={readOnly} onChange={(e) => setH({ paymentMethod: e.target.value })}><option value="CASH">Cash</option><option value="CARD">Card</option></Select><Input aria-label="Paid now" className="w-28 text-right" inputMode="decimal" value={header.paid} disabled={readOnly} onChange={(e) => setH({ paid: e.target.value })} /></span></div>
               </>}
               {!readOnly && (
                 <div className="flex flex-wrap justify-end gap-2 pt-2">

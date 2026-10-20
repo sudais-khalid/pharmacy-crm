@@ -87,7 +87,7 @@ function MedicinesInner() {
               <tbody>
                 {data.items.map((m) => (
                   <tr key={m.id} className="border-b border-slate-100 hover:bg-slate-50 dark:border-slate-800/60 dark:hover:bg-slate-800/40">
-                    <td className="td"><div className="font-medium"><Link href={`/medicines/${m.id}`} className="hover:text-primary hover:underline">{m.name}</Link> {m.prescriptionRequired && <Badge tone="blue">Rx</Badge>} {!m.active && <Badge>Archived</Badge>}</div><div className="text-xs text-slate-500">{m.genericName}</div></td>
+                    <td className="td"><div className="font-medium"><Link href={`/medicines/${m.id}`} className="hover:text-primary hover:underline">{m.name}</Link> {m.prescriptionRequired && <Badge tone="blue">Rx</Badge>} {!m.active && <Badge>Archived</Badge>}</div><div className="text-xs text-fg-muted">{m.genericName}</div></td>
                     <td className="td">{m.category?.name ?? "-"}</td>
                     <td className="td font-mono text-xs">{m.barcode ?? "-"}</td>
                     {seesCost && <td className="td text-right">{money(m.purchasePrice)}</td>}
@@ -134,12 +134,12 @@ function MedicineDetail({ id, onClose }: { id: string | null; onClose: () => voi
         <div className="space-y-4 text-sm">
           <dl className="grid grid-cols-2 gap-x-6 gap-y-2 sm:grid-cols-3">
             {[["Generic", data.genericName], ["Category", data.category?.name], ["Barcode", data.barcode], ["SKU", data.sku], ["Unit", data.unit], ["Min. stock", data.minStock], ["Cost price", money(data.purchasePrice)], ["Sale price", money(data.salePrice)], ["Sellable stock", data.stock]].map(([k, v]) => (
-              <div key={k as string}><dt className="text-xs text-slate-500">{k}</dt><dd className="font-medium">{(v as string) || "-"}</dd></div>
+              <div key={k as string}><dt className="text-xs text-fg-muted">{k}</dt><dd className="font-medium">{(v as string) || "-"}</dd></div>
             ))}
           </dl>
           {data.description && <p className="text-slate-600 dark:text-slate-300">{data.description}</p>}
           <h3 className="font-semibold">Batches (earliest expiry sells first)</h3>
-          {data.batches.length === 0 ? <p className="text-slate-500">No batches yet: add stock through Purchases.</p> : (
+          {data.batches.length === 0 ? <p className="text-fg-muted">No batches yet: add stock through Purchases.</p> : (
             <TableWrap><thead><tr className="border-b border-slate-200 dark:border-slate-800"><th className="th">Batch</th><th className="th">Expiry</th><th className="th text-right">Qty</th>{seesCost && <th className="th text-right">Cost</th>}<th className="th text-right">Price</th></tr></thead>
               <tbody>{data.batches.map((b) => (
                 <tr key={b.id} className="border-b border-slate-100 dark:border-slate-800/60"><td className="td">{b.batchNumber}</td>
@@ -216,7 +216,7 @@ function MedicineForm({ med, categories, reloadCats, onClose, onSaved }: { med: 
               <Field label="Expiry date" error={errors["opening.expiryDate"]}><Input type="date" value={f.expiryDate} onChange={(e) => set("expiryDate", e.target.value)} /></Field>
               <Field label="Quantity" error={errors["opening.quantity"]}><Input type="number" min="1" value={f.quantity} onChange={(e) => set("quantity", e.target.value)} /></Field>
             </div>
-            <p className="mt-2 text-xs text-slate-500">Uses the purchase and sale price above. Later stock should be added through Purchases.</p>
+            <p className="mt-2 text-xs text-fg-muted">Uses the purchase and sale price above. Later stock should be added through Purchases.</p>
           </fieldset>
         )}
       </form>

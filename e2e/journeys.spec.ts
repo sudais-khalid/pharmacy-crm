@@ -1,5 +1,7 @@
 import { test, expect, type Browser, type Page } from "@playwright/test";
 import { Authenticator, OWNER, state, staffSignIn, toast } from "./helpers";
+import { writeFileSync } from "node:fs";
+import AxeBuilder from "@axe-core/playwright";
 import { testPng } from "../tests/png";
 
 /**
@@ -188,4 +190,57 @@ test("a supply order is sent and received through stock entry", async () => {
   await toast(admin, /Posted as/);
   await banner.getByRole("link").click();
   await expect(admin.getByText(/partly received/i).first()).toBeVisible();
+});
+
+/**
+ * Accessibility (roadmap 9.7): axe on every screen, now that they hold real records, as the people who use
+ * them. Serious and critical problems fail the run; each is listed with the page and the element.
+ */
+test("every screen passes the accessibility check", async ({ browser }) => {
+  test.setTimeout(600_000);
+  const first = async (page: Page, path: string) => {
+    const r = await page.request.get(path);
+    const d = await r.json();
+    return (Array.isArray(d) ? d : d.items)?.[0]?.id as string;
+  };
+  const ids = {
+    medicine: await first(admin, "/api/medicines"), customer: await first(admin, "/api/customers"), supplier: await first(admin, "/api/suppliers"),
+    sale: await first(admin, "/api/sales"), order: await first(admin, "/api/orders?status=all"), intake: await first(admin, "/api/stock-entry?status=all"),
+    session: await first(admin, "/api/cash/sessions"), ret: await first(admin, "/api/returns"),
+  };
+  const customer = (await (await admin.request.post("/api/customers", { data: { name: "Axe Check Customer", phone: "0300-1234567" } })).json()).id as string;
+  const pharmacies = await (await dev.request.get("/api/platform/pharmacies")).json();
+  const pharmacyId = (pharmacies.items ?? pharmacies)[0].id as string;
+  const visitor = await fresh(browser);
+
+  const screens: [Page, string][] = [
+    ...["/dashboard", "/sales", `/sales?open=${ids.sale}`, "/returns", "/returns/new", "/cash", `/cash/${ids.session}`, "/medicines", `/medicines/${ids.medicine}`,
+      "/inventory", "/inventory?tab=expiry", "/inventory?tab=aside", "/inventory?tab=low", "/inventory?tab=movements",
+      "/stock-entry", `/stock-entry/${ids.intake}`, "/stock-entry/upload?kind=STOCK_LIST", "/stock-entry/import",
+      "/orders", "/orders?tab=reorder", "/orders/new", `/orders/${ids.order}`, "/purchases", "/purchases/new", "/suppliers", `/suppliers/${ids.supplier}`,
+      "/customers", `/customers/${customer}`, "/expenses", "/reports", "/reports?type=pnl", "/users", "/roles", "/branding", "/activity", "/settings", "/setup",
+      `/invoice/${ids.sale}`, `/invoice/returns/${ids.ret}`, `/invoice/orders/${ids.order}`, "/invoice/shortcuts"].map((p) => [admin, p] as [Page, string]),
+    [cashier, "/pos"],
+    ...["/platform", "/platform/pharmacies", "/platform/pharmacies/new", `/platform/pharmacies/${pharmacyId}`, "/platform/accounts"].map((p) => [dev, p] as [Page, string]),
+    ...["/login", `/p/${state.slug}/login`, "/platform/login"].map((p) => [visitor, p] as [Page, string]),
+  ];
+
+  const problems: string[] = [];
+  const details: unknown[] = [];
+  // both themes: the app follows the device's light or dark setting
+  for (const scheme of ["light", "dark"] as const) for (const [page, path] of screens) {
+    await page.emulateMedia({ colorScheme: scheme });
+    await page.goto(path);
+    await page.waitForLoadState("networkidle");
+    // let skeletons give way to the content
+    await page.waitForTimeout(300);
+    const result = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"]).analyze();
+    for (const v of result.violations.filter((x) => x.impact === "serious" || x.impact === "critical")) {
+      problems.push(`${path} (${scheme}): ${v.id} (${v.impact}) ${v.help}\n    ${v.nodes.slice(0, 3).map((n) => n.target.join(" ")).join("\n    ")}`);
+      details.push({ path, scheme, id: v.id, nodes: v.nodes.map((n) => ({ target: n.target.join(" "), html: n.html.slice(0, 200), why: n.failureSummary })) });
+    }
+  }
+  // the full list, for fixing (test-results is not committed)
+  writeFileSync(test.info().outputPath("accessibility.json"), JSON.stringify(details, null, 2));
+  expect(problems, problems.join("\n")).toEqual([]);
 });

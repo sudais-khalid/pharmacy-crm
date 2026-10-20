@@ -54,7 +54,7 @@ export function Shell({ ctx, children }: { ctx: AppCtx; children: React.ReactNod
         if (!entries.length) return null;
         return (
           <div key={g} className="mt-3" role="group" aria-labelledby={`nav-${g}`}>
-            <p id={`nav-${g}`} className="px-3 pb-1 text-[11px] font-semibold uppercase tracking-wider text-slate-400">{g}</p>
+            <p id={`nav-${g}`} className="px-3 pb-1 text-[11px] font-semibold uppercase tracking-wider text-fg-muted">{g}</p>
             <div className="space-y-0.5">{entries.map(link)}</div>
           </div>
         );
@@ -98,7 +98,7 @@ export function Shell({ ctx, children }: { ctx: AppCtx; children: React.ReactNod
             <button onClick={openCommandPalette} className="inline-flex w-72 items-center gap-2 rounded-lg border border-border bg-bg px-3 py-1.5 text-sm text-fg-muted hover:bg-muted" aria-keyshortcuts="Control+K">
               <Search className="h-4 w-4" aria-hidden /> <span className="flex-1 text-left">Search or go to</span><kbd className="text-[11px]">Ctrl+K</kbd>
             </button>
-            <span className="text-sm text-slate-500">{new Date().toLocaleDateString("en-GB", { weekday: "long", day: "2-digit", month: "long", year: "numeric" })}</span>
+            <span className="text-sm text-fg-muted">{new Date().toLocaleDateString("en-GB", { weekday: "long", day: "2-digit", month: "long", year: "numeric" })}</span>
           </div>
           <div className="flex items-center gap-2">
             {!ctx.support && <NotificationBell className="rounded-lg p-2 text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800" />}
@@ -108,7 +108,7 @@ export function Shell({ ctx, children }: { ctx: AppCtx; children: React.ReactNod
             </button>
             <div className="hidden text-right leading-tight sm:block">
               <p className="text-sm font-medium">{ctx.support ? ctx.user.name : <Link href="/account/two-factor" className="hover:underline" title="Your sign-in security">{ctx.user.name}</Link>}</p>
-              <p className="text-xs text-slate-500">{ctx.user.role.name}</p>
+              <p className="text-xs text-fg-muted">{ctx.user.role.name}</p>
             </div>
             <button onClick={ctx.support ? endSupport : logout} className="inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800">
               <LogOut className="h-4 w-4" aria-hidden /> <span className="hidden sm:inline">{ctx.support ? "End support" : "Logout"}</span>

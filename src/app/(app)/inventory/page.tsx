@@ -44,7 +44,7 @@ function BatchTable({ rows, onAdjust, showValues, selected, onSelect }: { rows: 
             {onSelect && <td className="td"><input type="checkbox" aria-label={`Choose ${b.medicine.name} batch ${b.batchNumber}`} checked={selected?.has(b.id) ?? false} onChange={(e) => onSelect([b.id], e.target.checked)} /></td>}
             <td className="td font-medium"><Link href={`/medicines/${b.medicine.id}`} className="hover:text-primary hover:underline">{b.medicine.name}</Link></td><td className="td">{b.batchNumber} {b.setAsideAt && <Badge tone="amber">Set aside</Badge>}</td>
             <td className="td">{formatDate(b.expiryDate)}{" "}
-              {b.quantity > 0 && (b.daysLeft < 0 ? <Badge tone="red">Expired {-b.daysLeft}d ago</Badge> : b.daysLeft <= 30 ? <Badge tone="amber">{b.daysLeft} days left</Badge> : <span className="text-xs text-slate-500">{b.daysLeft}d</span>)}</td>
+              {b.quantity > 0 && (b.daysLeft < 0 ? <Badge tone="red">Expired {-b.daysLeft}d ago</Badge> : b.daysLeft <= 30 ? <Badge tone="amber">{b.daysLeft} days left</Badge> : <span className="text-xs text-fg-muted">{b.daysLeft}d</span>)}</td>
             <td className="td text-right">{b.quantity}</td>{seesCost && <td className="td text-right">{money(b.purchasePrice)}</td>}<td className="td text-right">{money(b.salePrice)}</td>
             {showValues && <>{seesCost && <td className="td text-right">{money(Number(b.purchasePrice) * b.quantity)}</td>}<td className="td text-right">{money(Number(b.salePrice) * b.quantity)}</td></>}
             {onAdjust && <td className="td text-right"><Button size="sm" variant="ghost" aria-label={`Adjust ${b.medicine.name} batch ${b.batchNumber}`} onClick={() => onAdjust(b)}><SlidersHorizontal className="h-4 w-4" /></Button></td>}
@@ -227,7 +227,7 @@ function LowStockTab() {
         <>
           <TableWrap><thead><tr className="border-b border-slate-200 dark:border-slate-800"><th className="th">Medicine</th><th className="th">Category</th><th className="th text-right">In stock</th><th className="th text-right">Minimum</th></tr></thead>
             <tbody>{data.items.map((m) => (
-              <tr key={m.id} className="border-b border-slate-100 dark:border-slate-800/60"><td className="td"><div className="font-medium">{m.name}</div><div className="text-xs text-slate-500">{m.genericName}</div></td><td className="td">{m.category?.name ?? "-"}</td>
+              <tr key={m.id} className="border-b border-slate-100 dark:border-slate-800/60"><td className="td"><div className="font-medium">{m.name}</div><div className="text-xs text-fg-muted">{m.genericName}</div></td><td className="td">{m.category?.name ?? "-"}</td>
                 <td className="td text-right">{m.stock === 0 ? <Badge tone="red">Out of stock</Badge> : <Badge tone="amber">{m.stock}</Badge>}</td><td className="td text-right">{m.minStock}</td></tr>))}</tbody></TableWrap>
           <Pagination page={data.page} pageSize={data.pageSize} total={data.total} onPage={setPage} />
           {canCreate && <div className="border-t border-slate-200 p-3 dark:border-slate-800"><Link href="/stock-entry?new=PURCHASE_BILL" className="text-sm font-medium text-primary hover:underline">Enter a supplier bill to restock</Link></div>}
@@ -254,7 +254,7 @@ function MovementsTab() {
         <><TableWrap><thead><tr className="border-b border-slate-200 dark:border-slate-800"><th className="th">When</th><th className="th">Type</th><th className="th">Medicine</th><th className="th">Batch</th><th className="th text-right">Change</th><th className="th text-right">Balance</th><th className="th">Reference</th><th className="th">By</th></tr></thead>
           <tbody>{data.items.map((m) => (
             <tr key={m.id} className="border-b border-slate-100 dark:border-slate-800/60"><td className="td whitespace-nowrap">{formatDateTime(m.createdAt)}</td><td className="td"><Badge tone={tone(m.type)}>{m.type.replace("_", " ")}</Badge></td><td className="td">{m.medicine.name}</td><td className="td">{m.batch.batchNumber}</td>
-              <td className={`td text-right font-medium ${m.quantity < 0 ? "text-red-600" : "text-emerald-600"}`}>{m.quantity > 0 ? "+" : ""}{m.quantity}</td><td className="td text-right">{m.balanceAfter}</td>
+              <td className={`td text-right font-medium ${m.quantity < 0 ? "text-danger" : "text-success"}`}>{m.quantity > 0 ? "+" : ""}{m.quantity}</td><td className="td text-right">{m.balanceAfter}</td>
               <td className="td">{m.reference ?? m.note ?? "-"}</td><td className="td">{m.user?.name ?? "-"}</td></tr>))}</tbody></TableWrap>
           <Pagination page={data.page} pageSize={data.pageSize} total={data.total} onPage={setPage} /></>
       )}

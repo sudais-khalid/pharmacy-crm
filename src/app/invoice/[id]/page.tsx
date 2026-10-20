@@ -77,7 +77,7 @@ function InvoiceInner() {
       {!embed && s.returns.length > 0 && (
         <section className="no-print mx-auto mt-4 max-w-3xl rounded-xl bg-surface p-4 text-sm shadow">
           <h2 className="mb-2 font-semibold">Returns</h2>
-          <ul className="space-y-1">{s.returns.map((r) => <li key={r.id}><Link className="text-primary hover:underline" href={`/invoice/returns/${r.id}`}>{r.number}</Link>, {formatDateTime(r.createdAt)}, {m(r.total)} ({r.refundMethod === "CREDIT" ? "credit note" : `${r.refundMethod.toLowerCase()} refund`})</li>)}</ul>
+          <ul className="space-y-1">{s.returns.map((r) => <li key={r.id}><Link className="text-primary underline" href={`/invoice/returns/${r.id}`}>{r.number}</Link>, {formatDateTime(r.createdAt)}, {m(r.total)} ({r.refundMethod === "CREDIT" ? "credit note" : `${r.refundMethod.toLowerCase()} refund`})</li>)}</ul>
         </section>
       )}
       {history && <section className="no-print mx-auto mt-4 max-w-3xl rounded-xl bg-surface shadow"><h2 className="border-b border-border p-4 font-semibold">History</h2><HistoryList entity="Sale" entityId={s.id} /></section>}

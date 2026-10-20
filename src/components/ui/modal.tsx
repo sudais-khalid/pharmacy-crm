@@ -12,7 +12,11 @@ export function Modal({ open, onClose, title, children, wide, footer }: { open: 
     const prev = document.activeElement as HTMLElement | null;
     const node = ref.current;
     const focusables = () => Array.from(node?.querySelectorAll<HTMLElement>('a[href],button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])') ?? []);
-    setTimeout(() => (node?.querySelector<HTMLElement>("[data-autofocus],input,select,textarea") ?? focusables()[0])?.focus(), 30);
+    // first field, unless the person already moved into the dialog (fast typing or a scanner)
+    setTimeout(() => {
+      if (node?.contains(document.activeElement)) return;
+      (node?.querySelector<HTMLElement>("[data-autofocus],input,select,textarea") ?? focusables()[0])?.focus();
+    }, 30);
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") { e.stopPropagation(); onClose(); }
       if (e.key === "Tab") {

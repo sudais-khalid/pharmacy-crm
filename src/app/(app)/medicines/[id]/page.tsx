@@ -48,6 +48,7 @@ function MedicineInner() {
       <PageHeader title={data.name} subtitle={[data.genericName, data.category?.name, data.unit].filter(Boolean).join(", ")}
         actions={canManage && <Link href={`/medicines?edit=${data.id}`} className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-surface px-3 py-2 text-sm hover:bg-muted"><Pencil className="h-4 w-4" aria-hidden /> Edit</Link>} />
       <Card className="mb-4 grid grid-cols-2 gap-x-6 gap-y-3 p-4 text-sm sm:grid-cols-4 lg:grid-cols-6">
+        <dl className="contents">
         {([
           ["Sellable stock", <span key="s">{data.stock} {data.stock === 0 ? <Badge tone="red">Out</Badge> : data.stock <= data.minStock ? <Badge tone="amber">Low</Badge> : null}</span>],
           ["Minimum", data.minStock],
@@ -58,6 +59,7 @@ function MedicineInner() {
           ["Prescription", data.prescriptionRequired ? "Required" : "Not needed"],
           ["Status", data.active ? "Active" : "Archived"],
         ] as [string, React.ReactNode][]).map(([k, v]) => <div key={k}><dt className="text-xs text-fg-muted">{k}</dt><dd className="font-medium">{v}</dd></div>)}
+        </dl>
       </Card>
       {data.description && <p className="mb-4 text-sm text-fg-muted">{data.description}</p>}
 

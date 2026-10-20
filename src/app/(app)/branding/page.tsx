@@ -151,7 +151,7 @@ export default function BrandingPage() {
             <div className="space-y-2 p-3">
               <div className="rounded-lg px-3 py-2 text-sm font-medium" style={{ background: rgb(shades[600]), color: rgb(onColor(shades[600])) }}>Menu item, selected</div>
               <button type="button" className="rounded-lg px-3 py-2 text-sm font-medium" style={{ background: rgb(shades[600]), color: rgb(onColor(shades[600])) }}>Complete sale</button>
-              <p className="text-sm" style={{ color: rgb(shades[700]) }}>A link in the brand colour</p>
+              <p className="text-sm"><span className="dark:hidden" style={{ color: rgb(shades[700]) }}>A link in the brand colour</span><span className="hidden dark:inline" style={{ color: rgb(shades[300]) }}>A link in the brand colour</span></p>
             </div>
           </Card>
           <Card className="bg-white p-4 text-center text-xs text-slate-800">

@@ -146,7 +146,7 @@ function Business({ data, owner }: { data: Dash; owner: NonNullable<Dash["owner"
         </Card>
         <TopSellers items={data.topMedicines} />
       </div>
-      <p className="mt-4 text-xs text-fg-muted">Net profit = sales after discounts and returns, less the cost of the batches sold, stock written off and expenses. <Link href="/reports?type=pnl" className="text-primary hover:underline">Profit and loss</Link></p>
+      <p className="mt-4 text-xs text-fg-muted">Net profit = sales after discounts and returns, less the cost of the batches sold, stock written off and expenses. <Link href="/reports?type=pnl" className="text-primary underline">Profit and loss</Link></p>
     </>
   );
 }

@@ -102,13 +102,13 @@ export function A4Receipt({ doc, shop, batchLines }: { doc: ReceiptDoc; shop: Sh
             {shop.legalName && shop.legalName !== shop.pharmacyName && <p className="text-sm text-slate-600">{shop.legalName}</p>}
             {(shop.address || shop.city) && <p className="text-sm text-slate-600">{[shop.address, shop.city].filter(Boolean).join(", ")}</p>}
             <p className="text-sm text-slate-600">{[contact(shop), shop.email].filter(Boolean).join(", ")}</p>
-            {licence(shop) && <p className="text-xs text-slate-500">{licence(shop)}</p>}
+            {licence(shop) && <p className="text-xs text-slate-600">{licence(shop)}</p>}
             {shop.receiptHeader && <p className="mt-1 text-sm font-medium" style={{ color: "rgb(var(--brand-700))" }}>{shop.receiptHeader}</p>}
           </div>
         </div>
         <div className="flex items-start gap-3 text-right">
           <div>
-            <p className="text-xs uppercase tracking-wider text-slate-500">{doc.title}</p>
+            <p className="text-xs uppercase tracking-wider text-slate-600">{doc.title}</p>
             <p className="text-lg font-semibold">{doc.number}</p>
             <p className="text-sm text-slate-600">{formatDateTime(doc.createdAt)}</p>
           </div>
@@ -116,19 +116,19 @@ export function A4Receipt({ doc, shop, batchLines }: { doc: ReceiptDoc; shop: Sh
         </div>
       </header>
       <section className="grid grid-cols-2 gap-4 py-4 text-sm">
-        <div><p className="text-xs uppercase text-slate-500">{doc.partyLabel ?? "Customer"}</p><p className="font-medium">{doc.customer?.name ?? "Walk-in customer"}</p>{doc.customer?.phone && <p>{doc.customer.phone}</p>}{doc.customer?.address && <p>{doc.customer.address}</p>}</div>
-        <div className="text-right"><p className="text-xs uppercase text-slate-500">{doc.staffLabel ?? "Cashier"}</p><p className="font-medium">{doc.cashier}</p></div>
+        <div><p className="text-xs uppercase text-slate-600">{doc.partyLabel ?? "Customer"}</p><p className="font-medium">{doc.customer?.name ?? "Walk-in customer"}</p>{doc.customer?.phone && <p>{doc.customer.phone}</p>}{doc.customer?.address && <p>{doc.customer.address}</p>}</div>
+        <div className="text-right"><p className="text-xs uppercase text-slate-600">{doc.staffLabel ?? "Cashier"}</p><p className="font-medium">{doc.cashier}</p></div>
       </section>
       <table className="w-full text-sm">
-        <thead><tr className="border-y border-slate-300 text-left text-xs uppercase text-slate-500"><th className="py-2">Medicine</th>{batchLines && <><th>Batch</th><th>Expiry</th></>}<th className="text-right">Qty</th><th className="text-right">Price</th><th className="text-right">Total</th></tr></thead>
+        <thead><tr className="border-y border-slate-300 text-left text-xs uppercase text-slate-600"><th className="py-2">Medicine</th>{batchLines && <><th>Batch</th><th>Expiry</th></>}<th className="text-right">Qty</th><th className="text-right">Price</th><th className="text-right">Total</th></tr></thead>
         <tbody>{doc.lines.map((l) => (
-          <tr key={l.id} className="border-b border-slate-100"><td className="py-2">{l.name}{l.note && <span className="block text-xs text-slate-500">{l.note}</span>}</td>{batchLines && <><td>{l.batchNumber}</td><td>{formatDate(l.expiryDate)}</td></>}<td className="text-right">{l.quantity}</td><td className="text-right">{Number(l.unitPrice).toFixed(2)}</td><td className="text-right">{Number(l.lineTotal).toFixed(2)}</td></tr>))}</tbody>
+          <tr key={l.id} className="border-b border-slate-100"><td className="py-2">{l.name}{l.note && <span className="block text-xs text-slate-600">{l.note}</span>}</td>{batchLines && <><td>{l.batchNumber}</td><td>{formatDate(l.expiryDate)}</td></>}<td className="text-right">{l.quantity}</td><td className="text-right">{Number(l.unitPrice).toFixed(2)}</td><td className="text-right">{Number(l.lineTotal).toFixed(2)}</td></tr>))}</tbody>
       </table>
       <dl className="ml-auto mt-4 w-full max-w-xs space-y-1 text-sm">
         {doc.totals.map(([k, v, strong]) => <div key={k} className={strong ? "flex justify-between border-t border-slate-300 pt-1 text-base font-bold" : "flex justify-between"}><dt>{k}</dt><dd>{v}</dd></div>)}
       </dl>
       {doc.notes.map((n) => <p key={n} className="mt-3 text-sm">{n}</p>)}
-      {shop.invoiceFooter && <footer className="mt-8 border-t border-slate-200 pt-3 text-center text-xs text-slate-500">{shop.invoiceFooter}</footer>}
+      {shop.invoiceFooter && <footer className="mt-8 border-t border-slate-200 pt-3 text-center text-xs text-slate-600">{shop.invoiceFooter}</footer>}
     </article>
   );
 }
