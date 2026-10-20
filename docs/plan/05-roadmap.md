@@ -266,16 +266,16 @@ Acceptance criteria:
 
 Tasks:
 
-- [ ] 7.1 `SupplierProduct` table; supplier page "Catalog" tab where pharmacists add existing medicines, create a new medicine inline and link it, set supplier code, pack, price, bonus rule, lead time, preferred
-- [ ] 7.2 Supplier price list import through the file import from 4.5
-- [ ] 7.3 `lastPrice` updated on every posted stock entry; supplier code added to the OCR matching pipeline
-- [ ] 7.4 Purchase order CRUD and status machine (data model, section 4.2)
-- [ ] 7.5 Reorder suggestions job and screen, "create one draft per supplier"
-- [ ] 7.6 Supplier page "Orders" tab: open orders with ordered, received and pending quantities
-- [ ] 7.7 Printable purchase order with pharmacy branding and WhatsApp share text
-- [ ] 7.8 Receive against order: stock entry draft pre-filled from the PO (manual or OCR), partial receipts, close short
-- [ ] 7.9 Supplier returns with ledger credit and `SUPPLIER_RETURN` movement
-- [ ] 7.10 `po.overdue` job and notification
+- [x] 7.1 `SupplierProduct` table; supplier page "Catalog" tab where pharmacists add existing medicines, create a new medicine inline and link it, set supplier code, pack, price, bonus rule, lead time, preferred
+- [x] 7.2 Supplier price list import through the file import from 4.5
+- [x] 7.3 `lastPrice` updated on every posted stock entry; supplier code added to the OCR matching pipeline
+- [x] 7.4 Purchase order CRUD and status machine (data model, section 4.2)
+- [x] 7.5 Reorder suggestions job and screen, "create one draft per supplier"
+- [x] 7.6 Supplier page "Orders" tab: open orders with ordered, received and pending quantities
+- [x] 7.7 Printable purchase order with pharmacy branding and WhatsApp share text
+- [x] 7.8 Receive against order: stock entry draft pre-filled from the PO (manual or OCR), partial receipts, close short
+- [x] 7.9 Supplier returns with ledger credit and `SUPPLIER_RETURN` movement
+- [x] 7.10 `po.overdue` job and notification
 
 Acceptance criteria:
 

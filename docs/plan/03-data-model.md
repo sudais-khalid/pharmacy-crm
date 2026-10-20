@@ -339,7 +339,7 @@ model SupplierProduct {
 }
 ```
 
-Updated automatically whenever a purchase is posted, so it stays current without manual work. A partial unique index keeps one `preferred` supplier per medicine.
+Updated automatically whenever a purchase is posted, so it stays current without manual work. A partial unique index keeps one `preferred` supplier per medicine, and another keeps a `supplierCode` used once per supplier. As built, the row also has its own `id`, `pharmacyId` and `packSize`. Matching a bill line tries the supplier's code (after the barcode, before learned aliases), and posting a bill fills in codes the catalog did not have yet.
 
 ### 4.2 Purchase orders
 
@@ -376,6 +376,8 @@ model PurchaseOrderItem {
 
 Check constraint: `receivedQty >= 0 AND receivedQty <= orderedQty * 2` (over-receipt allowed for bonus stock but bounded).
 
+As built: `PurchaseOrder` also has `closedAt` and `closeReason`; `receivedQty` counts paid units only (bonus units do not count against an order). A draft is approved and sent with `po.approve`; receiving opens a stock entry draft with the pending lines (`StockIntake.purchaseOrderId`), and the posted purchase (`Purchase.purchaseOrderId`) moves the order to `PARTIALLY_RECEIVED` or `RECEIVED`. An order with nothing received is `CANCELLED`, one with part received is `CLOSED` short.
+
 ### 4.3 Purchase and purchase item additions
 
 Pharmaceutical distributor bills in Pakistan usually show **bonus (free) quantity, trade discount and sales tax** per line. The current model has none of these, which makes OCR results impossible to post faithfully and makes cost price wrong when bonus stock arrives.
@@ -394,7 +396,7 @@ Unique index `(supplierId, supplierInvoice)` where `supplierInvoice` is not null
 
 ### 4.4 Supplier returns
 
-`SupplierReturn` and `SupplierReturnItem` mirror customer returns: they reference a batch, reduce stock with a `SUPPLIER_RETURN` movement and credit the supplier ledger. Main use: sending near-expiry stock back.
+`SupplierReturn` and `SupplierReturnItem` mirror customer returns: they reference a batch, reduce stock with a `SUPPLIER_RETURN` movement and credit the supplier ledger. Main use: sending near-expiry stock back. Lines are valued at the batch cost; the ledger entry (kind `RETURN`, `SupplierLedger.supplierReturnId`) lowers what the pharmacy owes, and an emptied batch is no longer set aside.
 
 ### 4.5 Stock entry drafts (manual, OCR and import)
 

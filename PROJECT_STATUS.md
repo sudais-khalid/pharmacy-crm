@@ -1,7 +1,16 @@
 # Project status
 
 ## Current phase
-Phases 3 to 6 are complete: tags `phase-3`, `phase-4` and `phase-5` mark each phase, and `v1.6.0` is the release with all four. Next: Phase 7, suppliers, catalog and orders (see `docs/plan/05-roadmap.md`).
+Phases 3 to 7 are complete. Tags `phase-3`, `phase-4` and `phase-5` mark those phases, `v1.6.0` is the release with Phases 3 to 6, and Phase 7 follows it on the branch. Next: Phase 8, finance and reports (see `docs/plan/05-roadmap.md`).
+
+## Phase 7 delivered (suppliers, catalog and orders)
+- Supplier catalogs: add an existing or brand-new medicine in one step, with the supplier's code, pack, price, bonus rule, lead time and a preferred supplier per medicine; import a supplier's price list from Excel or CSV
+- Every posted bill refreshes the supplier's last price and bonus, and teaches the catalog the codes printed on it; bill lines then match by supplier code
+- Supply orders: draft, approve and send, print on the pharmacy's letterhead or send by WhatsApp; receive against an order through stock entry (partial receipts leave the rest pending), close short or cancel
+- Reorder suggestions from stock, sales over 30 days, supplier lead time and cover days, less what is on order; one draft order per supplier in one click
+- Supplier returns from the batches set aside: stock out at cost with a return note, credited to the supplier's account
+- Daily notifications for medicines to reorder and for orders past their expected date
+- 187 integration tests, 352 smoke and HTTP isolation checks
 
 ## Phase 6 delivered (stock intelligence)
 - Expiry alerts at the pharmacy's alert window (default 30 days), at 7 days and on expiry; low and out of stock alerts for medicines that have been stocked. Raised once per stage (not daily), resolved by themselves when the condition clears; the worker scans daily, every half hour, at start, and after each sale, return or stock entry
