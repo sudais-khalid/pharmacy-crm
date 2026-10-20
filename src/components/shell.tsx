@@ -10,7 +10,7 @@ import { NotificationBell } from "./notification-bell";
 import { CommandPalette, openCommandPalette } from "./command-palette";
 import { cn } from "./ui";
 import { api } from "@/lib/client";
-import { NAV_GROUPS, STAFF_NAV } from "@/lib/navigation";
+import { NAV_GROUPS, STAFF_NAV, navVisible } from "@/lib/navigation";
 
 export function Shell({ ctx, children }: { ctx: AppCtx; children: React.ReactNode }) {
   const pathname = usePathname();
@@ -21,7 +21,7 @@ export function Shell({ ctx, children }: { ctx: AppCtx; children: React.ReactNod
   useEffect(() => setMounted(true), []);
   useEffect(() => setOpen(false), [pathname]);
 
-  const items = STAFF_NAV.filter((n) => ctx.permissions.includes(n.perm));
+  const items = STAFF_NAV.filter((n) => navVisible(n, ctx.permissions, ctx.settings));
 
   async function logout() {
     await api("/api/auth/logout", { method: "POST", body: {} }).catch(() => {});

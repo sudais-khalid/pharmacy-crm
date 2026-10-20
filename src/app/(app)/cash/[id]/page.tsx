@@ -9,7 +9,7 @@ import { formatDateTime, useApi } from "@/lib/client";
 type Session = {
   id: string; status: "OPEN" | "CLOSED"; openedAt: string; closedAt: string | null; openingFloat: string; expectedCash: string | null; countedCash: string | null; difference: string | null; note: string | null;
   user: { name: string } | null; closedBy: { name: string } | null;
-  summary: { openingFloat: number; cashSales: number; cardSales: number; creditSales: number; salesCount: number; cashRefunds: number; payIns: number; payOuts: number; expectedCash: number };
+  summary: { openingFloat: number; cashSales: number; cardSales: number; creditSales: number; salesCount: number; cashRefunds: number; payIns: number; payOuts: number; expensesPaid?: number; expectedCash: number };
   movements: { id: string; type: "PAY_IN" | "PAY_OUT"; amount: string; reason: string; createdAt: string; user: { name: string } }[];
 };
 
@@ -21,7 +21,7 @@ export default function CashSessionPage() {
   if (error) return <ErrorBox message={error} onRetry={reload} />;
   if (!data) return <Spinner />;
   const s = data.summary;
-  const rows: [string, number][] = [["Opening float", s.openingFloat], ["Cash taken on sales", s.cashSales], ["Cash refunds", -s.cashRefunds], ["Paid in", s.payIns], ["Paid out", -s.payOuts]];
+  const rows: [string, number][] = [["Opening float", s.openingFloat], ["Cash taken on sales", s.cashSales], ["Cash refunds", -s.cashRefunds], ["Paid in", s.payIns], ["Paid out", -s.payOuts], ...(s.expensesPaid ? [["Expenses paid from the drawer", -s.expensesPaid] as [string, number]] : [])];
   return (
     <>
       <Link href="/cash" className="mb-2 inline-flex items-center gap-1.5 text-sm text-fg-muted hover:underline"><ArrowLeft className="h-4 w-4" /> Cash drawer</Link>

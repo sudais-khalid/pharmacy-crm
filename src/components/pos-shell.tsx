@@ -10,7 +10,7 @@ import { NotificationBell } from "./notification-bell";
 import { CommandPalette } from "./command-palette";
 import { cn } from "./ui";
 import { api } from "@/lib/client";
-import { STAFF_NAV } from "@/lib/navigation";
+import { STAFF_NAV, navVisible } from "@/lib/navigation";
 
 export type DrawerSummary = { openingFloat: number; cashSales: number; cardSales: number; creditSales: number; salesCount: number; cashRefunds: number; payIns: number; payOuts: number; expectedCash: number };
 export type Drawer = { enabled: boolean; required: boolean; session: { id: string; openedAt: string; openingFloat: string; summary: DrawerSummary } | null };
@@ -36,7 +36,7 @@ export function PosShell({ ctx, children }: { ctx: AppCtx; children: React.React
   }, []);
   useEffect(() => { void reload(); }, [reload]);
 
-  const items = STAFF_NAV.filter((n) => ctx.permissions.includes(n.perm));
+  const items = STAFF_NAV.filter((n) => navVisible(n, ctx.permissions, ctx.settings));
   const money = (n: number) => `${ctx.settings.currency} ${n.toLocaleString("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`;
   const backOffice = items.find((n) => n.href === "/dashboard") ?? items.find((n) => n.href !== "/pos");
 

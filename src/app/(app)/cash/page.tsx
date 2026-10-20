@@ -6,7 +6,7 @@ import { Badge, Button, Card, EmptyState, ErrorBox, Field, Input, Modal, PageHea
 import { useApp, useCan, useMoney } from "@/components/app-context";
 import { api, formatDateTime, qs, useApi } from "@/lib/client";
 
-type Summary = { openingFloat: number; cashSales: number; cardSales: number; creditSales: number; salesCount: number; cashRefunds: number; payIns: number; payOuts: number; expectedCash: number };
+type Summary = { openingFloat: number; cashSales: number; cardSales: number; creditSales: number; salesCount: number; cashRefunds: number; payIns: number; payOuts: number; expensesPaid?: number; expectedCash: number };
 type Mine = { enabled: boolean; required: boolean; session: { id: string; openedAt: string; openingFloat: string; summary: Summary } | null };
 type Row = { id: string; openedAt: string; closedAt: string | null; status: "OPEN" | "CLOSED"; openingFloat: string; expectedCash: string | number; countedCash: string | null; difference: string | null; note: string | null; user: { name: string } };
 
@@ -73,7 +73,7 @@ export default function CashPage() {
           <StatCard icon={<Wallet className="h-5 w-5" />} tone="green" label="Should be in the drawer" value={money(s.summary.expectedCash)} hint={`Opened ${formatDateTime(s.openedAt)}`} />
           <StatCard icon={<Banknote className="h-5 w-5" />} label="Cash taken on sales" value={money(s.summary.cashSales)} hint={`${s.summary.salesCount} sale${s.summary.salesCount === 1 ? "" : "s"}, float ${money(s.summary.openingFloat)}`} />
           <StatCard icon={<CreditCard className="h-5 w-5" />} label="Card and credit" value={money(s.summary.cardSales + s.summary.creditSales)} hint={`Card ${money(s.summary.cardSales)}, on account ${money(s.summary.creditSales)}`} />
-          <StatCard icon={<ArrowLeftRight className="h-5 w-5" />} label="Paid in and out" value={money(s.summary.payIns - s.summary.payOuts - s.summary.cashRefunds)} hint={`In ${money(s.summary.payIns)}, out ${money(s.summary.payOuts)}, refunds ${money(s.summary.cashRefunds)}`} />
+          <StatCard icon={<ArrowLeftRight className="h-5 w-5" />} label="Paid in and out" value={money(s.summary.payIns - s.summary.payOuts - s.summary.cashRefunds - (s.summary.expensesPaid ?? 0))} hint={`In ${money(s.summary.payIns)}, out ${money(s.summary.payOuts)}, refunds ${money(s.summary.cashRefunds)}${s.summary.expensesPaid ? `, expenses ${money(s.summary.expensesPaid)}` : ""}`} />
         </div>
       ) : <Card className="p-4 text-sm text-fg-muted">Your drawer is closed.{m.required ? " Open it before taking cash at the counter." : ""}</Card>}
 

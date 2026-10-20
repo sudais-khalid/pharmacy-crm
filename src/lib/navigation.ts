@@ -1,4 +1,4 @@
-import { BarChart3, Boxes, PackagePlus, Building2, ClipboardList, History, LayoutDashboard, Monitor, Palette, Pill, Receipt, Settings, ShieldCheck, ShoppingBasket, ShoppingCart, Truck, Undo2, UserCog, Users, Wallet } from "lucide-react";
+import { BarChart3, Boxes, HandCoins, PackagePlus, Building2, ClipboardList, History, LayoutDashboard, Monitor, Palette, Pill, Receipt, Settings, ShieldCheck, ShoppingBasket, ShoppingCart, Truck, Undo2, UserCog, Users, Wallet } from "lucide-react";
 
 /**
  * The menus and their Alt+letter shortcuts. Each key is a letter of the label (it is underlined there);
@@ -20,6 +20,7 @@ export const STAFF_NAV = [
   { href: "/purchases", label: "Purchases", key: "H", icon: ClipboardList, perm: "purchases.view", group: "Buy" },
   { href: "/suppliers", label: "Suppliers", key: "S", icon: Truck, perm: "suppliers.view", group: "Buy" },
   { href: "/customers", label: "Customers", key: "C", icon: Users, perm: "customers.view", group: "People" },
+  { href: "/expenses", label: "Expenses", key: "X", icon: HandCoins, perm: "finance.view", group: "Money", flag: "expensesOn" },
   { href: "/reports", label: "Reports", key: "R", icon: BarChart3, perm: "reports.view", group: "Money" },
   { href: "/users", label: "Users", key: "U", icon: UserCog, perm: "users.manage", group: "Admin" },
   { href: "/roles", label: "Roles", key: "O", icon: ShieldCheck, perm: "roles.manage", group: "Admin" },
@@ -36,5 +37,10 @@ export const CONSOLE_NAV = [
 
 /** Shown only inside the desktop app. */
 export const CONSOLE_DESKTOP_NAV = { href: "/platform/desktop", label: "This computer", key: "T", icon: Monitor } as const;
+
+/** Whether a menu entry is shown: its permission, and the Developer's feature switch where it has one. */
+export function navVisible(n: (typeof STAFF_NAV)[number], permissions: string[], settings: Partial<Record<"expensesOn", boolean>>) {
+  return permissions.includes(n.perm) && (!("flag" in n) || settings[n.flag] !== false);
+}
 
 export type NavItem = { href: string; label: string; key: string };

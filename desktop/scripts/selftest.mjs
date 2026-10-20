@@ -188,6 +188,7 @@ try {
   check("console: the app is healthy after the restore", eighth.code === 0 && eighth.report?.ok, eighth.out.slice(-1500));
   const k = c.shortcuts ?? {};
   check("shortcuts: Alt+P and Alt+N work in the Developer console", k.consoleAltP === "/platform/pharmacies" && k.consoleAltN === "/platform/pharmacies/new", JSON.stringify(k));
+  // the test pharmacy is created with every feature off, so Expenses (X) must not be in the menu
   check("shortcuts: every menu letter is underlined", k.underlined?.toUpperCase() === "BPILWMVKYHSCRUOGAT", JSON.stringify(k));
   check("shortcuts: Alt+M opens Medicines and Alt+N its new-medicine dialog", JSON.stringify(k.staffLogin) === "[200,200,200]" && k.altM === "/medicines" && k.altNOpensDialog === true, JSON.stringify(k));
   check("shortcuts: Alt+letter does nothing behind an open dialog", k.altVBlockedByDialog === "/medicines", JSON.stringify(k));

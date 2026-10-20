@@ -5,6 +5,7 @@ import { todayStr, addDays, dateOnly } from "@/lib/dates";
 import { localDate } from "@/lib/sql-dates";
 import { can } from "@/modules/identity";
 import { D } from "@/lib/money";
+import { addFigures, dailyFigures, NO_FIGURES } from "@/modules/finance";
 
 export const GET = route("dashboard.view", async ({ user, db }) => {
   const setting = await getSettings(db, user.pharmacyId);
@@ -50,8 +51,52 @@ export const GET = route("dashboard.view", async ({ user, db }) => {
       : Promise.resolve(null),
   ]);
 
+  // the owner's view (UI plan 4.4): month to date, a 30-day trend against the 30 days before, profit by category
+  const owner = can(user, "finance.view") && can(user, "cost.view") ? await (async () => {
+    const monthStart = `${today.slice(0, 8)}01`;
+    const from60 = addDays(today, -59);
+    const days = await dailyFigures(db, from60 < monthStart ? from60 : monthStart, today);
+    const sum = (from: string, to: string) => [...days].filter(([d]) => d >= from && d <= to).map(([, f]) => f).reduce(addFigures, NO_FIGURES);
+    const trend = Array.from({ length: 30 }, (_, i) => {
+      const d = addDays(today, i - 29);
+      return { day: d, label: d.slice(5), current: days.get(d)?.netSales ?? 0, previous: days.get(addDays(d, -30))?.netSales ?? 0 };
+    });
+    const [byCategory, cashDifferences, expenses] = await Promise.all([
+      db.$queryRaw<{ category: string; sales: Prisma.Decimal; profit: Prisma.Decimal }[]>`
+        SELECT COALESCE(c.name, 'No category') AS category,
+               SUM(i."lineTotal" * CASE WHEN s.subtotal > 0 THEN s.total / s.subtotal ELSE 1 END) AS sales,
+               SUM(i."lineTotal" * CASE WHEN s.subtotal > 0 THEN s.total / s.subtotal ELSE 1 END - i.quantity * i."costPrice") AS profit
+        FROM "SaleItem" i JOIN "Sale" s ON s.id = i."saleId" JOIN "Medicine" m ON m.id = i."medicineId" LEFT JOIN "Category" c ON c.id = m."categoryId"
+        WHERE s.status = 'COMPLETED' AND ${localDate(Prisma.sql`s."createdAt"`)} >= ${monthStart}::date GROUP BY 1 ORDER BY profit DESC LIMIT 8`,
+      db.cashSession.findMany({ where: { status: "CLOSED", closedAt: { gte: dateOnly(addDays(today, -30)) }, NOT: { difference: 0 } }, orderBy: { closedAt: "desc" }, take: 6, include: { user: { select: { name: true } } } }),
+      db.$queryRaw<{ category: string; amount: Prisma.Decimal }[]>`
+        SELECT c.name AS category, SUM(e.amount) AS amount FROM "Expense" e JOIN "ExpenseCategory" c ON c.id = e."categoryId"
+        WHERE e."cancelledAt" IS NULL AND e.date >= ${monthStart}::date GROUP BY c.name ORDER BY amount DESC`,
+    ]);
+    return {
+      today: days.get(today) ?? NO_FIGURES, monthToDate: sum(monthStart, today),
+      last30: sum(addDays(today, -29), today).netSales, previous30: sum(from60, addDays(today, -30)).netSales,
+      trend, byCategory, expenses,
+      cashDifferences: cashDifferences.map((x) => ({ id: x.id, user: x.user.name, closedAt: x.closedAt, difference: x.difference, note: x.note })),
+    };
+  })() : null;
+
+  // the pharmacist's view: what needs doing in stock
+  const ops = can(user, "inventory.view") ? await (async () => {
+    const [toReview, ordersDue, orderStatus, adjustments] = await Promise.all([
+      db.stockIntake.count({ where: { status: { in: ["NEEDS_REVIEW", "FAILED"] } } }),
+      db.purchaseOrder.findMany({ where: { status: { in: ["SENT", "PARTIALLY_RECEIVED"] }, expectedDate: { lte: dateOnly(today) } }, orderBy: { expectedDate: "asc" }, take: 6, select: { id: true, number: true, expectedDate: true, supplier: { select: { name: true } } } }),
+      db.purchaseOrder.groupBy({ by: ["status"], where: { status: { in: ["DRAFT", "SENT", "PARTIALLY_RECEIVED"] } }, _count: true }),
+      db.stockMovement.findMany({ where: { type: { in: ["ADJUSTMENT", "DAMAGE", "EXPIRY", "SUPPLIER_RETURN"] } }, orderBy: { createdAt: "desc" }, take: 8, select: { id: true, type: true, quantity: true, createdAt: true, note: true, medicine: { select: { id: true, name: true } }, batch: { select: { batchNumber: true } }, user: { select: { name: true } } } }),
+    ]);
+    const alertTo = addDays(today, setting.expiryAlertDays);
+    const expiringSoon = await db.batch.count({ where: { quantity: { gt: 0 }, setAsideAt: null, expiryDate: { gte: dateOnly(today), lte: dateOnly(alertTo) } } });
+    return { toReview, ordersDue, orderStatus: Object.fromEntries(orderStatus.map((o) => [o.status, o._count])), adjustments, expiringSoon, alertDays: setting.expiryAlertDays };
+  })() : null;
+
   const t = todaySales[0];
   return {
+    owner, ops,
     today: { sales: t.total, invoices: t.count, profit: can(user, "cost.view") ? D(t.total).minus(t.cogs) : null },
     totalCustomers, totalMedicines,
     lowStockCount: lowStock[0]?.total ?? 0, lowStock,
