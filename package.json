@@ -10,6 +10,7 @@
     "start": "next start",
     "worker": "node dist/worker.js",
     "ops": "node dist/ops.js",
+    "e2e": "node scripts/e2e-local.mjs",
     "lint": "next lint",
     "lint:deps": "depcruise src tests prisma --config .dependency-cruiser.cjs",
     "typecheck": "tsc --noEmit",
@@ -61,6 +62,7 @@
     "zod": "^3.23.8"
   },
   "devDependencies": {
+    "@playwright/test": "1.63.0",
     "@types/bcryptjs": "^2.4.6",
     "@types/node": "^20.16.0",
     "@types/pg": "^8.23.1",

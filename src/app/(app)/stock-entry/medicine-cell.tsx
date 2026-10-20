@@ -15,8 +15,8 @@ type Item = { id: string; name: string; genericName: string | null; barcode: str
 export const MedicineCell = forwardRef<HTMLInputElement, {
   value: CellMedicine | null; printed: string; invalid?: boolean; disabled?: boolean;
   onPick: (m: CellMedicine) => void; onCreate: (name: string) => void; onGridKey: (e: React.KeyboardEvent<HTMLInputElement>) => void;
-  "data-row": number; "data-col": string;
-}>(function MedicineCell({ value, printed, invalid, disabled, onPick, onCreate, onGridKey, ...data }, ref) {
+  "data-row": number; "data-col": string; label?: string;
+}>(function MedicineCell({ value, printed, invalid, disabled, onPick, onCreate, onGridKey, label = "Medicine", ...data }, ref) {
   const [q, setQ] = useState("");
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState(0);
@@ -50,7 +50,7 @@ export const MedicineCell = forwardRef<HTMLInputElement, {
 
   return (
     <div className="relative">
-      <input ref={ref} {...data} disabled={disabled} aria-label="Medicine" aria-invalid={invalid || undefined} autoComplete="off" spellCheck={false}
+      <input ref={ref} {...data} disabled={disabled} aria-label={label} aria-invalid={invalid || undefined} autoComplete="off" spellCheck={false}
         className={cn("w-full min-w-[200px] rounded border bg-surface px-2 py-1 text-sm", invalid ? "border-danger" : "border-border")}
         placeholder={printed ? `Printed: ${printed}` : "Type to search..."}
         value={open ? q : value?.name ?? ""}

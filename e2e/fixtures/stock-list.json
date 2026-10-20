@@ -1,0 +1,7 @@
+{
+  "header": { "supplierName": null, "invoiceNo": null, "billDate": null, "billTotal": null, "confidence": 0.9 },
+  "lines": [
+    { "rawText": "Panadol 500mg Tablet  B-PAN1  12/2028  120", "name": "Panadol 500mg Tablet", "batchNumber": "B-PAN1", "expiryDate": "2028-12-31", "quantity": 120, "bonusQty": null, "rate": null, "discountPercent": null, "taxAmount": null, "amount": null, "confidence": 0.95, "box": null },
+    { "rawText": "Brufen 400mg Tablet  B-BRU1  06/2028  60", "name": "Brufen 400mg Tablet", "batchNumber": "B-BRU1", "expiryDate": "2028-06-30", "quantity": 60, "bonusQty": null, "rate": null, "discountPercent": null, "taxAmount": null, "amount": null, "confidence": 0.95, "box": null }
+  ]
+}

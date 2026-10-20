@@ -8,3 +8,7 @@ dist
 
 # real supplier bills (business data, CNIC and NTN numbers): never commit
 Supplier Bills/
+
+# end-to-end run output (screenshots and traces of failures)
+test-results/
+playwright-report/

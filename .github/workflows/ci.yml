@@ -16,7 +16,7 @@ jobs:
   verify:
     name: verify (Node ${{ matrix.node }})
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
@@ -104,6 +104,21 @@ jobs:
           done
           BASE_URL=http://localhost:3000 bash scripts/smoke.sh
           BASE_URL=http://localhost:3000 node scripts/isolation-check.mjs
+
+      # roadmap 9.6: the journeys from creating a pharmacy to receiving an order, in a browser
+      - name: End-to-end journeys
+        if: matrix.node == 22
+        run: |
+          npx playwright install --with-deps chromium
+          node scripts/e2e-local.mjs
+
+      - name: Keep end-to-end screenshots and traces
+        if: failure() && matrix.node == 22
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-results
+          path: test-results/e2e
+          retention-days: 7
 
       - name: Show server log on failure
         if: failure()

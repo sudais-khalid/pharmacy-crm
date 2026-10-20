@@ -6,6 +6,7 @@ import { addUsage, audit, getFeatureFlags, notify, readUsage } from "@/modules/p
 import { autoMatch } from "../service";
 import { cloudProvider } from "./cloud";
 import { localProvider } from "./local";
+import { fixtureProvider } from "./fixture";
 import { parseDocument } from "./parse";
 import type { OcrProvider } from "./types";
 
@@ -19,6 +20,7 @@ export const usageKey = (d = new Date()) => `USAGE_OCR_${d.toISOString().slice(0
 
 type Providers = { LOCAL?: OcrProvider; CLOUD?: OcrProvider };
 export function defaultProviders(): Providers {
+  if (process.env.PCRM_E2E === "1" && process.env.OCR_FIXTURE_FILE) return { LOCAL: fixtureProvider(process.env.OCR_FIXTURE_FILE) };
   return { LOCAL: localProvider, ...(process.env.ANTHROPIC_API_KEY ? { CLOUD: cloudProvider(process.env.ANTHROPIC_API_KEY) } : {}) };
 }
 

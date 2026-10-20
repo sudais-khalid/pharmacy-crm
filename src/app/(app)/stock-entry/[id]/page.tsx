@@ -259,6 +259,8 @@ export default function StockEntryEditor() {
               <tbody>
                 {lines.map((l, row) => {
                   const n = lineNoOf(row);
+                  // the blank row at the end must not share the last line's labels
+                  const where = isEmptyLine(l) ? "new line" : `line ${n}`;
                   const low = l.confidence !== null && l.confidence < LOW_CONFIDENCE;
                   const err = (field: string) => (!isEmptyLine(l) ? issuesFor.get(`${n}:${field}`) : undefined);
                   const total = lineTotal(l);
@@ -269,13 +271,13 @@ export default function StockEntryEditor() {
                         <td key={col} className={cn("px-1 py-1", low && l.rawText && "bg-amber-50 dark:bg-amber-950/40")} title={col === "medicine" && l.rawText ? `Read: ${l.rawText}` : undefined}>
                           {col === "medicine" ? (
                             <div>
-                              <MedicineCell data-row={row} data-col={col} value={l.medicine as CellMedicine | null} printed={l.name} invalid={!!err("medicineId")} disabled={readOnly}
+                              <MedicineCell data-row={row} data-col={col} label={`Medicine, ${where}`} value={l.medicine as CellMedicine | null} printed={l.name} invalid={!!err("medicineId")} disabled={readOnly}
                                 onPick={(m) => setLine(row, { medicine: m, matchMethod: "MANUAL", salePrice: l.salePrice || (m.salePrice ? String(Number(m.salePrice)) : ""), rate: l.rate || (bill && m.purchasePrice ? String(Number(m.purchasePrice)) : "") })}
                                 onCreate={(name) => setCreating({ row, name })} onGridKey={(e) => onGridKey(e, row, col)} />
                               {l.matchMethod && l.medicine && <span className="text-[10px] text-fg-muted">{MATCH_LABEL[l.matchMethod] ?? l.matchMethod}{l.name && l.matchMethod !== "MANUAL" ? `: ${l.name}` : ""}</span>}
                             </div>
                           ) : (
-                            <input data-row={row} data-col={col} disabled={readOnly} aria-label={`${COL_LABEL[col]}, line ${n || row + 1}`} aria-invalid={!!err(COL_FIELD[col] ?? col) || undefined}
+                            <input data-row={row} data-col={col} disabled={readOnly} aria-label={`${COL_LABEL[col]}, ${where}`} aria-invalid={!!err(COL_FIELD[col] ?? col) || undefined}
                               inputMode={col === "batchNumber" || col === "expiry" ? "text" : "decimal"} autoComplete="off"
                               className={cn("w-full rounded border bg-surface px-2 py-1 text-sm", col === "batchNumber" ? "min-w-[90px]" : "min-w-[64px]", err(COL_FIELD[col] ?? col) ? "border-danger" : "border-border")}
                               value={l[col]} onChange={(e) => setLine(row, { [col]: e.target.value } as Partial<GridLine>)} onKeyDown={(e) => onGridKey(e, row, col)} />

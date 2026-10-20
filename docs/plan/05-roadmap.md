@@ -321,7 +321,7 @@ Tasks:
 - [x] 9.3 `subscription.check` job: `GRACE` and `SUSPENDED` transitions with banners and notifications
 - [x] 9.4 Per-pharmacy data export (ZIP of CSV and Excel files) from the platform console and on request by the Pharmacy Admin
 - [x] 9.5 PWA manifest and service worker for the staff app shell; install on counter tablets and pharmacists' phones (camera upload works from the installed app)
-- [ ] 9.6 Playwright end-to-end journeys: Developer creates pharmacy and invite; admin accepts and sets branding; opening stock by photo with a fixture OCR result; supplier bill typed manually; cashier sale and receipt; return; close session; receive order
+- [x] 9.6 Playwright end-to-end journeys: Developer creates pharmacy and invite; admin accepts and sets branding; opening stock by photo with a fixture OCR result; supplier bill typed manually; cashier sale and receipt; return; close session; receive order
 - [ ] 9.7 Accessibility audit (axe) on every screen; fix all serious issues
 - [ ] 9.8 Performance check against the targets in the architecture document, with 20 pharmacies of seeded data
 - [x] 9.9 First-run wizard for a new pharmacy: profile and logo, receipt format, staff, opening stock (photo, file or manual), customers with credit balances, supplier balances
