@@ -70,7 +70,6 @@ This prints a new password and removes two-factor sign-in so it is set up again.
 ```bash
 cp .env.example .env        # set POSTGRES_PASSWORD and JWT_SECRET
 docker compose up --build   # app on http://localhost:3000, migrations run automatically
-docker compose exec app npm run db:seed   # optional demo data
 ```
 
 ## Development accounts (seed data – development only)
@@ -85,7 +84,7 @@ The seed creates the pharmacy **Demo Pharmacy** with the code `demo`. Sign in at
 
 Staff sign in with their pharmacy code and username (the email also works). Usernames and emails are unique within a pharmacy, so two pharmacies can each have an `admin`.
 
-**Never use these in production.** Run the app without seeding, then create a real admin: seed once, log in, add your own admin user in *Users*, and deactivate the demo accounts. Change the pharmacy name, address and phone in *Settings*; they appear on invoices.
+**Never use these in production.** A production installation is never seeded: the seed refuses to run when `NODE_ENV=production` (only throwaway test databases set `ALLOW_DEMO_SEED=1`). The Developer creates each real pharmacy and its first admin from the console, and the admin sets the name, address and phone that appear on invoices.
 
 The seed contains fictional data only: 25 medicines (some low-stock, some near expiry, one expired batch), 3 suppliers, 6 customers, purchases and about 70 sales across the last 14 days.
 

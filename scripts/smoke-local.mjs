@@ -31,6 +31,8 @@ const env = {
   PLATFORM_OWNER_EMAIL: "owner@example.com",
   PLATFORM_OWNER_PASSWORD: "smoke-owner-password-123",
   BASE_URL: `http://localhost:${PORT}`,
+  // a throwaway database: the demo accounts are what the smoke suite signs in with
+  ALLOW_DEMO_SEED: "1",
 };
 const run = (cmd) => execSync(cmd, { env, stdio: "inherit" });
 

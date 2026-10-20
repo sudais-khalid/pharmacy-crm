@@ -25,6 +25,12 @@ const pick = <T,>(a: T[]) => a[Math.floor(rand() * a.length)];
 const today = todayStr();
 
 async function main() {
+  // the demo accounts have published passwords: never in a real installation (roadmap 9.11)
+  if (process.env.NODE_ENV === "production" && process.env.ALLOW_DEMO_SEED !== "1") {
+    console.error("Refusing to load demo data with known passwords into a production database. Create pharmacies from the Developer console instead. (Throwaway test databases may set ALLOW_DEMO_SEED=1.)");
+    process.exitCode = 1;
+    return;
+  }
   if ((await prisma.medicine.count()) > 0) {
     console.log("Database already contains data – skipping seed. Run `npm run db:reset` for a clean start.");
     return;
