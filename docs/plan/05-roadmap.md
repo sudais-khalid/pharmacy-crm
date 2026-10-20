@@ -292,15 +292,15 @@ Acceptance criteria:
 
 Tasks:
 
-- [ ] 8.1 Expense categories and expenses (with optional receipt photo, optional link to cash session)
-- [ ] 8.2 Profit and Loss report: net sales, COGS, gross profit, stock losses, expenses, net profit (architecture, section 6.5)
-- [ ] 8.3 Report registry refactor of `/api/reports`
-- [ ] 8.4 Daily and monthly sales with previous period comparison; by cashier, payment method, category
-- [ ] 8.5 Daily and monthly purchases; by supplier; paid vs unpaid; entered manually vs by OCR
-- [ ] 8.6 `DailySummary` rollup job and rebuild command
-- [ ] 8.7 Excel export (`exceljs`) and print-to-PDF layouts with pharmacy branding for every report
-- [ ] 8.8 Pharmacy Admin dashboard and pharmacist dashboard as designed in the UI plan
-- [ ] 8.9 Platform usage figures on the Developer console (invoices per month, active users, OCR pages, storage per pharmacy)
+- [x] 8.1 Expense categories and expenses (with optional receipt photo, optional link to cash session)
+- [x] 8.2 Profit and Loss report: net sales, COGS, gross profit, stock losses, expenses, net profit (architecture, section 6.5)
+- [x] 8.3 Report registry refactor of `/api/reports`
+- [x] 8.4 Daily and monthly sales with previous period comparison; by cashier, payment method, category
+- [x] 8.5 Daily and monthly purchases; by supplier; paid vs unpaid; entered manually vs by OCR
+- [x] 8.6 `DailySummary` rollup job and rebuild command
+- [x] 8.7 Excel export (`exceljs`) and print-to-PDF layouts with pharmacy branding for every report
+- [x] 8.8 Pharmacy Admin dashboard and pharmacist dashboard as designed in the UI plan
+- [x] 8.9 Platform usage figures on the Developer console (invoices per month, active users, OCR pages, storage per pharmacy)
 
 Acceptance criteria:
 

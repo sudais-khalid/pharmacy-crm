@@ -496,37 +496,42 @@ Posting rules:
 
 ```prisma
 model ExpenseCategory {
-  id     String @id @default(uuid())
-  name   String @unique                    // Rent, Salaries, Electricity, Internet, Maintenance, Other
-  active Boolean @default(true)
+  id     String  @id @default(uuid())
+  name   String                            // Rent, Salaries, Electricity, ... (created on first use)
+  active Boolean @default(true)            // never deleted; a category no longer used is switched off
+  @@unique([pharmacyId, name])
 }
 
 model Expense {
-  id          String   @id @default(uuid())
-  categoryId  String
-  amount      Decimal  @db.Decimal(12, 2)
-  date        DateTime @db.Date
-  method      PaymentMethod
-  description String
-  receiptFileId String?
-  cashSessionId String?                    // when paid from the drawer
-  userId      String
-  cancelledAt DateTime?                    // soft cancel, never deleted
-  createdAt   DateTime @default(now())
-  @@index([date])
+  id            String   @id @default(uuid())
+  number        String                     // EXP-YYYYMMDD-00001, unique per pharmacy
+  categoryId    String
+  amount        Decimal  @db.Decimal(12, 2) // CHECK amount > 0
+  date          DateTime @db.Date          // not in the future
+  method        PaymentMethod              // CASH or CARD (a bank transfer counts as CARD)
+  description   String
+  receiptFileId String?                    // optional photo of the receipt
+  cashSessionId String?                    // when paid from the drawer: lowers its expected cash
+  userId        String
+  cancelledAt   DateTime?                  // soft cancel with a reason, never deleted
+  cancelReason  String?
+  createdAt     DateTime @default(now())
+  @@index([pharmacyId, date])
 }
 
 model DailySummary {                       // maintained by report.rollup, rebuildable from source tables
-  date          DateTime @id @db.Date
-  grossSales    Decimal  @db.Decimal(14, 2)
-  returns       Decimal  @db.Decimal(14, 2)
+  date          DateTime @db.Date          // the pharmacy's local day
+  grossSales    Decimal  @db.Decimal(14, 2) // before invoice discounts
   discounts     Decimal  @db.Decimal(14, 2)
-  cogs          Decimal  @db.Decimal(14, 2)
-  stockLosses   Decimal  @db.Decimal(14, 2)
+  returns       Decimal  @db.Decimal(14, 2) // refunds on customer returns
+  netSales      Decimal  @db.Decimal(14, 2) // gross - discounts - returns
+  cogs          Decimal  @db.Decimal(14, 2) // cost sold, less cost of returns put back on the shelf
+  stockLosses   Decimal  @db.Decimal(14, 2) // damage and expiry write-offs at batch cost
   expenses      Decimal  @db.Decimal(14, 2)
   purchases     Decimal  @db.Decimal(14, 2)
   invoiceCount  Int
   updatedAt     DateTime @updatedAt
+  @@id([pharmacyId, date])
 }
 ```
 

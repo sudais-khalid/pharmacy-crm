@@ -1,7 +1,17 @@
 # Project status
 
 ## Current phase
-Phases 3 to 7 are complete. Tags `phase-3`, `phase-4` and `phase-5` mark those phases, `v1.6.0` is the release with Phases 3 to 6, and Phase 7 follows it on the branch. Next: Phase 8, finance and reports (see `docs/plan/05-roadmap.md`).
+Phases 3 to 8 are complete. Tags `phase-3`, `phase-4` and `phase-5` mark those phases, `v1.6.0` is the release with Phases 3 to 6, and Phases 7 and 8 follow it on the branch. Next: Phase 9, hardening and go-live (see `docs/plan/05-roadmap.md`).
+
+## Phase 8 delivered (finance and reports)
+- Expenses with categories (the usual ones created on first use), an optional receipt photo, and an option to pay from the open cash drawer, which lowers its expected cash; never deleted, cancelled with a reason, and cancelled ones count nowhere
+- Profit and loss: net sales after discounts and returns, cost of goods sold less restocked returns, gross profit, damage and expiry write-offs at cost, expenses, net profit
+- One report registry behind the Reports screen: sales by day or month with the period before for comparison, by cashier, payment method and category, top medicines, gross profit, profit and loss, expenses, purchases (paid and unpaid) by supplier and by how they were entered, stock and balances; date presets, CSV, Excel with the pharmacy's name, and a printed letterhead
+- Daily summaries kept by an hourly worker job and after a cancelled sale, with `ops rebuild-summaries` to rebuild them from the records
+- Owner dashboard (today, month to date, 30 days against the 30 before, profit by category, expenses, drawer differences, balances) and a stock dashboard for pharmacists (expiry, low stock, entries to review, orders due, recent write-offs)
+- Developer console: invoices this month and last, active staff, OCR pages and storage per pharmacy
+- Expenses menu entry (Alt+X), hidden when the Developer switches expenses off
+- 193 integration tests, 385 smoke and HTTP isolation checks
 
 ## Phase 7 delivered (suppliers, catalog and orders)
 - Supplier catalogs: add an existing or brand-new medicine in one step, with the supplier's code, pack, price, bonus rule, lead time and a preferred supplier per medicine; import a supplier's price list from Excel or CSV

@@ -51,11 +51,14 @@ async function main() {
   const catalogItem = await saveCatalogItem(ctx, supplier.id, { medicineId: medicine.id, supplierCode: "B1" });
   const order = await createOrder(ctx, { supplierId: supplier.id, items: [{ medicineId: medicine.id, orderedQty: 3 }] });
   const supplierReturn = await createSupplierReturn(ctx, { supplierId: supplier.id, reason: "Bravo return", items: [{ batchId: batch.id, quantity: 1 }] });
+  const { saveCategory, createExpense } = await import("../src/modules/finance");
+  const expenseCategory = await saveCategory(ctx, { name: "Bravo upkeep" });
+  const expense = await createExpense(ctx, { categoryId: expenseCategory.id, amount: 75, date: todayStr(), method: "CARD", description: "Bravo signboard" });
 
   console.log(JSON.stringify({
     pharmacy: slug,
     admin: { username: "badmin", password },
-    ids: { medicine: medicine.id, batch: batch.id, customer: customer.id, supplier: supplier.id, sale: sale.id, purchase: purchase.id, user: admin.id, role: role.id, file: logo.logoFileId, intake: intake.id, saleReturn: saleReturn.id, cashSession: cashSession.id, saleItem: saleItem.id, catalogItem: catalogItem.id, order: order.id, supplierReturn: supplierReturn.id },
+    ids: { medicine: medicine.id, batch: batch.id, customer: customer.id, supplier: supplier.id, sale: sale.id, purchase: purchase.id, user: admin.id, role: role.id, file: logo.logoFileId, intake: intake.id, saleReturn: saleReturn.id, cashSession: cashSession.id, saleItem: saleItem.id, catalogItem: catalogItem.id, order: order.id, supplierReturn: supplierReturn.id, expense: expense.id, expenseCategory: expenseCategory.id },
     names: { medicine: medicine.name, customer: customer.name, supplier: supplier.name, invoice: sale.invoiceNo, purchase: purchase.number },
   }));
   process.exit(0);

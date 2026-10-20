@@ -30,6 +30,8 @@ const ROUTES = {
   "orders/[id]": [["GET", "/api/orders/{order}"], ["PUT", "/api/orders/{order}", { items: [{ medicineId: "{medicine:own}", orderedQty: 1 }] }]],
   "orders/[id]/[action]": [["POST", "/api/orders/{order}/send"], ["POST", "/api/orders/{order}/end", { reason: "cross-tenant attempt" }], ["POST", "/api/orders/{order}/receive"]],
   "supplier-returns/[id]": [["GET", "/api/supplier-returns/{supplierReturn}"]],
+  "expenses/[id]/cancel": [["POST", "/api/expenses/{expense}/cancel", { reason: "cross-tenant attempt" }]],
+  "expenses/categories/[id]": [["PUT", "/api/expenses/categories/{expenseCategory}", { name: "Hijacked" }]],
   "medicines/[id]/sales": [["GET", "/api/medicines/{medicine}/sales"]],
   "medicines/[id]/purchases": [["GET", "/api/medicines/{medicine}/purchases"]],
   "inventory/batches/[id]/trace": [["GET", "/api/inventory/batches/{batch}/trace"]],
@@ -57,6 +59,7 @@ const BODY_WRITES = [
   ["POST", "/api/orders", { supplierId: "{supplier}", items: [{ medicineId: "{medicine:own}", orderedQty: 1 }] }],
   ["POST", "/api/orders", { supplierId: "{supplier:own}", items: [{ medicineId: "{medicine}", orderedQty: 1 }] }],
   ["POST", "/api/supplier-returns", { supplierId: "{supplier:own}", reason: "cross-tenant attempt", items: [{ batchId: "{batch}", quantity: 1 }] }],
+  ["POST", "/api/expenses", { categoryId: "{expenseCategory}", amount: 1, date: "2026-01-01", method: "CARD", description: "cross-tenant attempt" }],
   ["POST", "/api/inventory/write-off", { batchIds: ["{batch}"], note: "cross-tenant attempt" }],
   ["POST", "/api/inventory/set-aside", { batchIds: ["{batch}"], aside: true }],
   ["POST", "/api/returns", { saleId: "{sale}", refundMethod: "CASH", reason: "cross-tenant attempt", items: [{ saleItemId: "{saleItem}", quantity: 1, restock: true }] }],
@@ -120,6 +123,7 @@ async function idsOf(client) {
     intake: await pick("/api/stock-entry?status=all"),
     saleReturn: await pick("/api/returns"), cashSession: await pick("/api/cash/sessions"),
     order: await pick("/api/orders?status=all"), supplierReturn: await pick("/api/supplier-returns"),
+    expense: await pick("/api/expenses?from=2020-01-01&to=2035-01-01"), expenseCategory: await pick("/api/expenses/categories"),
     catalogItem: await (async () => { const sid = await pick("/api/suppliers"); return sid ? (await client.req("GET", `/api/suppliers/${sid}/catalog`)).data?.[0]?.id : undefined; })(),
     saleItem: await (async () => { const id = await pick("/api/sales"); return id ? (await client.req("GET", `/api/sales/${id}`)).data?.items?.[0]?.id : undefined; })(),
   };
@@ -157,8 +161,8 @@ async function main() {
   for (const [path, needle] of [
     ["/api/medicines?q=Bravo", fx.names.medicine], ["/api/pos/search?q=Bravo", fx.names.medicine], ["/api/customers?q=Bravo", fx.names.customer],
     ["/api/suppliers?q=Bravo", fx.names.supplier], ["/api/sales?q=" + fx.names.invoice, fx.ids.sale], ["/api/purchases", fx.ids.purchase],
-    ["/api/inventory/batches?q=BRAVO", "BRAVO-1"], ["/api/inventory/movements?q=Bravo", fx.ids.medicine], ["/api/users", fx.ids.user], ["/api/roles", fx.ids.role], ["/api/stock-entry?status=all", fx.ids.intake], ["/api/search?q=Bravo", fx.names.medicine], ["/api/search?q=BRAVO", "BRAVO-1"], ["/api/returns", fx.ids.saleReturn], ["/api/orders?status=all", fx.ids.order], ["/api/supplier-returns", fx.ids.supplierReturn], ["/api/cash/sessions", fx.ids.cashSession],
-    ["/api/dashboard", fx.names.medicine], ["/api/reports?type=sales&from=2020-01-01&to=2035-01-01", fx.names.invoice],
+    ["/api/inventory/batches?q=BRAVO", "BRAVO-1"], ["/api/inventory/movements?q=Bravo", fx.ids.medicine], ["/api/users", fx.ids.user], ["/api/roles", fx.ids.role], ["/api/stock-entry?status=all", fx.ids.intake], ["/api/search?q=Bravo", fx.names.medicine], ["/api/search?q=BRAVO", "BRAVO-1"], ["/api/returns", fx.ids.saleReturn], ["/api/orders?status=all", fx.ids.order], ["/api/supplier-returns", fx.ids.supplierReturn], ["/api/cash/sessions", fx.ids.cashSession], ["/api/expenses?from=2020-01-01&to=2035-01-01", fx.ids.expense], ["/api/expenses/categories", "Bravo upkeep"],
+    ["/api/dashboard", fx.names.medicine], ["/api/reports?type=sales&from=2020-01-01&to=2035-01-01", fx.names.invoice], ["/api/reports?type=expenses&from=2020-01-01&to=2035-01-01", "Bravo upkeep"],
   ]) {
     ok(`A: ${path} hides pharmacy B`, (await text(a, path)).includes(needle), false);
   }

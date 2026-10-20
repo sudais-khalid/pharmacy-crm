@@ -163,7 +163,24 @@ ok "A return to the supplier takes stock out" "$(curl -s -b /tmp/smoke_cashier.j
 ok "The order closes short" "$(curl -s -b /tmp/smoke_pharmacist.jar -X POST $B/api/orders/$ORD/end -H 'content-type: application/json' -d '{"reason":"Rest not available"}' | js "d['status']")" CLOSED
 for p in /orders /orders/new "/orders?tab=reorder" /orders/$ORD /invoice/orders/$ORD /invoice/supplier-returns/$RTS /suppliers/$SUP; do ok "Page $p renders" "$(code -b /tmp/smoke_pharmacist.jar "$B$p")" 200; done
 ok "Archive instead of delete (has history)" "$(curl -s -b /tmp/smoke_admin.jar -X DELETE $B/api/medicines/$NID | js "d['archived']")" True
-for t in sales profit purchases lowStock expired customerBalances supplierBalances; do ok "Report: $t" "$(code -b /tmp/smoke_admin.jar "$B/api/reports?type=$t&from=2020-01-01&to=2030-01-01")" 200; done
+# expenses, the report registry and the Excel export (Phase 8)
+ok "A cashier cannot see expenses" "$(code -b /tmp/smoke_cashier.jar $B/api/expenses)" 403
+ECAT=$(curl -s -b /tmp/smoke_admin.jar $B/api/expenses/categories | js "[c['id'] for c in d['items'] if c['name']=='Rent'][0]")
+ok "Expense categories start with the usual ones" "$(curl -s -b /tmp/smoke_admin.jar $B/api/expenses/categories | js "len(d['items'])>=8")" True
+EXP=$(curl -s -b /tmp/smoke_admin.jar -X POST $B/api/expenses -H 'content-type: application/json' -d "{\"categoryId\":\"$ECAT\",\"amount\":1500,\"date\":\"$(date +%Y-%m-%d)\",\"method\":\"CARD\",\"description\":\"Smoke rent\"}" | js "d['id']")
+ok "An expense is recorded" "$(curl -s -b /tmp/smoke_admin.jar "$B/api/expenses?from=2020-01-01&to=2035-01-01" | js "any(e['id']=='$EXP' for e in d['items'])")" True
+ok "An expense cannot be dated in the future" "$(code -b /tmp/smoke_admin.jar -X POST $B/api/expenses -H 'content-type: application/json' -d "{\"categoryId\":\"$ECAT\",\"amount\":5,\"date\":\"2099-01-01\",\"method\":\"CARD\",\"description\":\"Too early\"}")" 400
+EXP2=$(curl -s -b /tmp/smoke_admin.jar -X POST $B/api/expenses -H 'content-type: application/json' -d "{\"categoryId\":\"$ECAT\",\"amount\":99,\"date\":\"$(date +%Y-%m-%d)\",\"method\":\"CARD\",\"description\":\"Entered twice\"}" | js "d['id']")
+ok "An expense is cancelled with a reason" "$(code -b /tmp/smoke_admin.jar -X POST $B/api/expenses/$EXP2/cancel -H 'content-type: application/json' -d '{"reason":"Entered twice"}')" 200
+ok "A cancelled expense cannot be cancelled again" "$(code -b /tmp/smoke_admin.jar -X POST $B/api/expenses/$EXP2/cancel -H 'content-type: application/json' -d '{"reason":"Again"}')" 409
+ok "A category is renamed" "$(curl -s -b /tmp/smoke_admin.jar -X PUT $B/api/expenses/categories/$ECAT -H 'content-type: application/json' -d '{"name":"Shop rent"}' | js "d['name']")" "Shop rent"
+ok "A cashier cannot list reports" "$(code -b /tmp/smoke_cashier.jar $B/api/reports/list)" 403
+ok "The admin may open profit and loss" "$(curl -s -b /tmp/smoke_admin.jar $B/api/reports/list | js "any(r['id']=='pnl' for r in d['items'])")" True
+for t in $(curl -s -b /tmp/smoke_admin.jar $B/api/reports/list | js "' '.join(r['id'] for r in d['items'])"); do ok "Report: $t" "$(code -b /tmp/smoke_admin.jar "$B/api/reports?type=$t&from=2020-01-01&to=2030-01-01")" 200; done
+ok "Expenses report leaves the cancelled one out" "$(curl -s -b /tmp/smoke_admin.jar "$B/api/reports?type=expenses&from=2020-01-01&to=2035-01-01" | js "[float(r['amount']) for r in d['rows'] if r['category']=='Shop rent']")" "[1500.0]"
+ok "Excel export is a workbook" "$(curl -s -o /dev/null -w '%{content_type}' -b /tmp/smoke_admin.jar "$B/api/reports/export?type=pnl&from=2020-01-01&to=2030-01-01")" "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+ok "A cashier cannot export a report" "$(code -b /tmp/smoke_cashier.jar "$B/api/reports/export?type=sales")" 403
+for p in /expenses "/reports?type=pnl"; do ok "Page $p renders" "$(code -b /tmp/smoke_admin.jar "$B$p")" 200; done
 ok "Report rejects bad range" "$(code -b /tmp/smoke_admin.jar "$B/api/reports?type=sales&from=2030-01-01&to=2020-01-01")" 400
 ok "Cross-site write blocked" "$(code -b /tmp/smoke_admin.jar -X POST $B/api/categories -H 'content-type: application/json' -H 'Origin: https://evil.example' -d '{"name":"x"}')" 403
 ok "Same-origin write allowed" "$(code -b /tmp/smoke_admin.jar -X POST $B/api/categories -H 'content-type: application/json' -H "Origin: $B" -d "{\"name\":\"Smoke $(date +%s)\"}")" 200
