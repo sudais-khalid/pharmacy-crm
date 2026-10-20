@@ -17,7 +17,7 @@ export const GET = route("pos.use", async ({ req, db }) => {
   // exact barcode match first so a scanner hit is always the top result
   meds = [...meds.filter((m) => m.barcode === q), ...meds.filter((m) => m.barcode !== q)];
   const batches = await db.batch.findMany({
-    where: { medicineId: { in: meds.map((m) => m.id) }, quantity: { gt: 0 }, expiryDate: { gte: dateOnly(todayStr()) } },
+    where: { medicineId: { in: meds.map((m) => m.id) }, quantity: { gt: 0 }, expiryDate: { gte: dateOnly(todayStr()) }, setAsideAt: null },
     orderBy: [{ expiryDate: "asc" }, { createdAt: "asc" }],
   });
   return meds.map((m) => {

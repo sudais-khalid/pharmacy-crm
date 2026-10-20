@@ -163,16 +163,18 @@ model Medicine {
 
 // Stock is held per batch. A medicine's stock is the sum of its non-expired batches.
 model Batch {
-  id            String   @id @default(uuid())
-  pharmacyId    String   @default(dbgenerated("current_setting('app.pharmacy_id'::text, true)"))
+  id            String    @id @default(uuid())
+  pharmacyId    String    @default(dbgenerated("current_setting('app.pharmacy_id'::text, true)"))
   medicineId    String
   batchNumber   String
-  expiryDate    DateTime @db.Date
-  quantity      Int      @default(0)
-  purchasePrice Decimal  @db.Decimal(12, 4)
-  salePrice     Decimal  @db.Decimal(12, 2)
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  expiryDate    DateTime  @db.Date
+  quantity      Int       @default(0)
+  purchasePrice Decimal   @db.Decimal(12, 4)
+  salePrice     Decimal   @db.Decimal(12, 2)
+  setAsideAt    DateTime? // marked for return to the supplier (expired or near expiry); not sold meanwhile
+  setAsideNote  String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
 
   medicine      Medicine         @relation(fields: [medicineId], references: [id])
   saleItems     SaleItem[]

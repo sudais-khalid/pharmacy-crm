@@ -9,18 +9,56 @@ import { purgeIdempotencyKeys } from "@/lib/idempotency";
 import { purgeRateLimitHits } from "@/lib/rate-limit";
 import { dispatchOutbox, type OutboxHandlers } from "@/modules/platform";
 import { claimNextIntake, cleanupDiscardedPhotos, processIntake } from "@/modules/stockentry";
+import { scanExpiry, scanStock } from "@/modules/inventory";
 
 const workerLog = logger.child({ svc: "worker" });
 const log = (msg: string, extra: Record<string, unknown> = {}) => workerLog.info(extra, msg);
 
-/** Event handlers by type. Modules add theirs as features arrive (notifications, rollups, alerts). */
-const handlers: OutboxHandlers = {};
+/** Pharmacies that are working (a suspended or closed pharmacy gets no alerts). */
+async function activePharmacies() {
+  return platformDb.pharmacy.findMany({ where: { status: { in: ["ACTIVE", "GRACE"] } }, select: { id: true, slug: true } });
+}
+
+/** Runs a scan for every active pharmacy; one pharmacy failing does not stop the others. */
+async function forEachPharmacy(job: string, scan: (pharmacyId: string) => Promise<{ raised: number; resolved: number }>) {
+  let raised = 0;
+  let resolved = 0;
+  let failed = 0;
+  for (const p of await activePharmacies()) {
+    try {
+      const r = await scan(p.id);
+      raised += r.raised;
+      resolved += r.resolved;
+    } catch (e) {
+      failed++;
+      workerLog.error({ job, pharmacy: p.slug, error: String(e) }, "scan failed for a pharmacy");
+    }
+  }
+  return { raised, resolved, failed };
+}
+
+/** Event handlers by type. Delivery is at least once; the scans are idempotent. */
+const outboxPharmacy = async (id: bigint) => (await platformDb.outboxEvent.findUnique({ where: { id }, select: { pharmacyId: true } }))?.pharmacyId ?? null;
+const rescanStock = async (e: { id: bigint; payload: { medicineIds: string[] } }) => {
+  const pharmacyId = await outboxPharmacy(e.id);
+  if (pharmacyId && e.payload.medicineIds.length) await scanStock(pharmacyId, undefined, e.payload.medicineIds);
+};
+const handlers: OutboxHandlers = {
+  SaleCompleted: [rescanStock],
+  SaleCancelled: [rescanStock],
+  SaleReturned: [rescanStock],
+  PurchasePosted: [rescanStock],
+  StockEntryPosted: [rescanStock],
+};
 
 /** Scheduled maintenance. Cron expressions run in the pharmacy time zone. */
 const schedules: { name: string; cron: string; run: () => Promise<unknown> }[] = [
   { name: "platform.purge-idempotency-keys", cron: "15 * * * *", run: () => purgeIdempotencyKeys() },
   { name: "platform.purge-rate-limit-hits", cron: "20 * * * *", run: () => purgeRateLimitHits() },
   { name: "files.cleanup", cron: "40 3 * * *", run: () => cleanupDiscardedPhotos() },
+  // stock intelligence (roadmap 6.2): expiry stages once a day, stock levels every half hour
+  { name: "expiry.scan", cron: "0 6 * * *", run: () => forEachPharmacy("expiry.scan", (id) => scanExpiry(id)) },
+  { name: "stock.scan", cron: "*/30 * * * *", run: () => forEachPharmacy("stock.scan", (id) => scanStock(id)) },
 ];
 
 const IDLE_MS = 2000;
@@ -87,6 +125,13 @@ async function main() {
     });
   }
   log("worker started", { schedules: schedules.map((s) => s.name), tz });
+  // a shop computer is often off at 6 am: catch up once at start (the scans are idempotent)
+  void (async () => {
+    for (const name of ["expiry.scan", "stock.scan"]) {
+      const s = schedules.find((x) => x.name === name)!;
+      log("job done", { job: name, startup: true, result: await s.run().catch((e) => ({ error: String(e) })) });
+    }
+  })();
 
   const loop = outboxLoop();
   const ocr = ocrLoop();

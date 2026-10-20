@@ -9,4 +9,4 @@ export { getSettings, updateSettings, RECEIPT_FORMATS, type PharmacySettingsView
 export { profileSchema, updateProfile, setLogo, removeLogo, type ProfileInput } from "./branding";
 export { FEATURE_FLAGS, FEATURE_KEYS, getFeatureFlags, type FeatureKey } from "./flags";
 export { desktopActionSchema, isDesktopInstall, recordDesktopAction, type DesktopAction } from "./desktop";
-export { notify, resolveNotifications, listNotifications, markNotificationsRead, type NewNotification } from "./notifications";
+export { notify, raiseOnce, resolveStale, resolveNotifications, listNotifications, markNotificationsRead, type NewNotification } from "./notifications";

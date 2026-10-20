@@ -55,13 +55,13 @@ export async function createSale(ctx: ServiceContext, input: SaleInput, opts: { 
       const batches = await tx.$queryRaw<BatchRow[]>(Prisma.sql`
         SELECT id, "batchNumber", quantity, "salePrice", "purchasePrice"
         FROM "Batch"
-        WHERE "medicineId" = ${medicineId} AND quantity > 0 AND "expiryDate" >= ${today}::date
+        WHERE "medicineId" = ${medicineId} AND quantity > 0 AND "expiryDate" >= ${today}::date AND "setAsideAt" IS NULL
         ORDER BY "expiryDate" ASC, "createdAt" ASC
         FOR UPDATE`);
 
       const available = batches.reduce((s, b) => s + b.quantity, 0);
       if (available < qty) {
-        throw new AppError(409, `Insufficient stock for ${med.name}: requested ${qty}, available ${available} (expired batches are excluded).`);
+        throw new AppError(409, `Insufficient stock for ${med.name}: requested ${qty}, available ${available} (expired batches and batches set aside for the supplier are excluded).`);
       }
       let remaining = qty;
       for (const b of batches) {
