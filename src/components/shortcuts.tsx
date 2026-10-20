@@ -29,7 +29,7 @@ const usable = (el: Element | null): el is HTMLElement => el instanceof HTMLElem
 const firstUsable = (selector: string) => Array.from(document.querySelectorAll(selector)).find(usable) ?? null;
 const dialogOpen = () => document.querySelector('[role="dialog"][aria-modal="true"]') !== null;
 
-export function ShortcutProvider({ nav, children }: { nav: NavItem[]; children: React.ReactNode }) {
+export function ShortcutProvider({ nav, palette = false, children }: { nav: NavItem[]; palette?: boolean; children: React.ReactNode }) {
   const router = useRouter();
   const [help, setHelp] = useState(false);
   const [pageKeys, setPageKeys] = useState<PageKey[] | null>(null);
@@ -106,6 +106,7 @@ export function ShortcutProvider({ nav, children }: { nav: NavItem[]; children: 
             </ul>
             <h3 className="mb-2 mt-5 text-sm font-semibold">Anywhere</h3>
             <ul className="space-y-1.5 text-sm">
+              {palette && <li className="flex items-center justify-between gap-3"><span>Search anything or go to a screen</span><Keys keys="Ctrl+K" /></li>}
               <li className="flex items-center justify-between gap-3"><span>Show this list</span><Keys keys="?" /></li>
               <li className="flex items-center justify-between gap-3"><span>Close a dialog</span><Keys keys="Esc" /></li>
             </ul>

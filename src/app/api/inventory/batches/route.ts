@@ -6,7 +6,8 @@ import { getSettings } from "@/modules/platform";
 export const GET = route("inventory.view", async ({ req, db, user }) => {
   const { page, pageSize, skip, take, sp } = pageParams(req);
   const q = sp.get("q")?.trim();
-  const filter = sp.get("filter") || "instock"; // instock | expiring | expired | empty | all
+  const filter = sp.get("filter") || "instock"; // instock | expiring | expired | aside | empty | all
+  const medicineId = sp.get("medicineId");
   const setting = await getSettings(db, user.pharmacyId);
   const days = parseInt(sp.get("days") || "", 10) || setting.expiryWarningDays;
   const today = todayStr();
@@ -15,7 +16,9 @@ export const GET = route("inventory.view", async ({ req, db, user }) => {
   if (filter === "instock") Object.assign(where, { quantity: { gt: 0 }, expiryDate: { gte: dateOnly(today) } });
   if (filter === "expiring") Object.assign(where, { quantity: { gt: 0 }, expiryDate: { gte: dateOnly(today), lte: dateOnly(addDays(today, days)) } });
   if (filter === "expired") Object.assign(where, { quantity: { gt: 0 }, expiryDate: { lt: dateOnly(today) } });
+  if (filter === "aside") Object.assign(where, { quantity: { gt: 0 }, setAsideAt: { not: null } });
   if (filter === "empty") where.quantity = 0;
+  if (medicineId) where.medicineId = medicineId;
   if (q) where.OR = [{ batchNumber: { contains: q, mode: "insensitive" } }, { medicine: { name: { contains: q, mode: "insensitive" } } }, { medicine: { genericName: { contains: q, mode: "insensitive" } } }];
 
   const [total, rows, agg] = await Promise.all([

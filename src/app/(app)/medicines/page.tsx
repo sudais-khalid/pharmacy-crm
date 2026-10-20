@@ -1,5 +1,6 @@
 "use client";
 import { Suspense, useEffect, useState } from "react";
+import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Archive, Pencil, Plus, RotateCcw, Trash2, Eye } from "lucide-react";
 import { Badge, Button, Card, Checkbox, ConfirmDialog, EmptyState, ErrorBox, Field, Input, Modal, PageHeader, Pagination, SearchInput, Select, TableSkeleton, TableWrap, Textarea, useToast } from "@/components/ui";
@@ -37,6 +38,11 @@ function MedicinesInner() {
   const cats = useApi<Category[]>("/api/categories");
 
   const [editing, setEditing] = useState<Med | "new" | null>(null);
+  // /medicines?edit=<id> opens the form (the medicine page's Edit button)
+  useEffect(() => {
+    const id = sp.get("edit");
+    if (id && canManage) api<Med>(`/api/medicines/${id}`).then(setEditing, () => {});
+  }, [sp, canManage]);
   const [viewing, setViewing] = useState<string | null>(null);
   const [confirm, setConfirm] = useState<Med | null>(null);
   const [busy, setBusy] = useState(false);
@@ -81,7 +87,7 @@ function MedicinesInner() {
               <tbody>
                 {data.items.map((m) => (
                   <tr key={m.id} className="border-b border-slate-100 hover:bg-slate-50 dark:border-slate-800/60 dark:hover:bg-slate-800/40">
-                    <td className="td"><div className="font-medium">{m.name} {m.prescriptionRequired && <Badge tone="blue">Rx</Badge>} {!m.active && <Badge>Archived</Badge>}</div><div className="text-xs text-slate-500">{m.genericName}</div></td>
+                    <td className="td"><div className="font-medium"><Link href={`/medicines/${m.id}`} className="hover:text-primary hover:underline">{m.name}</Link> {m.prescriptionRequired && <Badge tone="blue">Rx</Badge>} {!m.active && <Badge>Archived</Badge>}</div><div className="text-xs text-slate-500">{m.genericName}</div></td>
                     <td className="td">{m.category?.name ?? "-"}</td>
                     <td className="td font-mono text-xs">{m.barcode ?? "-"}</td>
                     {seesCost && <td className="td text-right">{money(m.purchasePrice)}</td>}
@@ -123,7 +129,7 @@ function MedicineDetail({ id, onClose }: { id: string | null; onClose: () => voi
   const { data, loading } = useApi<Detail>(id ? `/api/medicines/${id}` : null);
   const today = new Date().toISOString().slice(0, 10);
   return (
-    <Modal open={!!id} onClose={onClose} title={data?.name ?? "Medicine"} wide>
+    <Modal open={!!id} onClose={onClose} title={data?.name ?? "Medicine"} wide footer={id ? <Link href={`/medicines/${id}`} className="text-sm font-medium text-primary hover:underline">Open the full page: stock card, batches, prices and suppliers</Link> : undefined}>
       {loading || !data ? <TableSkeleton rows={4} cols={4} /> : (
         <div className="space-y-4 text-sm">
           <dl className="grid grid-cols-2 gap-x-6 gap-y-2 sm:grid-cols-3">

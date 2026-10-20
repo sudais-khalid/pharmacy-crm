@@ -7,6 +7,7 @@ import { LayoutDashboard, LogOut, Moon, Pill, Sun, Wallet } from "lucide-react";
 import { AppContext, type AppCtx } from "./app-context";
 import { ShortcutHelpButton, ShortcutProvider } from "./shortcuts";
 import { NotificationBell } from "./notification-bell";
+import { CommandPalette } from "./command-palette";
 import { cn } from "./ui";
 import { api } from "@/lib/client";
 import { STAFF_NAV } from "@/lib/navigation";
@@ -47,7 +48,8 @@ export function PosShell({ ctx, children }: { ctx: AppCtx; children: React.React
 
   return (
     <AppContext.Provider value={ctx}>
-      <ShortcutProvider nav={items}>
+      <ShortcutProvider nav={items} palette>
+        <CommandPalette nav={items} />
         <DrawerContext.Provider value={{ drawer, reload }}>
           <div className="flex min-h-screen flex-col bg-bg">
             <header className="no-print sticky top-0 z-20 flex h-14 items-center gap-3 border-b border-border bg-surface px-3 sm:px-4">

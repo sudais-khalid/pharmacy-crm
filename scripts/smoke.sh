@@ -124,6 +124,22 @@ ok "An invoice with returns cannot be cancelled" "$(code -b /tmp/smoke_pharmacis
 ok "Return slip renders" "$(code -b /tmp/smoke_pharmacist.jar $B/invoice/returns/$RID)" 200
 ok "Cash drawer sessions are off by default" "$(curl -s -b /tmp/smoke_cashier.jar $B/api/cash | js "d['enabled']")" False
 ok "Medicine sales history lists the sale" "$(curl -s -b /tmp/smoke_pharmacist.jar $B/api/medicines/$NID/sales | js "any(i['sale']['id']=='$PS' and i['returnedQty']==1 for i in d['items'])")" True
+# stock intelligence: search, stock card, batch trace, set aside, notifications
+ok "Search finds a medicine by part of its name" "$(curl -s -b /tmp/smoke_cashier.jar "$B/api/search?q=Smoke%20Test" | js "any(i['kind']=='medicine' and i['id']=='$NID' for i in d['items'])")" True
+ok "Search shows a cashier only their own invoices" "$(curl -s -b /tmp/smoke_cashier.jar "$B/api/search?q=$(curl -s -b /tmp/smoke_pharmacist.jar $B/api/sales/$PS | js "d['invoiceNo']")" | js "len([i for i in d['items'] if i['kind']=='invoice'])")" 0
+CARD=$(curl -s -b /tmp/smoke_pharmacist.jar "$B/api/inventory/stock-card?medicineId=$NID")
+ok "Stock card closing equals the stock on the shelf" "$(echo "$CARD" | js "d['closing'] if d['closing']==d['opening']+d['totalIn']-d['totalOut'] else -1")" 13
+SBATCH=$(curl -s -b /tmp/smoke_pharmacist.jar "$B/api/inventory/batches?filter=all&medicineId=$NID" | js "[b['id'] for b in d['items'] if b['batchNumber']=='SE1'][0]")
+FBATCH=$(curl -s -b /tmp/smoke_pharmacist.jar "$B/api/inventory/batches?filter=all&medicineId=$NID" | js "[b['id'] for b in d['items'] if b['batchNumber']=='S1'][0]")
+ok "Batch trace shows who still has some" "$(curl -s -b /tmp/smoke_pharmacist.jar $B/api/inventory/batches/$FBATCH/trace | js "[h['quantity'] for h in d['holders'] if h['name']=='Walk In Smoke']")" "[1]"
+ok "A cashier cannot write off stock" "$(code -b /tmp/smoke_cashier.jar -X POST $B/api/inventory/write-off -H 'content-type: application/json' -d "{\"batchIds\":[\"$SBATCH\"],\"note\":\"smoke\"}")" 403
+ok "A batch can be set aside for the supplier" "$(curl -s -b /tmp/smoke_pharmacist.jar -X POST $B/api/inventory/set-aside -H 'content-type: application/json' -d "{\"batchIds\":[\"$SBATCH\"],\"aside\":true,\"note\":\"smoke\"}" | js "d['changed']")" 1
+ok "A set-aside batch is on the supplier return list" "$(curl -s -b /tmp/smoke_pharmacist.jar $B/api/inventory/supplier-returns | js "any(b['id']=='$SBATCH' for b in d)")" True
+ok "A set-aside batch is not sold" "$(curl -s -b /tmp/smoke_cashier.jar "$B/api/pos/search?q=$BC" | js "d[0]['stock']")" 8
+curl -s -o /dev/null -b /tmp/smoke_pharmacist.jar -X POST $B/api/inventory/set-aside -H 'content-type: application/json' -d "{\"batchIds\":[\"$SBATCH\"],\"aside\":false}"
+ok "Notifications come with counts per kind" "$(curl -s -b /tmp/smoke_admin.jar "$B/api/notifications?group=expiry" | js "sorted(d['groups'].keys())")" "['expiry', 'other', 'stock']"
+ok "Medicine page renders" "$(code -b /tmp/smoke_pharmacist.jar $B/medicines/$NID)" 200
+ok "Medicine purchase history needs purchases.view" "$(code -b /tmp/smoke_cashier.jar $B/api/medicines/$NID/purchases)" 403
 ok "Archive instead of delete (has history)" "$(curl -s -b /tmp/smoke_admin.jar -X DELETE $B/api/medicines/$NID | js "d['archived']")" True
 for t in sales profit purchases lowStock expired customerBalances supplierBalances; do ok "Report: $t" "$(code -b /tmp/smoke_admin.jar "$B/api/reports?type=$t&from=2020-01-01&to=2030-01-01")" 200; done
 ok "Report rejects bad range" "$(code -b /tmp/smoke_admin.jar "$B/api/reports?type=sales&from=2030-01-01&to=2020-01-01")" 400

@@ -6,12 +6,12 @@ import { useCan } from "@/components/app-context";
 import { ApiError, api, useApi } from "@/lib/client";
 
 type S = {
-  expiryWarningDays: number; currency: string; ocrProvider: string;
+  expiryWarningDays: number; expiryAlertDays: number; currency: string; ocrProvider: string;
   receiptFormat: string; autoPrintReceipt: boolean; receiptBatchLines: boolean; requireCashSession: boolean; cashDiffThreshold: number;
 };
 type Loaded = S & { ocrProviders: string[]; ocrMonthlyLimit: number; ocrUsedThisMonth: number; cashSessionsOn: boolean };
 const pickS = (d: Loaded): S => ({
-  expiryWarningDays: d.expiryWarningDays, currency: d.currency, ocrProvider: d.ocrProvider, receiptFormat: d.receiptFormat, autoPrintReceipt: d.autoPrintReceipt,
+  expiryWarningDays: d.expiryWarningDays, expiryAlertDays: d.expiryAlertDays, currency: d.currency, ocrProvider: d.ocrProvider, receiptFormat: d.receiptFormat, autoPrintReceipt: d.autoPrintReceipt,
   receiptBatchLines: d.receiptBatchLines, requireCashSession: d.requireCashSession, cashDiffThreshold: d.cashDiffThreshold,
 });
 
@@ -49,6 +49,9 @@ export default function SettingsPage() {
         <Card className="grid gap-4 p-5 sm:grid-cols-2">
           <Field label="Expiry warning period (days)" error={errors.expiryWarningDays} hint="Used by the dashboard and the Expiry tab">
             <Input type="number" min="1" max="730" value={f.expiryWarningDays} onChange={(e) => setF({ ...f, expiryWarningDays: Number(e.target.value) })} />
+          </Field>
+          <Field label="Expiry alert (days before)" error={errors.expiryAlertDays} hint="A notification when a batch in stock gets this close to expiry, again at 7 days and on expiry">
+            <Input type="number" min="1" max="365" value={f.expiryAlertDays} onChange={(e) => setF({ ...f, expiryAlertDays: Number(e.target.value) })} />
           </Field>
           <Field label="Currency label" hint="Shown before amounts, e.g. PKR" error={errors.currency}>
             <Input value={f.currency} onChange={(e) => setF({ ...f, currency: e.target.value })} required maxLength={8} />

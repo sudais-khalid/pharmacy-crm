@@ -25,6 +25,8 @@ const ROUTES = {
   "customers/[id]": [["GET", "/api/customers/{customer}"], ["PUT", "/api/customers/{customer}", { name: "Hijacked" }]],
   "customers/[id]/payments": [["POST", "/api/customers/{customer}/payments", { amount: 1, method: "CASH" }]],
   "medicines/[id]/sales": [["GET", "/api/medicines/{medicine}/sales"]],
+  "medicines/[id]/purchases": [["GET", "/api/medicines/{medicine}/purchases"]],
+  "inventory/batches/[id]/trace": [["GET", "/api/inventory/batches/{batch}/trace"]],
   "returns/[id]": [["GET", "/api/returns/{saleReturn}"]],
   "cash/[id]": [["GET", "/api/cash/{cashSession}"]],
   "cash/[id]/[action]": [["POST", "/api/cash/{cashSession}/movement", { type: "PAY_IN", amount: 1, reason: "cross-tenant attempt" }], ["POST", "/api/cash/{cashSession}/close", { countedCash: 0, note: "cross-tenant attempt" }]],
@@ -46,6 +48,8 @@ const BODY_WRITES = [
   ["POST", "/api/inventory/adjust", { batchId: "{batch}", kind: "REMOVE", quantity: 1, note: "cross-tenant attempt" }],
   ["POST", "/api/sales", { items: [{ medicineId: "{medicine}", quantity: 1 }], paymentMethod: "CASH" }],
   ["POST", "/api/sales", { items: [{ medicineId: "{medicine:own}", quantity: 1 }], paymentMethod: "CREDIT", customerId: "{customer}" }],
+  ["POST", "/api/inventory/write-off", { batchIds: ["{batch}"], note: "cross-tenant attempt" }],
+  ["POST", "/api/inventory/set-aside", { batchIds: ["{batch}"], aside: true }],
   ["POST", "/api/returns", { saleId: "{sale}", refundMethod: "CASH", reason: "cross-tenant attempt", items: [{ saleItemId: "{saleItem}", quantity: 1, restock: true }] }],
   ["POST", "/api/purchases", { supplierId: "{supplier}", purchaseDate: new Date().toISOString().slice(0, 10), items: [{ medicineId: "{medicine:own}", batchNumber: "X1", expiryDate: "2031-01-01", quantity: 1, purchasePrice: 1, salePrice: 2 }] }],
 ];
@@ -134,6 +138,7 @@ async function main() {
       const r = await client.req(method, path, fill(body, other, own));
       ok(`${label}: ${method} ${path} referencing the other pharmacy`, r.status, 404);
     }
+    ok(`${label}: stock card of the other pharmacy's medicine`, (await client.req("GET", `/api/inventory/stock-card?medicineId=${other.medicine}`)).status, 404);
   }
 
   // lists never show the other pharmacy's records
@@ -141,7 +146,7 @@ async function main() {
   for (const [path, needle] of [
     ["/api/medicines?q=Bravo", fx.names.medicine], ["/api/pos/search?q=Bravo", fx.names.medicine], ["/api/customers?q=Bravo", fx.names.customer],
     ["/api/suppliers?q=Bravo", fx.names.supplier], ["/api/sales?q=" + fx.names.invoice, fx.ids.sale], ["/api/purchases", fx.ids.purchase],
-    ["/api/inventory/batches?q=BRAVO", "BRAVO-1"], ["/api/inventory/movements?q=Bravo", fx.ids.medicine], ["/api/users", fx.ids.user], ["/api/roles", fx.ids.role], ["/api/stock-entry?status=all", fx.ids.intake], ["/api/returns", fx.ids.saleReturn], ["/api/cash/sessions", fx.ids.cashSession],
+    ["/api/inventory/batches?q=BRAVO", "BRAVO-1"], ["/api/inventory/movements?q=Bravo", fx.ids.medicine], ["/api/users", fx.ids.user], ["/api/roles", fx.ids.role], ["/api/stock-entry?status=all", fx.ids.intake], ["/api/search?q=Bravo", fx.names.medicine], ["/api/search?q=BRAVO", "BRAVO-1"], ["/api/returns", fx.ids.saleReturn], ["/api/cash/sessions", fx.ids.cashSession],
     ["/api/dashboard", fx.names.medicine], ["/api/reports?type=sales&from=2020-01-01&to=2035-01-01", fx.names.invoice],
   ]) {
     ok(`A: ${path} hides pharmacy B`, (await text(a, path)).includes(needle), false);

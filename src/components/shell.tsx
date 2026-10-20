@@ -3,10 +3,11 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { useTheme } from "next-themes";
-import { LogOut, Menu, Moon, Pill, Sun, X } from "lucide-react";
+import { LogOut, Menu, Moon, Pill, Search, Sun, X } from "lucide-react";
 import { AppContext, type AppCtx } from "./app-context";
 import { MnemonicLabel, ShortcutHelpButton, ShortcutProvider } from "./shortcuts";
 import { NotificationBell } from "./notification-bell";
+import { CommandPalette, openCommandPalette } from "./command-palette";
 import { cn } from "./ui";
 import { api } from "@/lib/client";
 import { NAV_GROUPS, STAFF_NAV } from "@/lib/navigation";
@@ -61,7 +62,8 @@ export function Shell({ ctx, children }: { ctx: AppCtx; children: React.ReactNod
 
   return (
     <AppContext.Provider value={ctx}>
-    <ShortcutProvider nav={items}>
+    <ShortcutProvider nav={items} palette>
+      <CommandPalette nav={items} />
       <a href="#main" className="sr-only focus:not-sr-only focus:absolute focus:left-2 focus:top-2 focus:z-[70] focus:rounded focus:bg-white focus:px-3 focus:py-2">Skip to content</a>
       <div className="no-print fixed inset-y-0 left-0 z-30 hidden w-60 flex-col border-r border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900 lg:flex">
         <div className="flex h-14 items-center gap-2 border-b border-slate-200 px-5 dark:border-slate-800">
@@ -90,7 +92,12 @@ export function Shell({ ctx, children }: { ctx: AppCtx; children: React.ReactNod
       <div className="lg:pl-60">
         <header className="no-print sticky top-0 z-20 flex h-14 items-center justify-between border-b border-slate-200 bg-white/90 px-4 backdrop-blur dark:border-slate-800 dark:bg-slate-900/90">
           <button onClick={() => setOpen(true)} aria-label="Open menu" className="rounded p-2 hover:bg-slate-100 dark:hover:bg-slate-800 lg:hidden"><Menu className="h-5 w-5" /></button>
-          <div className="hidden text-sm text-slate-500 lg:block">{new Date().toLocaleDateString("en-GB", { weekday: "long", day: "2-digit", month: "long", year: "numeric" })}</div>
+          <div className="hidden items-center gap-4 lg:flex">
+            <button onClick={openCommandPalette} className="inline-flex w-72 items-center gap-2 rounded-lg border border-border bg-bg px-3 py-1.5 text-sm text-fg-muted hover:bg-muted" aria-keyshortcuts="Control+K">
+              <Search className="h-4 w-4" aria-hidden /> <span className="flex-1 text-left">Search or go to</span><kbd className="text-[11px]">Ctrl+K</kbd>
+            </button>
+            <span className="text-sm text-slate-500">{new Date().toLocaleDateString("en-GB", { weekday: "long", day: "2-digit", month: "long", year: "numeric" })}</span>
+          </div>
           <div className="flex items-center gap-2">
             {!ctx.support && <NotificationBell className="rounded-lg p-2 text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800" />}
             <ShortcutHelpButton className="hidden rounded-lg p-2 text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800 sm:block" />
