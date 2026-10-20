@@ -318,7 +318,7 @@ Tasks:
 
 - [ ] 9.1 Nightly backup job, offsite copy, retention, restore from the platform console, monthly restore drill documented
 - [ ] 9.2 Caddy reverse proxy with HTTPS, production compose file, non-root image, resource limits
-- [ ] 9.3 `subscription.check` job: `GRACE` and `SUSPENDED` transitions with banners and notifications
+- [x] 9.3 `subscription.check` job: `GRACE` and `SUSPENDED` transitions with banners and notifications
 - [ ] 9.4 Per-pharmacy data export (ZIP of CSV and Excel files) from the platform console and on request by the Pharmacy Admin
 - [ ] 9.5 PWA manifest and service worker for the staff app shell; install on counter tablets and pharmacists' phones (camera upload works from the installed app)
 - [ ] 9.6 Playwright end-to-end journeys: Developer creates pharmacy and invite; admin accepts and sets branding; opening stock by photo with a fixture OCR result; supplier bill typed manually; cashier sale and receipt; return; close session; receive order

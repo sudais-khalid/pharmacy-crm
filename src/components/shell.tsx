@@ -9,7 +9,7 @@ import { MnemonicLabel, ShortcutHelpButton, ShortcutProvider } from "./shortcuts
 import { NotificationBell } from "./notification-bell";
 import { CommandPalette, openCommandPalette } from "./command-palette";
 import { cn } from "./ui";
-import { api } from "@/lib/client";
+import { api, formatDate } from "@/lib/client";
 import { NAV_GROUPS, STAFF_NAV, navVisible } from "@/lib/navigation";
 
 export function Shell({ ctx, children }: { ctx: AppCtx; children: React.ReactNode }) {
@@ -121,7 +121,7 @@ export function Shell({ ctx, children }: { ctx: AppCtx; children: React.ReactNod
         )}
         {ctx.pharmacyStatus === "GRACE" && (
           <div role="status" className="no-print border-b border-amber-300 bg-amber-50 px-4 py-2 text-center text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-200">
-            The subscription for this pharmacy has ended. Everything keeps working for now; please contact your software provider to renew.
+            The subscription for this pharmacy has ended{ctx.subscription ? ` on ${formatDate(ctx.subscription.endsAt)}` : ""}. Everything keeps working{ctx.subscription ? ` until ${formatDate(ctx.subscription.suspendsOn)}` : " for now"}; please contact your software provider to renew. Your records are kept either way.
           </div>
         )}
         <main id="main" className="mx-auto max-w-[1400px] p-4 sm:p-6">{children}</main>

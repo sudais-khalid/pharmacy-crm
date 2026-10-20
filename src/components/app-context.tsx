@@ -6,7 +6,7 @@ export type Settings = {
   receiptHeader: string; invoiceFooter: string; brandColor: string | null; logoFileId: string | null; logoIconFileId: string | null; expiryWarningDays: number; currency: string;
   receiptFormat: "THERMAL_80" | "THERMAL_58" | "A4"; autoPrintReceipt: boolean; receiptBatchLines: boolean; requireCashSession: boolean; cashDiffThreshold: number; cashSessionsOn: boolean; returnsOn: boolean; expensesOn: boolean;
 };
-export type AppCtx = { user: { id: string; name: string; email: string; role: { id: string; key: string; name: string } }; permissions: string[]; settings: Settings; pharmacyStatus?: string; support?: { devName: string; reason: string } };
+export type AppCtx = { user: { id: string; name: string; email: string; role: { id: string; key: string; name: string } }; permissions: string[]; settings: Settings; pharmacyStatus?: string; subscription?: { endsAt: string; suspendsOn: string } | null; support?: { devName: string; reason: string } };
 
 export const AppContext = createContext<AppCtx | null>(null);
 export const useApp = () => {

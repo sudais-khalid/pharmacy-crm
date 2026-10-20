@@ -12,6 +12,7 @@ import { claimNextIntake, cleanupDiscardedPhotos, processIntake } from "@/module
 import { scanExpiry, scanStock } from "@/modules/inventory";
 import { scanOverdueOrders, scanReorder } from "@/modules/procurement";
 import { rollup } from "@/modules/finance";
+import { checkSubscriptions } from "@/modules/tenancy";
 import { addDays, todayStr } from "@/lib/dates";
 
 const workerLog = logger.child({ svc: "worker" });
@@ -75,6 +76,8 @@ const schedules: { name: string; cron: string; run: () => Promise<unknown> }[] =
   { name: "reorder.scan", cron: "15 6 * * *", run: () => forEachPharmacy("reorder.scan", (id) => scanReorder(id)) },
   { name: "po.overdue", cron: "30 6 * * *", run: () => forEachPharmacy("po.overdue", (id) => scanOverdueOrders(id)) },
   // the daily figures for dashboards (roadmap 8.6): today and yesterday, every hour
+  // subscriptions (roadmap 9.3): ended ones move to grace, then to suspended
+  { name: "subscription.check", cron: "10 0 * * *", run: () => checkSubscriptions() },
   { name: "report.rollup", cron: "5 * * * *", run: () => forEachPharmacy("report.rollup", async (id) => { await rollup(id, addDays(todayStr(), -1), todayStr()); return { raised: 0, resolved: 0 }; }) },
 ];
 
@@ -144,7 +147,7 @@ async function main() {
   log("worker started", { schedules: schedules.map((s) => s.name), tz });
   // a shop computer is often off at 6 am: catch up once at start (the scans are idempotent)
   void (async () => {
-    for (const name of ["expiry.scan", "stock.scan"]) {
+    for (const name of ["subscription.check", "expiry.scan", "stock.scan"]) {
       const s = schedules.find((x) => x.name === name)!;
       log("job done", { job: name, startup: true, result: await s.run().catch((e) => ({ error: String(e) })) });
     }

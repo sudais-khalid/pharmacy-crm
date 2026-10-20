@@ -288,7 +288,7 @@ function PlanForm({ detail, onSaved }: { detail: Detail; onSaved: () => void }) 
       <h3 className="text-sm font-semibold">Plan and limits</h3>
       <div className="grid gap-3 sm:grid-cols-2">
         <Field label="Plan"><Input value={f.plan} onChange={(e) => setF((s) => ({ ...s, plan: e.target.value }))} /></Field>
-        <Field label="Subscription ends"><Input type="date" value={f.subscriptionEndsAt} onChange={(e) => setF((s) => ({ ...s, subscriptionEndsAt: e.target.value }))} /></Field>
+        <Field label="Subscription ends" hint="Checked every night: after this day the pharmacy goes to grace, then is suspended. Extending it brings back a pharmacy the check moved."><Input type="date" value={f.subscriptionEndsAt} onChange={(e) => setF((s) => ({ ...s, subscriptionEndsAt: e.target.value }))} /></Field>
         <Field label="Max active staff" hint={`${activeStaff} active now`}><Input type="number" min={1} value={f.maxUsers} onChange={(e) => setF((s) => ({ ...s, maxUsers: e.target.value }))} /></Field>
         <Field label="OCR pages per month"><Input type="number" min={0} value={f.ocrMonthlyLimit} onChange={(e) => setF((s) => ({ ...s, ocrMonthlyLimit: e.target.value }))} /></Field>
       </div>
