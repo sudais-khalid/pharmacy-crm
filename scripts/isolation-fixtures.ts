@@ -47,11 +47,15 @@ async function main() {
   const [saleItem] = await platformDb.saleItem.findMany({ where: { saleId: sale.id } });
   const saleReturn = await createReturn(ctx, { saleId: sale.id, refundMethod: "CREDIT", reason: "Bravo return", items: [{ saleItemId: saleItem.id, quantity: 1, restock: true }] });
   const cashSession = await platformDb.cashSession.create({ data: { pharmacyId, userId: admin.id, openingFloat: 100 } });
+  const { createOrder, createSupplierReturn, saveCatalogItem } = await import("../src/modules/procurement");
+  const catalogItem = await saveCatalogItem(ctx, supplier.id, { medicineId: medicine.id, supplierCode: "B1" });
+  const order = await createOrder(ctx, { supplierId: supplier.id, items: [{ medicineId: medicine.id, orderedQty: 3 }] });
+  const supplierReturn = await createSupplierReturn(ctx, { supplierId: supplier.id, reason: "Bravo return", items: [{ batchId: batch.id, quantity: 1 }] });
 
   console.log(JSON.stringify({
     pharmacy: slug,
     admin: { username: "badmin", password },
-    ids: { medicine: medicine.id, batch: batch.id, customer: customer.id, supplier: supplier.id, sale: sale.id, purchase: purchase.id, user: admin.id, role: role.id, file: logo.logoFileId, intake: intake.id, saleReturn: saleReturn.id, cashSession: cashSession.id, saleItem: saleItem.id },
+    ids: { medicine: medicine.id, batch: batch.id, customer: customer.id, supplier: supplier.id, sale: sale.id, purchase: purchase.id, user: admin.id, role: role.id, file: logo.logoFileId, intake: intake.id, saleReturn: saleReturn.id, cashSession: cashSession.id, saleItem: saleItem.id, catalogItem: catalogItem.id, order: order.id, supplierReturn: supplierReturn.id },
     names: { medicine: medicine.name, customer: customer.name, supplier: supplier.name, invoice: sale.invoiceNo, purchase: purchase.number },
   }));
   process.exit(0);

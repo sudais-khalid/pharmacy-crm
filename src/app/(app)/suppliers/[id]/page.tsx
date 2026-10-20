@@ -8,6 +8,8 @@ import { useApp, useCan, useMoney } from "@/components/app-context";
 import { HistoryList } from "@/components/history";
 import { api, formatDate, formatDateTime, useApi } from "@/lib/client";
 import { SupplierForm, type Supplier } from "@/components/supplier-form";
+import { CatalogTab } from "./catalog-tab";
+import { OrdersTab, ReturnsTab } from "./orders-tab";
 
 type Detail = {
   supplier: Supplier; balance: string; totalPurchases: string; totalPayments: string;
@@ -19,7 +21,8 @@ export default function SupplierDetail() {
   const { id } = useParams<{ id: string }>();
   const money = useMoney(); const toast = useToast(); const { settings } = useApp(); const canManage = useCan("suppliers.manage");
   const { data, error, loading, reload } = useApi<Detail>(`/api/suppliers/${id}`);
-  const [tab, setTab] = useState<"ledger" | "purchases" | "payments" | "history">("ledger");
+  const [tab, setTab] = useState<"ledger" | "purchases" | "payments" | "catalog" | "orders" | "returns" | "history">("ledger");
+  const seesPurchases = useCan("purchases.view");
   const canAudit = useCan("audit.view");
   const [paying, setPaying] = useState(false); const [editing, setEditing] = useState(false);
   const [amount, setAmount] = useState(""); const [method, setMethod] = useState("CASH"); const [note, setNote] = useState(""); const [busy, setBusy] = useState(false);
@@ -44,9 +47,12 @@ export default function SupplierDetail() {
         <StatCard label="Total purchases" value={money(data.totalPurchases)} icon={<span className="font-bold">+</span>} />
         <StatCard label="Total paid" value={money(data.totalPayments)} icon={<span className="font-bold">−</span>} tone="green" />
       </div>
-      <div className="no-print mt-6"><Tabs tabs={[{ id: "ledger", label: "Ledger" }, { id: "purchases", label: "Purchases" }, { id: "payments", label: "Payments" }, ...(canAudit ? [{ id: "history" as const, label: "History" }] : [])]} value={tab} onChange={setTab} /></div>
+      <div className="no-print mt-6"><Tabs tabs={[{ id: "ledger", label: "Ledger" }, { id: "purchases", label: "Purchases" }, { id: "payments", label: "Payments" }, { id: "catalog", label: "Catalog" }, ...(seesPurchases ? [{ id: "orders" as const, label: "Orders" }, { id: "returns" as const, label: "Returns" }] : []), ...(canAudit ? [{ id: "history" as const, label: "History" }] : [])]} value={tab} onChange={setTab} /></div>
       <Card className="print-area">
         <div className="hidden p-4 print:block"><h2 className="text-lg font-bold">{settings.pharmacyName}: supplier statement: {s.name}</h2></div>
+        {tab === "catalog" && <CatalogTab supplierId={s.id} />}
+        {tab === "orders" && <OrdersTab supplierId={s.id} />}
+        {tab === "returns" && <ReturnsTab supplierId={s.id} />}
         {tab === "ledger" && (data.ledger.length === 0 ? <EmptyState title="No ledger entries yet" /> : (
           <TableWrap><thead><tr className="border-b border-slate-200 dark:border-slate-800"><th className="th">Date</th><th className="th">Description</th><th className="th text-right">Invoiced</th><th className="th text-right">Paid</th><th className="th text-right">Balance</th></tr></thead>
             <tbody>{data.ledger.map((l) => (<tr key={l.id} className="border-b border-slate-100 dark:border-slate-800/60"><td className="td whitespace-nowrap">{formatDateTime(l.createdAt)}</td><td className="td">{l.description}</td><td className="td text-right">{Number(l.debit) ? money(l.debit) : ""}</td><td className="td text-right text-emerald-700 dark:text-emerald-400">{Number(l.credit) ? money(l.credit) : ""}</td><td className="td text-right font-medium">{money(l.balance)}</td></tr>))}</tbody></TableWrap>))}

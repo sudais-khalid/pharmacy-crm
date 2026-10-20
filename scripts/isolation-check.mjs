@@ -24,6 +24,12 @@ const ok = (name, got, want) => {
 const ROUTES = {
   "customers/[id]": [["GET", "/api/customers/{customer}"], ["PUT", "/api/customers/{customer}", { name: "Hijacked" }]],
   "customers/[id]/payments": [["POST", "/api/customers/{customer}/payments", { amount: 1, method: "CASH" }]],
+  "suppliers/[id]/catalog": [["GET", "/api/suppliers/{supplier}/catalog"], ["POST", "/api/suppliers/{supplier}/catalog", { medicineId: "{medicine:own}" }]],
+  "suppliers/[id]/catalog/[itemId]": [["DELETE", "/api/suppliers/{supplier}/catalog/{catalogItem}"]],
+  "suppliers/[id]/catalog/import": [["POST", "/api/suppliers/{supplier}/catalog/import", { rows: [{ name: "Bravo Only Syrup" }] }]],
+  "orders/[id]": [["GET", "/api/orders/{order}"], ["PUT", "/api/orders/{order}", { items: [{ medicineId: "{medicine:own}", orderedQty: 1 }] }]],
+  "orders/[id]/[action]": [["POST", "/api/orders/{order}/send"], ["POST", "/api/orders/{order}/end", { reason: "cross-tenant attempt" }], ["POST", "/api/orders/{order}/receive"]],
+  "supplier-returns/[id]": [["GET", "/api/supplier-returns/{supplierReturn}"]],
   "medicines/[id]/sales": [["GET", "/api/medicines/{medicine}/sales"]],
   "medicines/[id]/purchases": [["GET", "/api/medicines/{medicine}/purchases"]],
   "inventory/batches/[id]/trace": [["GET", "/api/inventory/batches/{batch}/trace"]],
@@ -48,6 +54,9 @@ const BODY_WRITES = [
   ["POST", "/api/inventory/adjust", { batchId: "{batch}", kind: "REMOVE", quantity: 1, note: "cross-tenant attempt" }],
   ["POST", "/api/sales", { items: [{ medicineId: "{medicine}", quantity: 1 }], paymentMethod: "CASH" }],
   ["POST", "/api/sales", { items: [{ medicineId: "{medicine:own}", quantity: 1 }], paymentMethod: "CREDIT", customerId: "{customer}" }],
+  ["POST", "/api/orders", { supplierId: "{supplier}", items: [{ medicineId: "{medicine:own}", orderedQty: 1 }] }],
+  ["POST", "/api/orders", { supplierId: "{supplier:own}", items: [{ medicineId: "{medicine}", orderedQty: 1 }] }],
+  ["POST", "/api/supplier-returns", { supplierId: "{supplier:own}", reason: "cross-tenant attempt", items: [{ batchId: "{batch}", quantity: 1 }] }],
   ["POST", "/api/inventory/write-off", { batchIds: ["{batch}"], note: "cross-tenant attempt" }],
   ["POST", "/api/inventory/set-aside", { batchIds: ["{batch}"], aside: true }],
   ["POST", "/api/returns", { saleId: "{sale}", refundMethod: "CASH", reason: "cross-tenant attempt", items: [{ saleItemId: "{saleItem}", quantity: 1, restock: true }] }],
@@ -110,6 +119,8 @@ async function idsOf(client) {
     file: (await client.req("GET", "/api/branding")).data?.logoFileId,
     intake: await pick("/api/stock-entry?status=all"),
     saleReturn: await pick("/api/returns"), cashSession: await pick("/api/cash/sessions"),
+    order: await pick("/api/orders?status=all"), supplierReturn: await pick("/api/supplier-returns"),
+    catalogItem: await (async () => { const sid = await pick("/api/suppliers"); return sid ? (await client.req("GET", `/api/suppliers/${sid}/catalog`)).data?.[0]?.id : undefined; })(),
     saleItem: await (async () => { const id = await pick("/api/sales"); return id ? (await client.req("GET", `/api/sales/${id}`)).data?.items?.[0]?.id : undefined; })(),
   };
 }
@@ -146,7 +157,7 @@ async function main() {
   for (const [path, needle] of [
     ["/api/medicines?q=Bravo", fx.names.medicine], ["/api/pos/search?q=Bravo", fx.names.medicine], ["/api/customers?q=Bravo", fx.names.customer],
     ["/api/suppliers?q=Bravo", fx.names.supplier], ["/api/sales?q=" + fx.names.invoice, fx.ids.sale], ["/api/purchases", fx.ids.purchase],
-    ["/api/inventory/batches?q=BRAVO", "BRAVO-1"], ["/api/inventory/movements?q=Bravo", fx.ids.medicine], ["/api/users", fx.ids.user], ["/api/roles", fx.ids.role], ["/api/stock-entry?status=all", fx.ids.intake], ["/api/search?q=Bravo", fx.names.medicine], ["/api/search?q=BRAVO", "BRAVO-1"], ["/api/returns", fx.ids.saleReturn], ["/api/cash/sessions", fx.ids.cashSession],
+    ["/api/inventory/batches?q=BRAVO", "BRAVO-1"], ["/api/inventory/movements?q=Bravo", fx.ids.medicine], ["/api/users", fx.ids.user], ["/api/roles", fx.ids.role], ["/api/stock-entry?status=all", fx.ids.intake], ["/api/search?q=Bravo", fx.names.medicine], ["/api/search?q=BRAVO", "BRAVO-1"], ["/api/returns", fx.ids.saleReturn], ["/api/orders?status=all", fx.ids.order], ["/api/supplier-returns", fx.ids.supplierReturn], ["/api/cash/sessions", fx.ids.cashSession],
     ["/api/dashboard", fx.names.medicine], ["/api/reports?type=sales&from=2020-01-01&to=2035-01-01", fx.names.invoice],
   ]) {
     ok(`A: ${path} hides pharmacy B`, (await text(a, path)).includes(needle), false);

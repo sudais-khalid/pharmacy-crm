@@ -158,7 +158,23 @@ type Aside = { id: string; batchNumber: string; expiryDate: string; quantity: nu
 /** Batches set aside for the supplier, grouped by supplier, printable (roadmap 6.4). */
 function SupplierReturnsTab() {
   const money = useMoney();
+  const toast = useToast();
   const canAdjust = useCan("inventory.adjust");
+  const canReturn = useCan("purchases.create");
+  const [returning, setReturning] = useState<string | null>(null);
+  async function returnGroup(supplierId: string, rows: Aside[]) {
+    setReturning(supplierId);
+    try {
+      const r = await api<{ id: string; number: string }>("/api/supplier-returns", { body: { supplierId, reason: rows.map((b) => b.setAsideNote).find(Boolean) ?? "Near or past expiry", items: rows.map((b) => ({ batchId: b.id, quantity: b.quantity })) } });
+      toast.success(`${r.number} recorded: credited to the supplier`);
+      window.open(`/invoice/supplier-returns/${r.id}?print=1`, "_blank");
+      reload();
+    } catch (err) {
+      toast.error((err as Error).message);
+    } finally {
+      setReturning(null);
+    }
+  }
   const { data, error, reload } = useApi<Aside[]>("/api/inventory/supplier-returns");
   const [action, setAction] = useState<{ kind: "writeOff" | "putBack"; ids: string[] } | null>(null);
   if (error) return <ErrorBox message={error} onRetry={reload} />;
@@ -171,12 +187,15 @@ function SupplierReturnsTab() {
   return (
     <Card>
       <div className="no-print flex items-center justify-between border-b border-border p-4">
-        <p className="text-sm text-fg-muted">Set aside from the Expiry tab. Hand these back to the supplier, then write them off here (supplier returns with credit notes arrive with Phase 7).</p>
+        <p className="text-sm text-fg-muted">Set aside from the Expiry tab. When the supplier takes them back, record the return here: stock leaves and the supplier's account is credited. A supplier that will not take them back: write them off.</p>
         {data.length > 0 && <Button size="sm" variant="secondary" onClick={() => window.print()}><Printer className="h-4 w-4" aria-hidden /> Print list</Button>}
       </div>
       {!data.length ? <EmptyState title="Nothing set aside" hint="Choose batches on the Expiry tab and set them aside for the supplier." /> : [...groups.entries()].map(([supplier, rows]) => (
         <section key={supplier} className="border-b border-border last:border-0">
-          <h3 className="px-4 pt-3 font-semibold">{supplier}</h3>
+          <div className="flex flex-wrap items-center justify-between gap-2 px-4 pt-3">
+            <h3 className="font-semibold">{supplier}</h3>
+            {canReturn && rows[0].source && <Button size="sm" className="no-print" loading={returning === rows[0].source.supplier.id} onClick={() => returnGroup(rows[0].source!.supplier.id, rows)}>Return all to {supplier}</Button>}
+          </div>
           <TableWrap>
             <thead><tr className="border-b border-border"><th className="th">Medicine</th><th className="th">Batch</th><th className="th">Expiry</th><th className="th text-right">Qty</th><th className="th">Bought on</th><th className="th">Note</th>{canAdjust && <th className="th no-print text-right">Actions</th>}</tr></thead>
             <tbody>{rows.map((b) => (

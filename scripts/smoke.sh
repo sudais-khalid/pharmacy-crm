@@ -140,6 +140,28 @@ curl -s -o /dev/null -b /tmp/smoke_pharmacist.jar -X POST $B/api/inventory/set-a
 ok "Notifications come with counts per kind" "$(curl -s -b /tmp/smoke_admin.jar "$B/api/notifications?group=expiry" | js "sorted(d['groups'].keys())")" "['expiry', 'other', 'stock']"
 ok "Medicine page renders" "$(code -b /tmp/smoke_pharmacist.jar $B/medicines/$NID)" 200
 ok "Medicine purchase history needs purchases.view" "$(code -b /tmp/smoke_cashier.jar $B/api/medicines/$NID/purchases)" 403
+# supply orders: catalog with a new medicine, an order received in part, a return to the supplier
+SUP=$(curl -s -b /tmp/smoke_pharmacist.jar "$B/api/suppliers?active=1" | js "d['items'][0]['id']")
+CAT=$(curl -s -b /tmp/smoke_pharmacist.jar -X POST $B/api/suppliers/$SUP/catalog -H 'content-type: application/json' -d '{"newMedicine":{"name":"Smoke Order Tablet","salePrice":40,"minStock":5},"supplierCode":"SMK1","lastPrice":25}')
+OMED=$(echo "$CAT" | js "d['medicineId']")
+ok "A new medicine joins a supplier's catalog in one step" "$(echo "$CAT" | js "d['medicine']['name']+'/'+d['supplierCode']")" "Smoke Order Tablet/SMK1"
+ok "A cashier cannot see supply orders" "$(code -b /tmp/smoke_cashier.jar $B/api/orders)" 403
+ORD=$(curl -s -b /tmp/smoke_pharmacist.jar -X POST $B/api/orders -H 'content-type: application/json' -d "{\"supplierId\":\"$SUP\",\"items\":[{\"medicineId\":\"$OMED\",\"orderedQty\":10}]}" | js "d['id']")
+ok "An order takes the supplier's last price" "$(curl -s -b /tmp/smoke_pharmacist.jar $B/api/orders/$ORD | js "float(d['estimatedTotal'])")" 250.0
+ok "A draft cannot be received" "$(code -b /tmp/smoke_pharmacist.jar -X POST $B/api/orders/$ORD/receive)" 409
+ok "An order is approved and sent" "$(curl -s -b /tmp/smoke_pharmacist.jar -X POST $B/api/orders/$ORD/send | js "d['status']")" SENT
+REC=$(curl -s -b /tmp/smoke_pharmacist.jar -X POST $B/api/orders/$ORD/receive | js "d['id']")
+ok "Receiving opens a stock entry with the pending lines" "$(curl -s -b /tmp/smoke_pharmacist.jar $B/api/stock-entry/$REC | js "str(d['lines'][0]['quantity'])+'/'+d['order']['id']")" "10/$ORD"
+ok "The receipt saves 6 of 10 with 1 free" "$(code -b /tmp/smoke_pharmacist.jar -X PUT $B/api/stock-entry/$REC -H 'content-type: application/json' -d "{\"supplierId\":\"$SUP\",\"purchaseOrderId\":\"$ORD\",\"supplierInvoice\":\"SMOKE-$(date +%s)\",\"lines\":[{\"name\":\"Smoke Order Tablet\",\"medicineId\":\"$OMED\",\"matchMethod\":\"MANUAL\",\"batchNumber\":\"SO1\",\"expiryDate\":\"2030-06-30\",\"quantity\":6,\"bonusQty\":1,\"rate\":25,\"salePrice\":40}]}")" 200
+ok "The receipt posts" "$(code -b /tmp/smoke_pharmacist.jar -X POST $B/api/stock-entry/$REC/post)" 200
+ok "The order is partly received with 4 pending" "$(curl -s -b /tmp/smoke_pharmacist.jar $B/api/orders/$ORD | js "d['status']+'/'+str(d['items'][0]['pendingQty'])")" "PARTIALLY_RECEIVED/4"
+ok "Stock rose by 6 plus the free unit" "$(curl -s -b /tmp/smoke_cashier.jar "$B/api/pos/search?q=Smoke%20Order" | js "d[0]['stock']")" 7
+ok "Reorder suggestions load" "$(code -b /tmp/smoke_pharmacist.jar $B/api/orders/reorder)" 200
+OBATCH=$(curl -s -b /tmp/smoke_pharmacist.jar "$B/api/inventory/batches?filter=all&medicineId=$OMED" | js "d['items'][0]['id']")
+RTS=$(curl -s -b /tmp/smoke_pharmacist.jar -X POST $B/api/supplier-returns -H 'content-type: application/json' -d "{\"supplierId\":\"$SUP\",\"reason\":\"Damaged in transit\",\"items\":[{\"batchId\":\"$OBATCH\",\"quantity\":1}]}" | js "d['id']")
+ok "A return to the supplier takes stock out" "$(curl -s -b /tmp/smoke_cashier.jar "$B/api/pos/search?q=Smoke%20Order" | js "d[0]['stock']")" 6
+ok "The order closes short" "$(curl -s -b /tmp/smoke_pharmacist.jar -X POST $B/api/orders/$ORD/end -H 'content-type: application/json' -d '{"reason":"Rest not available"}' | js "d['status']")" CLOSED
+for p in /orders /orders/new "/orders?tab=reorder" /orders/$ORD /invoice/orders/$ORD /invoice/supplier-returns/$RTS /suppliers/$SUP; do ok "Page $p renders" "$(code -b /tmp/smoke_pharmacist.jar "$B$p")" 200; done
 ok "Archive instead of delete (has history)" "$(curl -s -b /tmp/smoke_admin.jar -X DELETE $B/api/medicines/$NID | js "d['archived']")" True
 for t in sales profit purchases lowStock expired customerBalances supplierBalances; do ok "Report: $t" "$(code -b /tmp/smoke_admin.jar "$B/api/reports?type=$t&from=2020-01-01&to=2030-01-01")" 200; done
 ok "Report rejects bad range" "$(code -b /tmp/smoke_admin.jar "$B/api/reports?type=sales&from=2030-01-01&to=2020-01-01")" 400

@@ -21,6 +21,8 @@ export type ReceiptDoc = {
   totals: [string, string, "strong"?][];
   notes: string[];
   stamp?: string | null; // e.g. CANCELLED
+  partyLabel?: string; // "Customer" unless the document is for a supplier
+  staffLabel?: string; // "Cashier" unless someone else made it
   qr: string; // what the QR code holds: the number, so a scanner at the returns desk finds the invoice
 };
 
@@ -114,8 +116,8 @@ export function A4Receipt({ doc, shop, batchLines }: { doc: ReceiptDoc; shop: Sh
         </div>
       </header>
       <section className="grid grid-cols-2 gap-4 py-4 text-sm">
-        <div><p className="text-xs uppercase text-slate-500">Customer</p><p className="font-medium">{doc.customer?.name ?? "Walk-in customer"}</p>{doc.customer?.phone && <p>{doc.customer.phone}</p>}{doc.customer?.address && <p>{doc.customer.address}</p>}</div>
-        <div className="text-right"><p className="text-xs uppercase text-slate-500">Cashier</p><p className="font-medium">{doc.cashier}</p></div>
+        <div><p className="text-xs uppercase text-slate-500">{doc.partyLabel ?? "Customer"}</p><p className="font-medium">{doc.customer?.name ?? "Walk-in customer"}</p>{doc.customer?.phone && <p>{doc.customer.phone}</p>}{doc.customer?.address && <p>{doc.customer.address}</p>}</div>
+        <div className="text-right"><p className="text-xs uppercase text-slate-500">{doc.staffLabel ?? "Cashier"}</p><p className="font-medium">{doc.cashier}</p></div>
       </section>
       <table className="w-full text-sm">
         <thead><tr className="border-y border-slate-300 text-left text-xs uppercase text-slate-500"><th className="py-2">Medicine</th>{batchLines && <><th>Batch</th><th>Expiry</th></>}<th className="text-right">Qty</th><th className="text-right">Price</th><th className="text-right">Total</th></tr></thead>

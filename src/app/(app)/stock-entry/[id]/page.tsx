@@ -17,6 +17,7 @@ type Intake = {
   supplierId: string | null; supplierInvoice: string | null; billDate: string | null; billTotal: string | null; billDiscount: string; paid: string;
   paymentMethod: string | null; note: string | null; error: string | null; provider: string | null; updatedAt: string;
   pages: { pageNo: number; fileId: string }[]; lines: Parameters<typeof fromApiLine>[0][]; purchase: { id: string; number: string } | null;
+  purchaseOrderId: string | null; order: { id: string; number: string; status: string; items: { medicineId: string; orderedQty: number; receivedQty: number }[] } | null;
   checks: { errors: Issue[]; warnings: Issue[]; linesTotal: string; total: string };
 };
 type Header = { supplierId: string; supplierInvoice: string; billDate: string; billTotal: string; billDiscount: string; paid: string; paymentMethod: string; note: string };
@@ -78,6 +79,8 @@ export default function StockEntryEditor() {
         supplierId: header.supplierId || null, supplierInvoice: header.supplierInvoice || null, billDate: header.billDate || null,
         billTotal: header.billTotal ? Number(header.billTotal) : null, billDiscount: Number(header.billDiscount) || 0, paid: Number(header.paid) || 0,
         paymentMethod: header.paymentMethod || null, note: header.note || null,
+        // keep the order this entry receives against
+        purchaseOrderId: data?.purchaseOrderId ?? null,
         lines: lines.filter((l) => !isEmptyLine(l)).map(toApiLine),
       };
       const r = await api<Intake>(`/api/stock-entry/${id}`, { method: "PUT", body });
@@ -89,7 +92,7 @@ export default function StockEntryEditor() {
       setSaved("error");
       toast.error((err as Error).message);
     }
-  }, [header, lines, id, readOnly, toast]);
+  }, [header, lines, id, readOnly, toast, data?.purchaseOrderId]);
 
   // autosave a moment after the last change
   useEffect(() => {
@@ -215,6 +218,12 @@ export default function StockEntryEditor() {
           <AlertTriangle className="h-5 w-5 text-warning" aria-hidden />
           <span>The photo could not be read{data.error ? `: ${data.error}` : "."} Type the lines below with the photo beside you, or try again.</span>
           {hasPhotos && <Button size="sm" variant="secondary" onClick={() => runAction("retry")}>Try reading again</Button>}
+        </Card>
+      )}
+      {data.order && (
+        <Card className="p-4 text-sm">
+          Receiving order <Link className="font-medium text-primary hover:underline" href={`/orders/${data.order.id}`}>{data.order.number}</Link>.
+          {" "}Enter what arrived: quantities below what was ordered leave the rest pending on the order, and free units go in Bonus.
         </Card>
       )}
       {data.status === "POSTED" && data.purchase && <Card className="p-4 text-sm">Posted as purchase <Link className="text-primary hover:underline" href="/purchases">{data.purchase.number}</Link>.</Card>}
