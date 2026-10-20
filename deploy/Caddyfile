@@ -1,0 +1,24 @@
+# HTTPS in front of the app (roadmap 9.2). Caddy gets and renews the certificate for DOMAIN by itself;
+# the DNS record must point at this server and ports 80 and 443 must be open.
+{
+	email {$ACME_EMAIL}
+}
+
+{$DOMAIN} {
+	encode zstd gzip
+	# the app takes up to 10 bill photos of 10 MB each in one upload
+	request_body {
+		max_size 110MB
+	}
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		-Server
+	}
+	reverse_proxy app:3000
+	log {
+		output stdout
+		format console
+	}
+}

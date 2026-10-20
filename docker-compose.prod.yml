@@ -1,0 +1,134 @@
+# Production on one server (roadmap 9.2): Caddy with HTTPS in front, the app and the worker from the same
+# non-root image, PostgreSQL 16. Only Caddy is reachable from outside.
+#
+#   cp .env.example .env     # set DOMAIN, ACME_EMAIL, POSTGRES_PASSWORD, JWT_SECRET, TOTP_ENCRYPTION_KEY,
+#                            # PLATFORM_OWNER_EMAIL, PLATFORM_OWNER_PASSWORD and BACKUP_KEY
+#   docker compose -f docker-compose.prod.yml up -d --build
+#
+# Limits suit a 4 GB, 2 CPU server for about 20 pharmacies; raise them together with the server.
+
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "5"
+
+x-app-env: &app-env
+  NODE_ENV: production
+  DATABASE_URL: postgresql://pharmacy:${POSTGRES_PASSWORD}@db:5432/pharmacy_crm?schema=public
+  APP_TIMEZONE: ${APP_TIMEZONE:-Asia/Karachi}
+  SUBSCRIPTION_GRACE_DAYS: ${SUBSCRIPTION_GRACE_DAYS:-7}
+
+services:
+  caddy:
+    image: caddy:2.8-alpine
+    restart: unless-stopped
+    depends_on:
+      app:
+        condition: service_healthy
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    environment:
+      DOMAIN: ${DOMAIN:?Set DOMAIN in .env, for example crm.example.com}
+      ACME_EMAIL: ${ACME_EMAIL:?Set ACME_EMAIL in .env for certificate notices}
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    deploy:
+      resources:
+        limits: { cpus: "0.5", memory: 256M }
+    logging: *logging
+
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: pharmacy
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: pharmacy_crm
+    command: ["postgres", "-c", "shared_buffers=512MB", "-c", "effective_cache_size=1536MB", "-c", "max_connections=100", "-c", "log_min_duration_statement=1000"]
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U pharmacy -d pharmacy_crm"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    shm_size: 256m
+    deploy:
+      resources:
+        limits: { cpus: "1.0", memory: 1536M }
+    logging: *logging
+
+  app:
+    build: .
+    image: pharmacy-crm:latest
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      <<: *app-env
+      JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in .env}
+      TOTP_ENCRYPTION_KEY: ${TOTP_ENCRYPTION_KEY:?Set TOTP_ENCRYPTION_KEY in .env}
+      # Caddy sets X-Forwarded-For, so per-address rate limits see the real client
+      TRUST_PROXY: "1"
+      # Developer account, created on the very first start only
+      PLATFORM_OWNER_EMAIL: ${PLATFORM_OWNER_EMAIL:-}
+      PLATFORM_OWNER_PASSWORD: ${PLATFORM_OWNER_PASSWORD:-}
+      # read only here: the health check and the Developer console show the last backups
+      BACKUP_DIR: /backups
+    volumes:
+      - backups:/backups:ro
+    expose:
+      - "3000"
+    read_only: true
+    tmpfs:
+      - /tmp
+      - /app/.next/cache
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits: { cpus: "1.0", memory: 1G }
+    logging: *logging
+
+  # Background jobs, outbox delivery, the photo reader and nightly backups. Waits for the app to migrate.
+  worker:
+    image: pharmacy-crm:latest
+    restart: unless-stopped
+    depends_on:
+      app:
+        condition: service_healthy
+    environment:
+      <<: *app-env
+      BACKUP_DIR: /backups
+      BACKUP_KEY: ${BACKUP_KEY:-}
+      BACKUP_KEEP_DAILY: ${BACKUP_KEEP_DAILY:-14}
+      BACKUP_KEEP_MONTHLY: ${BACKUP_KEEP_MONTHLY:-12}
+      # a copy of each backup on another disk: set BACKUP_OFFSITE_HOST_DIR to a mounted network drive or synced folder
+      BACKUP_OFFSITE_DIR: ${BACKUP_OFFSITE_HOST_DIR:+/offsite}
+    command: ["node", "dist/worker.js"]
+    healthcheck:
+      disable: true
+    volumes:
+      - backups:/backups
+      - ${BACKUP_OFFSITE_HOST_DIR:-./offsite}:/offsite
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits: { cpus: "1.0", memory: 1G }
+    logging: *logging
+
+volumes:
+  pgdata:
+  backups:
+  caddy_data:
+  caddy_config:

@@ -1,6 +1,14 @@
+# Never send secrets, real supplier bills or local builds to the Docker build
+.env
+.env.*
+!.env.example
+Supplier Bills
 node_modules
 .next
-.env
-.env.test
-.git
 dist
+desktop
+.git
+.github
+coverage
+*.log
+tsconfig.tsbuildinfo

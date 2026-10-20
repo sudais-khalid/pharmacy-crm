@@ -72,6 +72,8 @@ cp .env.example .env        # set POSTGRES_PASSWORD and JWT_SECRET
 docker compose up --build   # app on http://localhost:3000, migrations run automatically
 ```
 
+For a real server use `docker-compose.prod.yml`: Caddy with automatic HTTPS in front, the app and the worker as a non-root user on read-only file systems with resource limits, and nightly encrypted backups with an offsite copy. Setup, backups, restore and the monthly restore drill are in [docs/runbook.md](docs/runbook.md).
+
 ## Development accounts (seed data – development only)
 
 The seed creates the pharmacy **Demo Pharmacy** with the code `demo`. Sign in at `/p/demo/login` (or `/login`, then enter the code `demo`).
