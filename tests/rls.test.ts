@@ -9,6 +9,7 @@ import { tenantTransaction, runInTx } from "@/lib/db";
 import { createSale, cancelSale, createReturn, openSession, addCashMovement } from "@/modules/sales";
 import { createOrder, createPurchase, createSupplierReturn, saveCatalogItem } from "@/modules/procurement";
 import { adjustStock } from "@/modules/inventory";
+import { createExpense, listCategories, rollup } from "@/modules/finance";
 import { receiveCustomerPayment } from "@/modules/customers";
 import { updateSettings, getSettings, setLogo, notify, markNotificationsRead } from "@/modules/platform";
 import { testPng } from "./png";
@@ -40,6 +41,10 @@ async function populate(pharmacyId: string) {
   const cashSale = await createSale(ctx, { items: [{ medicineId: m.id, quantity: 1 }], discountType: "AMOUNT", discountValue: 0, paymentMethod: "CASH" });
   const [cashLine] = await platformDb.saleItem.findMany({ where: { saleId: cashSale.id } });
   await createReturn(ctx, { saleId: cashSale.id, refundMethod: "CASH", reason: "fixture", items: [{ saleItemId: cashLine.id, quantity: 1, restock: true }] });
+  // an expense paid from the drawer, and the day's summary
+  const [rent] = await listCategories(ctx);
+  await createExpense(ctx, { categoryId: rent.id, amount: 20, date: inDays(0), method: "CASH", description: "fixture", fromDrawer: true });
+  await rollup(pharmacyId, inDays(0), inDays(0));
   await cancelSale(ctx, sale.id, "test cancel");
   await createPurchase(ctx, {
     supplierId: s.id, purchaseDate: inDays(0), discount: 0, paid: 0, paymentMethod: "CASH",

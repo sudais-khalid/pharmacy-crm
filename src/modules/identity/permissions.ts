@@ -39,6 +39,7 @@ export const PERMISSION_CATALOG = [
   { key: "cost.view", group: "Money", label: "See cost prices and profit" },
   { key: "reports.view", group: "Money", label: "See reports" },
   { key: "finance.view", group: "Money", label: "See expenses and net profit" },
+  { key: "expenses.manage", group: "Money", label: "Record and cancel expenses" },
   { key: "users.manage", group: "Admin", label: "Manage staff accounts" },
   { key: "roles.manage", group: "Admin", label: "Create and edit roles" },
   { key: "branding.manage", group: "Admin", label: "Edit the pharmacy profile and branding" },

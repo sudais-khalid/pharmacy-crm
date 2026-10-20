@@ -11,6 +11,8 @@ import { dispatchOutbox, type OutboxHandlers } from "@/modules/platform";
 import { claimNextIntake, cleanupDiscardedPhotos, processIntake } from "@/modules/stockentry";
 import { scanExpiry, scanStock } from "@/modules/inventory";
 import { scanOverdueOrders, scanReorder } from "@/modules/procurement";
+import { rollup } from "@/modules/finance";
+import { addDays, todayStr } from "@/lib/dates";
 
 const workerLog = logger.child({ svc: "worker" });
 const log = (msg: string, extra: Record<string, unknown> = {}) => workerLog.info(extra, msg);
@@ -44,9 +46,18 @@ const rescanStock = async (e: { id: bigint; payload: { medicineIds: string[] } }
   const pharmacyId = await outboxPharmacy(e.id);
   if (pharmacyId && e.payload.medicineIds.length) await scanStock(pharmacyId, undefined, e.payload.medicineIds);
 };
+/** A sale cancelled on a later day changes the figures of the day it was made. */
+const rollupSaleDay = async (e: { id: bigint; payload: { saleId: string } }) => {
+  const pharmacyId = await outboxPharmacy(e.id);
+  const sale = pharmacyId ? await platformDb.sale.findUnique({ where: { id: e.payload.saleId }, select: { createdAt: true } }) : null;
+  if (pharmacyId && sale) {
+    const day = todayStr(sale.createdAt);
+    await rollup(pharmacyId, day, day);
+  }
+};
 const handlers: OutboxHandlers = {
   SaleCompleted: [rescanStock],
-  SaleCancelled: [rescanStock],
+  SaleCancelled: [rescanStock, rollupSaleDay],
   SaleReturned: [rescanStock],
   PurchasePosted: [rescanStock],
   StockEntryPosted: [rescanStock],
@@ -63,6 +74,8 @@ const schedules: { name: string; cron: string; run: () => Promise<unknown> }[] =
   // orders (roadmap 7.5, 7.10): what needs reordering, and orders past their expected date
   { name: "reorder.scan", cron: "15 6 * * *", run: () => forEachPharmacy("reorder.scan", (id) => scanReorder(id)) },
   { name: "po.overdue", cron: "30 6 * * *", run: () => forEachPharmacy("po.overdue", (id) => scanOverdueOrders(id)) },
+  // the daily figures for dashboards (roadmap 8.6): today and yesterday, every hour
+  { name: "report.rollup", cron: "5 * * * *", run: () => forEachPharmacy("report.rollup", async (id) => { await rollup(id, addDays(todayStr(), -1), todayStr()); return { raised: 0, resolved: 0 }; }) },
 ];
 
 const IDLE_MS = 2000;

@@ -4,6 +4,7 @@ import { runInTx } from "@/lib/db";
 import { AppError } from "@/lib/errors";
 import { D } from "@/lib/money";
 import { can, type ServiceContext } from "@/modules/identity";
+import { drawerExpenses } from "@/modules/finance";
 import { audit, getSettings, notify } from "@/modules/platform";
 
 /**
@@ -11,7 +12,7 @@ import { audit, getSettings, notify } from "@/modules/platform";
  * the drawer, sales and cash refunds are linked to it, pay-ins and pay-outs are recorded, and at close the
  * counted cash is compared with what the drawer should hold:
  *
- *   expected = opening float + cash taken on sales - cash refunds + pay-ins - pay-outs
+ *   expected = opening float + cash taken on sales - cash refunds + pay-ins - pay-outs - expenses paid from it
  *
  * "Cash taken on sales" is the amount paid on completed cash and credit sales (a credit sale's down payment
  * is cash); card sales never reach the drawer, and change given back is already netted out of amountPaid.
@@ -26,23 +27,25 @@ export type SessionSummary = {
   cashRefunds: number;
   payIns: number;
   payOuts: number;
+  expensesPaid: number;
   expectedCash: number;
 };
 
 export async function sessionSummary(tx: Tx, sessionId: string): Promise<SessionSummary> {
   const session = await tx.cashSession.findUnique({ where: { id: sessionId }, select: { openingFloat: true } });
   if (!session) throw new AppError(404, "Cash session not found.");
-  const [byMethod, refunds, moves] = await Promise.all([
+  const [byMethod, refunds, moves, expensesPaid] = await Promise.all([
     tx.sale.groupBy({ by: ["paymentMethod"], where: { cashSessionId: sessionId, status: "COMPLETED" }, _sum: { amountPaid: true, total: true }, _count: true }),
     tx.saleReturn.aggregate({ where: { cashSessionId: sessionId, refundMethod: "CASH" }, _sum: { total: true } }),
     tx.cashMovement.groupBy({ by: ["type"], where: { sessionId }, _sum: { amount: true } }),
+    drawerExpenses(tx, sessionId),
   ]);
   const sum = (m: string, f: "amountPaid" | "total") => D(byMethod.find((r) => r.paymentMethod === m)?._sum[f] ?? 0);
   const cashSales = sum("CASH", "amountPaid").plus(sum("CREDIT", "amountPaid"));
   const cashRefunds = D(refunds._sum.total ?? 0);
   const payIns = D(moves.find((r) => r.type === "PAY_IN")?._sum.amount ?? 0);
   const payOuts = D(moves.find((r) => r.type === "PAY_OUT")?._sum.amount ?? 0);
-  const expected = D(session.openingFloat).plus(cashSales).minus(cashRefunds).plus(payIns).minus(payOuts);
+  const expected = D(session.openingFloat).plus(cashSales).minus(cashRefunds).plus(payIns).minus(payOuts).minus(expensesPaid);
   return {
     openingFloat: Number(session.openingFloat),
     cashSales: Number(cashSales),
@@ -52,6 +55,7 @@ export async function sessionSummary(tx: Tx, sessionId: string): Promise<Session
     cashRefunds: Number(cashRefunds),
     payIns: Number(payIns),
     payOuts: Number(payOuts),
+    expensesPaid: Number(expensesPaid),
     expectedCash: Number(expected.toDecimalPlaces(2)),
   };
 }

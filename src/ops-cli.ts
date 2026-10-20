@@ -7,6 +7,7 @@
  *   node dist/ops.js verify  <file>
  *   node dist/ops.js restore <file>
  *   node dist/ops.js recover-owner [--email you@example.com] [--json]
+ *   node dist/ops.js rebuild-summaries [--pharmacy <code>]
  *
  * The database comes from DATABASE_URL (or --db <url>), read from ./.env (or --env <path>; Node itself claims --env-file) when
  * present. The recovery key comes from PCRM_RECOVERY_KEY or --key-file <path>; it is never taken as a
@@ -119,8 +120,26 @@ Sign in and set up two-factor sign-in again.`);
       }
       return;
     }
+    case "rebuild-summaries": {
+      // the daily figures behind the dashboards, recomputed from sales, returns, stock and expenses
+      process.env.DATABASE_URL = needDb();
+      const { platformDb } = await import("@/lib/platform-db");
+      const { rebuildSummaries } = await import("@/modules/finance");
+      try {
+        const code = option(args, "--pharmacy");
+        const pharmacies = await platformDb.pharmacy.findMany({ where: code ? { slug: code } : {}, select: { id: true, slug: true } });
+        if (!pharmacies.length) throw new Error(code ? `No pharmacy with the code ${code}.` : "There are no pharmacies yet.");
+        for (const ph of pharmacies) {
+          const r = await rebuildSummaries(ph.id);
+          console.log(`${ph.slug}: ${r.days} day(s) rebuilt`);
+        }
+      } finally {
+        await platformDb.$disconnect();
+      }
+      return;
+    }
     default:
-      throw new Error("Commands: migrate [--status], new-key, backup <file>, verify <file>, restore <file>, recover-owner");
+      throw new Error("Commands: migrate [--status], new-key, backup <file>, verify <file>, restore <file>, recover-owner, rebuild-summaries");
   }
 }
 

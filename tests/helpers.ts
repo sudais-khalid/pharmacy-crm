@@ -10,7 +10,7 @@ export let pharmacyId = "";
 
 export async function resetDb() {
   await platformDb.$executeRawUnsafe(
-    `TRUNCATE "AuditLog","OutboxEvent","IdempotencyKey","RateLimitHit","StockMovement","SaleReturnItem","SaleReturn","CashMovement","SaleItem","PurchaseItem","CustomerLedger","SupplierLedger","Sale","CashSession","Purchase","Batch","SupplierReturnItem","SupplierReturn","PurchaseOrderItem","PurchaseOrder","SupplierProduct","Medicine","Category","Customer","Supplier","User",
+    `TRUNCATE "AuditLog","OutboxEvent","IdempotencyKey","RateLimitHit","StockMovement","SaleReturnItem","SaleReturn","CashMovement","SaleItem","PurchaseItem","CustomerLedger","SupplierLedger","Sale","Expense","ExpenseCategory","DailySummary","CashSession","Purchase","Batch","SupplierReturnItem","SupplierReturn","PurchaseOrderItem","PurchaseOrder","SupplierProduct","Medicine","Category","Customer","Supplier","User",
               "AuthToken","SupportSession","FeatureFlag","TenantCounter","PharmacySettings","PlatformUser","Role","StoredFile","NotificationRead","Notification","StockIntakeLine","StockIntakePage","StockIntake","SupplierItemAlias","Pharmacy" RESTART IDENTITY CASCADE`,
   );
   await ensureSystemRoles(platformDb);

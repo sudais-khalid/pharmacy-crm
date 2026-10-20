@@ -86,6 +86,7 @@ model User {
   cashMovements   CashMovement[]
   saleReturns     SaleReturn[]
   ordersCreated   PurchaseOrder[]  @relation("OrderCreatedBy")
+  expenses        Expense[]
   ordersApproved  PurchaseOrder[]  @relation("OrderApprovedBy")
   supplierReturns SupplierReturn[]
   customerLedgers CustomerLedger[]
@@ -578,6 +579,68 @@ model SupplierReturnItem {
   @@index([returnId])
 }
 
+// Running costs (data model, section 5): rent, salaries, bills. Never deleted; a mistake is cancelled.
+model ExpenseCategory {
+  id         String   @id @default(uuid())
+  pharmacyId String   @default(dbgenerated("current_setting('app.pharmacy_id'::text, true)"))
+  name       String
+  active     Boolean  @default(true)
+  createdAt  DateTime @default(now())
+
+  expenses Expense[]
+
+  pharmacy Pharmacy @relation(fields: [pharmacyId], references: [id])
+
+  @@unique([pharmacyId, name])
+}
+
+model Expense {
+  id            String        @id @default(uuid())
+  pharmacyId    String        @default(dbgenerated("current_setting('app.pharmacy_id'::text, true)"))
+  number        String // EXP-YYYYMMDD-00001
+  categoryId    String
+  amount        Decimal       @db.Decimal(12, 2)
+  date          DateTime      @db.Date
+  method        PaymentMethod // CASH or CARD (a bank transfer counts as CARD)
+  description   String
+  receiptFileId String?
+  cashSessionId String? // paid from a cashier's drawer
+  userId        String
+  cancelledAt   DateTime?
+  cancelReason  String?
+  createdAt     DateTime      @default(now())
+
+  category    ExpenseCategory @relation(fields: [categoryId], references: [id])
+  user        User            @relation(fields: [userId], references: [id])
+  cashSession CashSession?    @relation(fields: [cashSessionId], references: [id])
+
+  pharmacy Pharmacy @relation(fields: [pharmacyId], references: [id])
+
+  @@unique([pharmacyId, number])
+  @@index([pharmacyId, date])
+}
+
+// One row per pharmacy and local day, kept by the report.rollup job and rebuildable from the source tables
+// (data model, section 5). Dashboards read it; the profit and loss report reads the source tables.
+model DailySummary {
+  pharmacyId   String   @default(dbgenerated("current_setting('app.pharmacy_id'::text, true)"))
+  date         DateTime @db.Date
+  grossSales   Decimal  @default(0) @db.Decimal(14, 2) // before invoice discounts
+  discounts    Decimal  @default(0) @db.Decimal(14, 2)
+  returns      Decimal  @default(0) @db.Decimal(14, 2) // refunds on customer returns
+  netSales     Decimal  @default(0) @db.Decimal(14, 2) // gross - discounts - returns
+  cogs         Decimal  @default(0) @db.Decimal(14, 2) // cost of what was sold, less what came back to stock
+  stockLosses  Decimal  @default(0) @db.Decimal(14, 2) // damage and expiry write-offs at cost
+  expenses     Decimal  @default(0) @db.Decimal(14, 2)
+  purchases    Decimal  @default(0) @db.Decimal(14, 2)
+  invoiceCount Int      @default(0)
+  updatedAt    DateTime @updatedAt
+
+  pharmacy Pharmacy @relation(fields: [pharmacyId], references: [id])
+
+  @@id([pharmacyId, date])
+}
+
 // A cashier's drawer from opening float to counted cash (data model, section 3.2). One open session per user.
 model CashSession {
   id           String            @id @default(uuid())
@@ -597,6 +660,7 @@ model CashSession {
   closedBy  User?          @relation("CashSessionCloser", fields: [closedById], references: [id])
   sales     Sale[]
   movements CashMovement[]
+  expenses  Expense[]
   returns   SaleReturn[]
 
   pharmacy Pharmacy @relation(fields: [pharmacyId], references: [id])
@@ -850,6 +914,9 @@ model Pharmacy {
   supplierReturnItems SupplierReturnItem[]
   auditLogs           AuditLog[]
   outboxEvents        OutboxEvent[]
+  expenseCategories   ExpenseCategory[]
+  expenses            Expense[]
+  dailySummaries      DailySummary[]
 
   @@index([status])
 }
