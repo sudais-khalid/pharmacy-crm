@@ -4,7 +4,7 @@ import Link from "next/link";
 import { AlertTriangle, CalendarClock, ClipboardCheck, DollarSign, PackageX, ShoppingBasket, Table2, TrendingUp, Truck, Wallet, BarChart3 } from "lucide-react";
 import { Bar, BarChart, CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { Badge, Button, Card, ErrorBox, PageHeader, Skeleton, StatCard, TableWrap, Tabs } from "@/components/ui";
-import { useCan, useMoney } from "@/components/app-context";
+import { useApp, useCan, useMoney } from "@/components/app-context";
 import { formatDate, formatDateTime, formatNum, useApi } from "@/lib/client";
 
 type Figures = { grossSales: number; discounts: number; returns: number; netSales: number; cogs?: number; grossProfit?: number; stockLosses: number; expenses: number; netProfit?: number; purchases: number; invoiceCount: number };
@@ -36,6 +36,8 @@ const pct = (now: number, before: number) => (before ? Math.round(((now - before
 export default function Dashboard() {
   const { data, error, loading, reload } = useApi<Dash>("/api/dashboard");
   const [view, setView] = useState<"business" | "operations" | null>(null);
+  const { settings } = useApp();
+  const canSetup = useCan("settings.manage");
   if (error) return <ErrorBox message={error} onRetry={reload} />;
   if (loading || !data) {
     return (
@@ -50,6 +52,12 @@ export default function Dashboard() {
   return (
     <>
       <PageHeader title="Dashboard" subtitle={current === "business" ? "How the pharmacy is doing" : "What needs doing in stock"} />
+      {!settings.setupDone && canSetup && (
+        <Card className="mb-4 flex flex-wrap items-center justify-between gap-3 border-primary/40 bg-primary/5 p-4">
+          <div><h2 className="font-semibold">Finish setting up your pharmacy</h2><p className="text-sm text-fg-muted">Profile, receipt format, staff, opening stock, and the balances of customers and suppliers.</p></div>
+          <Link href="/setup" className="btn-link">Continue setup</Link>
+        </Card>
+      )}
       {data.owner && data.ops && <div className="mb-4"><Tabs tabs={[{ id: "business", label: "Business" }, { id: "operations", label: "Stock and orders" }]} value={current!} onChange={setView} /></div>}
       {current === "business" && data.owner ? <Business data={data} owner={data.owner} /> : current === "operations" && data.ops ? <Operations data={data} ops={data.ops} /> : <Basic data={data} />}
     </>

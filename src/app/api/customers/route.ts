@@ -1,6 +1,6 @@
 import { Prisma } from "@prisma/client";
 import { route, readJson, pageParams } from "@/lib/api";
-import { customerSchema } from "@/modules/customers";
+import { createCustomer, customerWithOpeningSchema } from "@/modules/customers";
 
 export const GET = route("customers.view", async ({ req, db }) => {
   const { page, pageSize, skip, take, sp } = pageParams(req);
@@ -17,6 +17,6 @@ export const GET = route("customers.view", async ({ req, db }) => {
   return { total, page, pageSize, items: rows.map((r) => ({ ...r, balance: bal.get(r.id) ?? new Prisma.Decimal(0) })) };
 });
 
-export const POST = route("customers.manage", async ({ req, db }) => db.customer.create({ data: customerSchema.parse(await readJson(req)) }));
+export const POST = route("customers.manage", async ({ req, svc }) => createCustomer(svc, customerWithOpeningSchema.parse(await readJson(req))));
 
 export const dynamic = "force-dynamic";

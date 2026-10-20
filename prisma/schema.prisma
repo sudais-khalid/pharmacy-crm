@@ -936,6 +936,7 @@ model PharmacySettings {
   expiryWarningDays  Int      @default(90)
   expiryAlertDays    Int      @default(30)
   reorderCoverDays   Int      @default(7) // reorder suggestions keep this many days of sales beyond the lead time
+  setupDoneAt        DateTime? // the Pharmacy Admin finished (or skipped) the first-run setup
   updatedAt          DateTime @updatedAt
 
   pharmacy Pharmacy @relation(fields: [pharmacyId], references: [id], onDelete: Cascade)

@@ -185,7 +185,15 @@ ok "Excel export is a workbook" "$(curl -s -o /dev/null -w '%{content_type}' -b 
 ok "A cashier cannot export a report" "$(code -b /tmp/smoke_cashier.jar "$B/api/reports/export?type=sales")" 403
 ok "The admin downloads all data as a ZIP" "$(curl -s -o /dev/null -w '%{content_type}' -b /tmp/smoke_admin.jar -X POST $B/api/settings/export -H 'content-type: application/json' -H "Origin: $B" -d '{}')" "application/zip"
 ok "A cashier cannot download the pharmacy's data" "$(code -b /tmp/smoke_cashier.jar -X POST $B/api/settings/export -H 'content-type: application/json' -d '{}')" 403
-for p in /expenses "/reports?type=pnl"; do ok "Page $p renders" "$(code -b /tmp/smoke_admin.jar "$B$p")" 200; done
+# first-run setup (roadmap 9.9)
+ok "A cashier cannot open the setup" "$(code -b /tmp/smoke_cashier.jar $B/api/setup)" 403
+ok "Setup reports the opening stock as done" "$(curl -s -b /tmp/smoke_admin.jar $B/api/setup | js "d['steps']['stock']['done']")" True
+ok "Customers with balances are added at once" "$(curl -s -b /tmp/smoke_admin.jar -X POST $B/api/customers/import -H 'content-type: application/json' -d '{"rows":[{"name":"Smoke Udhaar One","phone":"0300-9990001","openingBalance":1200},{"name":"Smoke Udhaar Two","openingBalance":0}]}' | js "d['created']")" 2
+ok "Suppliers with balances are added at once" "$(curl -s -b /tmp/smoke_admin.jar -X POST $B/api/suppliers/import -H 'content-type: application/json' -d '{"rows":[{"name":"Smoke Opening Distributor","openingBalance":5000}]}' | js "d['created']")" 1
+ok "A cashier cannot add customers in bulk" "$(code -b /tmp/smoke_cashier.jar -X POST $B/api/customers/import -H 'content-type: application/json' -d '{"rows":[{"name":"X"}]}')" 403
+ok "A cashier cannot give a new customer an opening balance" "$(code -b /tmp/smoke_cashier.jar -X POST $B/api/customers -H 'content-type: application/json' -d '{"name":"Smoke Fake Debt","openingBalance":900}')" 403
+ok "Setup can be finished" "$(code -b /tmp/smoke_admin.jar -X POST $B/api/setup/done -H 'content-type: application/json' -d '{}')" 200
+for p in /expenses "/reports?type=pnl" /setup; do ok "Page $p renders" "$(code -b /tmp/smoke_admin.jar "$B$p")" 200; done
 ok "Report rejects bad range" "$(code -b /tmp/smoke_admin.jar "$B/api/reports?type=sales&from=2030-01-01&to=2020-01-01")" 400
 ok "Cross-site write blocked" "$(code -b /tmp/smoke_admin.jar -X POST $B/api/categories -H 'content-type: application/json' -H 'Origin: https://evil.example' -d '{"name":"x"}')" 403
 ok "Same-origin write allowed" "$(code -b /tmp/smoke_admin.jar -X POST $B/api/categories -H 'content-type: application/json' -H "Origin: $B" -d "{\"name\":\"Smoke $(date +%s)\"}")" 200

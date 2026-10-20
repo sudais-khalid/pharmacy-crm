@@ -7,3 +7,4 @@ export { listCatalog, saveCatalogItem, removeCatalogItem, importCatalog, type Ca
 export { createOrder, updateOrder, sendOrder, endOrder, getOrder, listOrders, orderShareText, scanOverdueOrders, orderInclude, type OrderInput } from "./orders";
 export { reorderSuggestions, ordersFromSuggestions, scanReorder, type Suggestion } from "./reorder";
 export { createSupplierReturn, getSupplierReturn, listSupplierReturns } from "./supplier-returns";
+export { createSupplier, importSuppliers, supplierWithOpeningSchema, supplierImportSchema } from "./opening";

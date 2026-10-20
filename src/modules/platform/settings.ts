@@ -40,6 +40,8 @@ export type PharmacySettingsView = {
   cashSessionsOn: boolean;
   returnsOn: boolean;
   expensesOn: boolean;
+  /** The first-run setup was finished or skipped (roadmap 9.9). */
+  setupDone: boolean;
 };
 
 export const RECEIPT_FORMATS = ["THERMAL_80", "THERMAL_58", "A4"] as const;
@@ -81,6 +83,7 @@ export async function getSettings(tx: Tx, pharmacyId: string): Promise<PharmacyS
     cashSessionsOn: flags.cashSessions,
     returnsOn: flags.returns,
     expensesOn: flags.expenses,
+    setupDone: !!s.setupDoneAt,
   };
 }
 

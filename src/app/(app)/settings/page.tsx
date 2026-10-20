@@ -103,6 +103,7 @@ export default function SettingsPage() {
         <div className="flex items-center gap-4">
           <Button type="submit" loading={saving}>Save settings</Button>
           {canBrand && <Link href="/branding" className="text-sm text-primary hover:underline">Name, contacts, logo and receipt texts are on Profile &amp; branding</Link>}
+          <Link href="/setup" className="text-sm text-primary hover:underline">Setup checklist</Link>
         </div>
       </form>
       {canExport && <DataExport />}

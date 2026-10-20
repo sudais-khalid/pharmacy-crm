@@ -324,7 +324,7 @@ Tasks:
 - [ ] 9.6 Playwright end-to-end journeys: Developer creates pharmacy and invite; admin accepts and sets branding; opening stock by photo with a fixture OCR result; supplier bill typed manually; cashier sale and receipt; return; close session; receive order
 - [ ] 9.7 Accessibility audit (axe) on every screen; fix all serious issues
 - [ ] 9.8 Performance check against the targets in the architecture document, with 20 pharmacies of seeded data
-- [ ] 9.9 First-run wizard for a new pharmacy: profile and logo, receipt format, staff, opening stock (photo, file or manual), customers with credit balances, supplier balances
+- [x] 9.9 First-run wizard for a new pharmacy: profile and logo, receipt format, staff, opening stock (photo, file or manual), customers with credit balances, supplier balances
 - [ ] 9.10 User guides per role (one page each), a printable keyboard shortcut card for POS and stock entry, and a Developer runbook (onboarding, suspension, recovery, restore)
 - [x] 9.11 Remove demo accounts from production setup; seed script only for development
 
