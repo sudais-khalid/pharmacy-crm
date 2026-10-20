@@ -11,6 +11,7 @@
     "worker": "node dist/worker.js",
     "ops": "node dist/ops.js",
     "e2e": "node scripts/e2e-local.mjs",
+    "perf": "node scripts/perf-check.mjs",
     "lint": "next lint",
     "lint:deps": "depcruise src tests prisma --config .dependency-cruiser.cjs",
     "typecheck": "tsc --noEmit",

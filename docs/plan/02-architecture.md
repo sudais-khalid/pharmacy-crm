@@ -588,6 +588,29 @@ Keeping files in the database means one backup, one restore and one isolation ru
 | Recovery time | below 1 h by documented restore |
 | Accessibility | WCAG 2.2 AA for all screens |
 
+Measured on 20 October 2026 (roadmap 9.8) with `npm run perf`:
+
+- **Data:** 20 pharmacies, the largest with 20,000 medicines; 58,000 medicines in all; 72,000 sales with 180,000 lines over 90 days.
+- **Setup:** the production build and PostgreSQL 16 on one 8-core Windows laptop, through the HTTP API.
+
+| Metric | p95 measured | Target |
+|---|---|---|
+| POS medicine search, 20,000 medicines | 42 ms | 150 ms |
+| Search everything (Ctrl+K) | 38 ms | 150 ms |
+| Complete a sale of 10 lines | 51 ms | 500 ms |
+| Dashboard figures, 90 days of sales | 191 ms | 1.5 s |
+| POS search, all 20 pharmacies at busy counters (587 sales a minute) | 40 ms | 150 ms |
+| Complete a 10-line sale, all 20 pharmacies at busy counters | 82 ms | 500 ms |
+
+With no pause at all between sales, one server process completes about 55 ten-line sales a second (p95 514 ms). The check found two limits, both fixed:
+
+- **Connection pool.** The pool held only 10 database connections; it now holds 20 (`DB_POOL_MAX`).
+- **Round trips per sale.** A sale made about 40 round trips for 10 lines; it now makes a fixed number, whatever the line count.
+
+The check also gives every report over 90 days: all under 100 ms.
+
+Accessibility is checked by the end-to-end run (`npm run e2e`): axe on every screen, in the light and dark themes, with no serious or critical problems.
+
 Future proofing without building it now:
 
 - **Branches inside a pharmacy**: tenants already isolate pharmacies. Branches would add a `locationId` under a pharmacy; stock queries go through inventory module functions only, so that change stays inside one module.
