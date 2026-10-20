@@ -180,6 +180,8 @@ for t in $(curl -s -b /tmp/smoke_admin.jar $B/api/reports/list | js "' '.join(r[
 ok "Expenses report leaves the cancelled one out" "$(curl -s -b /tmp/smoke_admin.jar "$B/api/reports?type=expenses&from=2020-01-01&to=2035-01-01" | js "[float(r['amount']) for r in d['rows'] if r['category']=='Shop rent']")" "[1500.0]"
 ok "Excel export is a workbook" "$(curl -s -o /dev/null -w '%{content_type}' -b /tmp/smoke_admin.jar "$B/api/reports/export?type=pnl&from=2020-01-01&to=2030-01-01")" "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 ok "A cashier cannot export a report" "$(code -b /tmp/smoke_cashier.jar "$B/api/reports/export?type=sales")" 403
+ok "The admin downloads all data as a ZIP" "$(curl -s -o /dev/null -w '%{content_type}' -b /tmp/smoke_admin.jar -X POST $B/api/settings/export -H 'content-type: application/json' -H "Origin: $B" -d '{}')" "application/zip"
+ok "A cashier cannot download the pharmacy's data" "$(code -b /tmp/smoke_cashier.jar -X POST $B/api/settings/export -H 'content-type: application/json' -d '{}')" 403
 for p in /expenses "/reports?type=pnl"; do ok "Page $p renders" "$(code -b /tmp/smoke_admin.jar "$B$p")" 200; done
 ok "Report rejects bad range" "$(code -b /tmp/smoke_admin.jar "$B/api/reports?type=sales&from=2030-01-01&to=2020-01-01")" 400
 ok "Cross-site write blocked" "$(code -b /tmp/smoke_admin.jar -X POST $B/api/categories -H 'content-type: application/json' -H 'Origin: https://evil.example' -d '{"name":"x"}')" 403

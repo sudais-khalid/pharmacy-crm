@@ -45,6 +45,7 @@ export const PERMISSION_CATALOG = [
   { key: "branding.manage", group: "Admin", label: "Edit the pharmacy profile and branding" },
   { key: "settings.manage", group: "Admin", label: "Change settings" },
   { key: "audit.view", group: "Admin", label: "See the activity history" },
+  { key: "data.export", group: "Admin", label: "Download all of the pharmacy's data" },
 ] as const satisfies readonly { key: string; group: PermissionGroup; label: string }[];
 
 export type Permission = (typeof PERMISSION_CATALOG)[number]["key"];

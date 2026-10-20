@@ -17,6 +17,8 @@ export function platformRoute(fn: (ctx: PlatformCtx) => Promise<unknown>, opts: 
       const dev = await getPlatformUser({ requireMfa: !opts.allowWithoutMfa, refresh: true });
       if (!dev) throw new AppError(401, "Sign in to the Developer console.");
       const data = await fn({ req, dev, params: await params, meta: requestMeta(req) });
+      // a file (a data export) goes out as it is
+      if (data instanceof Response) return data;
       return NextResponse.json(data ?? { ok: true });
     } catch (e) {
       return errorResponse(e);

@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Button, Card, Checkbox, ErrorBox, Field, Input, PageHeader, Select, Spinner, useToast } from "@/components/ui";
 import { useCan } from "@/components/app-context";
-import { ApiError, api, useApi } from "@/lib/client";
+import { ApiError, api, downloadPost, useApi } from "@/lib/client";
 
 type S = {
   expiryWarningDays: number; expiryAlertDays: number; currency: string; ocrProvider: string;
@@ -19,6 +19,7 @@ const pickS = (d: Loaded): S => ({
 export default function SettingsPage() {
   const toast = useToast();
   const canBrand = useCan("branding.manage");
+  const canExport = useCan("data.export");
   const { data, error, reload } = useApi<Loaded>("/api/settings");
   const [f, setF] = useState<S | null>(null);
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -104,6 +105,33 @@ export default function SettingsPage() {
           {canBrand && <Link href="/branding" className="text-sm text-primary hover:underline">Name, contacts, logo and receipt texts are on Profile &amp; branding</Link>}
         </div>
       </form>
+      {canExport && <DataExport />}
     </>
+  );
+}
+
+/** All of the pharmacy's records as a ZIP of CSV files with an Excel summary (roadmap 9.4). */
+function DataExport() {
+  const toast = useToast();
+  const [busy, setBusy] = useState(false);
+  async function run() {
+    setBusy(true);
+    try {
+      await downloadPost("/api/settings/export", {}, "pharmacy-data.zip");
+      toast.success("Your data is downloading");
+    } catch (err) {
+      toast.error((err as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <Card className="mt-6 max-w-3xl space-y-3 p-5">
+      <div>
+        <h2 className="font-semibold">Your data</h2>
+        <p className="text-sm text-fg-muted">Download every record of this pharmacy: an Excel summary of medicines, customers and suppliers, and a CSV file for each kind of record. Passwords are never included. The download is recorded in the activity history.</p>
+      </div>
+      <Button variant="secondary" loading={busy} onClick={run}>Download all data (ZIP)</Button>
+    </Card>
   );
 }

@@ -4,7 +4,7 @@ import { useParams } from "next/navigation";
 import Link from "next/link";
 import { ArrowLeft, LifeBuoy } from "lucide-react";
 import { Badge, Button, Card, EmptyState, ErrorBox, Field, Input, Modal, PageHeader, Select, Spinner, TableWrap, Tabs, useToast } from "@/components/ui";
-import { ApiError, api, formatDate, formatDateTime, useApi } from "@/lib/client";
+import { ApiError, api, downloadPost, formatDate, formatDateTime, useApi } from "@/lib/client";
 import { StatusBadge, STATUS_LABEL, type PharmacyStatus } from "../../status-badge";
 
 type Detail = {
@@ -224,7 +224,38 @@ function StatusTab({ detail, onSaved }: { detail: Detail; onSaved: () => void })
           <Button type="submit" variant={status === "ACTIVE" || status === "GRACE" ? "primary" : "danger"} loading={saving}>Change to {STATUS_LABEL[status]}</Button>
         </form>
       </Card>
+      <ExportCard pharmacyId={p.id} />
     </div>
+  );
+}
+
+/** The pharmacy's data as a ZIP (roadmap 9.4): for a pharmacy that leaves, or on the owner's request. */
+function ExportCard({ pharmacyId }: { pharmacyId: string }) {
+  const toast = useToast();
+  const [code, setCode] = useState("");
+  const [busy, setBusy] = useState(false);
+  async function run(e: React.FormEvent) {
+    e.preventDefault();
+    setBusy(true);
+    try {
+      await downloadPost(`/api/platform/pharmacies/${pharmacyId}/export`, { code }, "pharmacy-data.zip");
+      setCode("");
+      toast.success("The export is downloading");
+    } catch (err) {
+      toast.error((err as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <Card className="p-5 lg:col-span-2">
+      <h2 className="mb-1 font-semibold">Export data</h2>
+      <p className="mb-4 text-sm text-fg-muted">Every record of this pharmacy as CSV files with an Excel summary, without passwords or sign-in secrets. Recorded in the activity history.</p>
+      <form onSubmit={run} className="flex flex-wrap items-end gap-3" noValidate>
+        <Field label="Authenticator code *" hint="Confirms it is you"><Input inputMode="numeric" autoComplete="one-time-code" maxLength={6} value={code} onChange={(e) => setCode(e.target.value)} required className="w-40" /></Field>
+        <Button type="submit" variant="secondary" loading={busy}>Download ZIP</Button>
+      </form>
+    </Card>
   );
 }
 
