@@ -1,4 +1,5 @@
 import { statfsSync } from "node:fs";
+import { readBackupStatus } from "@/lib/backup";
 import { platformDb } from "@/lib/platform-db";
 
 export type CheckResult = { ok: boolean; [detail: string]: unknown };
@@ -14,7 +15,7 @@ function describe(e: unknown): string {
   return String(e) || "unknown error";
 }
 
-export type Health = { status: "ok" | "degraded" | "down"; checks: Record<"database" | "worker" | "disk", CheckResult>; uptimeSeconds: number; version: string };
+export type Health = { status: "ok" | "degraded" | "down"; checks: Record<"database" | "worker" | "disk", CheckResult> & { backup?: CheckResult }; uptimeSeconds: number; version: string };
 
 /** The worker is considered behind when an event has waited longer than this. */
 const OUTBOX_LAG_LIMIT_S = 300;
@@ -57,12 +58,22 @@ function disk(path = process.env.DATA_DIR ?? process.cwd()): CheckResult {
   }
 }
 
+/** Server backups, when the app can see their folder: the last good one must be under 36 hours old. */
+function backup(dir = process.env.BACKUP_DIR): CheckResult | undefined {
+  if (!dir) return undefined;
+  const s = readBackupStatus(dir);
+  const last = s?.lastSuccessAt ? new Date(s.lastSuccessAt) : null;
+  const ageHours = last ? Math.round((Date.now() - last.getTime()) / 3_600_000) : null;
+  return { ok: ageHours !== null && ageHours <= 36, lastSuccessAt: s?.lastSuccessAt ?? null, lastRunOk: s?.ok ?? null };
+}
+
 /**
  * Overall status: "down" when the database is unreachable (nothing works), "degraded" when the worker
  * is behind or disk space is low (sales still work, background tasks or backups are at risk).
  */
 export async function getHealth(): Promise<Health> {
-  const checks = { database: await database(), worker: await worker(), disk: disk() };
-  const status = !checks.database.ok ? "down" : checks.worker.ok && checks.disk.ok ? "ok" : "degraded";
-  return { status, checks, uptimeSeconds: Math.round(process.uptime()), version: process.env.APP_VERSION ?? process.env.npm_package_version ?? "dev" };
+  const b = backup();
+  const checks = { database: await database(), worker: await worker(), disk: disk(), ...(b ? { backup: b } : {}) };
+  const status = !checks.database.ok ? "down" : checks.worker.ok && checks.disk.ok && (b?.ok ?? true) ? "ok" : "degraded";
+  return { status, checks, uptimeSeconds: Math.round(process.uptime()), version: process.env.APP_VERSION ?? process.env.APP_BUILD_VERSION ?? process.env.npm_package_version ?? "dev" };
 }

@@ -2,6 +2,7 @@ import bcrypt from "bcryptjs";
 import { randomBytes } from "node:crypto";
 import type { PharmacyStatus, Prisma } from "@prisma/client";
 import { platformDb } from "@/lib/platform-db";
+import { listServerBackups, readBackupStatus } from "@/lib/backup";
 import { AppError } from "@/lib/errors";
 import { audit, FEATURE_KEYS, FEATURE_FLAGS, getFeatureFlags, type FeatureKey } from "@/modules/platform";
 import { ADMIN_ROLE_ID, ensureSupportAccount, issueStaffToken, temporaryPassword } from "@/modules/identity";
@@ -130,7 +131,15 @@ export async function platformOverview() {
     newest,
     recent: recent.map((r) => ({ ...r, id: r.id.toString() })),
     usage: await platformUsage(),
+    backups: serverBackups(),
   };
+}
+
+/** Server backups for the console (roadmap 9.1): the last run and the newest files. Null on the desktop. */
+function serverBackups() {
+  const dir = process.env.BACKUP_DIR;
+  if (!dir) return null;
+  return { status: readBackupStatus(dir), recent: listServerBackups(dir).slice(0, 10).map((b) => ({ name: b.name, at: b.at.toISOString(), size: b.size, reason: b.reason })) };
 }
 
 /**

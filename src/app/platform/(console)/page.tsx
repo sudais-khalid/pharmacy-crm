@@ -10,6 +10,7 @@ type Overview = {
   endingSoon: { id: string; name: string; slug: string; subscriptionEndsAt: string; status: PharmacyStatus }[];
   newest: { id: string; name: string; slug: string; createdAt: string; status: PharmacyStatus }[];
   recent: { id: string; at: string; action: string; entity: string; pharmacyId: string | null }[];
+  backups: null | { status: { at: string; ok: boolean; name?: string; size?: number; offsite?: boolean; error?: string; lastSuccessAt?: string | null } | null; recent: { name: string; at: string; size: number; reason: string }[] };
   usage: { id: string; name: string; status: PharmacyStatus; invoices: number; invoicesLastMonth: number; activeUsers: number; ocrPages: number; storageBytes: number }[];
 };
 const size = (b: number) => (b < 1024 * 1024 ? `${Math.ceil(b / 1024)} KB` : b < 1024 ** 3 ? `${(b / 1024 / 1024).toFixed(1)} MB` : `${(b / 1024 ** 3).toFixed(2)} GB`);
@@ -57,6 +58,19 @@ export default function ConsoleOverviewPage() {
               )}
             </Card>
           </div>
+          {data.backups && (
+            <Card>
+              <h2 className="border-b border-border px-4 py-3 font-semibold">Server backups</h2>
+              <div className="px-4 py-3 text-sm">
+                {!data.backups.status ? <p className="text-amber-700 dark:text-amber-300">No backup has run yet. The worker takes one when it starts and every night at 02:30.</p>
+                  : data.backups.status.ok ? <p>Last backup {formatDateTime(data.backups.status.at)}, {size(data.backups.status.size ?? 0)}{data.backups.status.offsite ? ", copied offsite" : ", no offsite copy configured"}.</p>
+                  : <p className="text-danger">The last backup failed ({formatDateTime(data.backups.status.at)}): {data.backups.status.error}. Last good one: {data.backups.status.lastSuccessAt ? formatDateTime(data.backups.status.lastSuccessAt) : "none"}.</p>}
+                <p className="mt-1 text-xs text-fg-muted">Restore runs from the server shell with deploy/restore.sh (see the runbook), so the app is stopped while the data is replaced.</p>
+              </div>
+              {!!data.backups.recent.length && <ul className="divide-y divide-border border-t border-border">{data.backups.recent.map((b) => (
+                <li key={b.name} className="flex items-center justify-between gap-3 px-4 py-2 text-sm"><span className="font-mono text-xs">{b.name}</span><span className="tabular-nums text-fg-muted">{size(b.size)}</span></li>))}</ul>}
+            </Card>
+          )}
           <Card>
             <h2 className="border-b border-border px-4 py-3 font-semibold">Usage this month</h2>
             {data.usage.length === 0 ? <EmptyState title="No pharmacies yet" /> : (

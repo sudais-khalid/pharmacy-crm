@@ -13,7 +13,11 @@ import { scanExpiry, scanStock } from "@/modules/inventory";
 import { scanOverdueOrders, scanReorder } from "@/modules/procurement";
 import { rollup } from "@/modules/finance";
 import { checkSubscriptions } from "@/modules/tenancy";
+import { readBackupStatus, runServerBackup, serverBackupConfig } from "@/lib/backup";
 import { addDays, todayStr } from "@/lib/dates";
+
+/** Set by the bundler from package.json. */
+declare const __APP_VERSION__: string | undefined;
 
 const workerLog = logger.child({ svc: "worker" });
 const log = (msg: string, extra: Record<string, unknown> = {}) => workerLog.info(extra, msg);
@@ -64,6 +68,16 @@ const handlers: OutboxHandlers = {
   StockEntryPosted: [rescanStock],
 };
 
+async function nightlyBackup(onlyIfStale = false) {
+  const cfg = serverBackupConfig();
+  if (!cfg) return { skipped: "BACKUP_DIR is not set" };
+  const last = readBackupStatus(cfg.dir)?.lastSuccessAt;
+  if (onlyIfStale && last && Date.now() - new Date(last).getTime() < 24 * 3_600_000) return { skipped: "a backup from the last 24 hours exists" };
+  const r = await runServerBackup(cfg, process.env.DATABASE_URL!, { appVersion: process.env.APP_VERSION ?? (typeof __APP_VERSION__ === "string" ? __APP_VERSION__ : undefined) });
+  if (!r.ok) workerLog.error({ job: "backup.nightly", error: r.error }, "backup failed");
+  return r;
+}
+
 /** Scheduled maintenance. Cron expressions run in the pharmacy time zone. */
 const schedules: { name: string; cron: string; run: () => Promise<unknown> }[] = [
   { name: "platform.purge-idempotency-keys", cron: "15 * * * *", run: () => purgeIdempotencyKeys() },
@@ -76,6 +90,8 @@ const schedules: { name: string; cron: string; run: () => Promise<unknown> }[] =
   { name: "reorder.scan", cron: "15 6 * * *", run: () => forEachPharmacy("reorder.scan", (id) => scanReorder(id)) },
   { name: "po.overdue", cron: "30 6 * * *", run: () => forEachPharmacy("po.overdue", (id) => scanOverdueOrders(id)) },
   // the daily figures for dashboards (roadmap 8.6): today and yesterday, every hour
+  // server backups (roadmap 9.1): only when BACKUP_DIR is set (the desktop app keeps its own)
+  { name: "backup.nightly", cron: "30 2 * * *", run: () => nightlyBackup() },
   // subscriptions (roadmap 9.3): ended ones move to grace, then to suspended
   { name: "subscription.check", cron: "10 0 * * *", run: () => checkSubscriptions() },
   { name: "report.rollup", cron: "5 * * * *", run: () => forEachPharmacy("report.rollup", async (id) => { await rollup(id, addDays(todayStr(), -1), todayStr()); return { raised: 0, resolved: 0 }; }) },
@@ -151,6 +167,8 @@ async function main() {
       const s = schedules.find((x) => x.name === name)!;
       log("job done", { job: name, startup: true, result: await s.run().catch((e) => ({ error: String(e) })) });
     }
+    // a server that was down at night (or is new) gets its backup now
+    log("job done", { job: "backup.nightly", startup: true, result: await nightlyBackup(true).catch((e) => ({ error: String(e) })) });
   })();
 
   const loop = outboxLoop();
