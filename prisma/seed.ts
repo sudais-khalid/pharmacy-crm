@@ -32,7 +32,7 @@ async function main() {
     return;
   }
   if ((await prisma.medicine.count()) > 0) {
-    console.log("Database already contains data – skipping seed. Run `npm run db:reset` for a clean start.");
+    console.log("Database already contains data, so the seed is skipped. Run `npm run db:reset` for a clean start.");
     return;
   }
 
@@ -152,7 +152,7 @@ async function main() {
         await createSale(serviceContext(actor(seller), pharmacyId), sale, { createdAt: at });
         count++;
       } catch (e) {
-        // credit limit / stock issues in random data are fine – skip
+        // credit limit / stock issues in random data are fine: skip
       }
     }
   }

@@ -1,24 +1,22 @@
-# Pharmacy CRM & Management System
+# Pharmacy CRM
 
-A working pharmacy management web app: dashboard, medicines, batch-wise inventory with expiry control, a barcode-ready POS with invoices, customers with credit (udhaar) ledgers, suppliers, purchases, reports and role-based users.
+A multi-tenant management platform for retail pharmacies. One Developer runs it for many pharmacies; each pharmacy's staff (no customer logins) sell at the counter, bring stock in from photos of supplier bills, order from suppliers and see their real profit. It runs on a server for many pharmacies, or as a Windows desktop app with its own database and backups.
 
-**Stack:** Next.js 14 (App Router) · TypeScript · Tailwind CSS · Next.js API routes · PostgreSQL · Prisma ORM · Recharts · Zod · JWT sessions (jose) · bcrypt.
+**Stack:** Next.js 15 (App Router), React 19, TypeScript, Tailwind CSS, PostgreSQL 16 with row-level security, Prisma 6, Zod, pg-boss worker, Tesseract (local photo reading), Electron (desktop), Playwright and axe (browser tests).
 
 ## Features
 
 | Area | What it does |
 |---|---|
-| Dashboard | Today's sales/profit, customers, medicines, low-stock, expiring, expired, receivables/payables, 14-day sales chart, top sellers – all from the database |
-| Medicines | Add/edit/delete, search, filters, sort, pagination, categories, barcode/SKU, prescription flag, opening stock. Medicines with history are **archived**, never destroyed; archived ones can be restored |
-| Inventory | Stock per **batch**, stock value, expiry screen (expired / 7 / 30 / 60 / 90 days / configured), low stock, full stock-movement log, adjustments (count correction, damaged, expired write-off) |
-| POS | Search or scan a barcode, cart, quantities, discount (amount or %), cash / card / credit, partial payment, change calculation, prescription confirmation, printable invoice. Stock is deducted automatically |
-| Invoices | List, search, reprint, print/save as PDF, cancel (restores the exact batches and reverses the customer ledger) |
-| Customers | Profile, credit limit, running ledger, payments, purchase history, printable statement |
-| Suppliers | Profile, ledger, payments, outstanding payable, printable statement |
-| Purchases | Multi-line purchase invoices with batch number + expiry; creates or tops up batches, increases stock, updates the supplier ledger |
-| Reports | Sales (daily/monthly), profit, purchases, low stock, expired, customer balances, supplier payables. CSV export and print |
-| Users | Admin / Pharmacist / Cashier, activate/deactivate, password reset |
-| UI | Sidebar + top bar, responsive, dark/light mode, tables, cards, charts, modals, toasts, skeleton loaders |
+| Developer console | Create pharmacies with an invite for their admin, plans, feature switches, subscriptions with grace and suspension, support sessions, staff accounts, usage per pharmacy, data export, server backups |
+| Counter | Full-screen POS with the keyboard map, barcode scanning, earliest expiry first, cash, card and credit (udhaar), cash drawer sessions, receipts in 80 mm, 58 mm and A4, returns from the receipt's QR code |
+| Stock entry | Photos of supplier bills and stock lists read locally or by a cloud reader, Excel and CSV import, and a keyboard grid; every line is reviewed before stock changes |
+| Stock | Batches with expiry alerts, write-offs, set-aside for supplier returns, stock card, batch trace for recalls, low and out of stock alerts |
+| Buying | Supplier catalogs and price lists, supply orders received in part or in full, reorder suggestions, supplier returns, supplier accounts |
+| Money | Expenses, profit and loss, owner and pharmacist dashboards, reports by day or month with the period before, Excel and printed letterhead |
+| People | Customers with credit limits and accounts, staff with custom roles and two-factor sign-in, activity history |
+| Setup | First-run checklist with opening stock and opening balances, user guides per role, printable shortcut card |
+| Apps | Installable on tablets and phones; Windows desktop app with a local replica, backups and letter shortcuts |
 
 ## Quick start (local development)
 
@@ -74,7 +72,7 @@ docker compose up --build   # app on http://localhost:3000, migrations run autom
 
 For a real server use `docker-compose.prod.yml`: Caddy with automatic HTTPS in front, the app and the worker as a non-root user on read-only file systems with resource limits, and nightly encrypted backups with an offsite copy. Setup, backups, restore and the monthly restore drill are in [docs/runbook.md](docs/runbook.md).
 
-## Development accounts (seed data – development only)
+## Development accounts (seed data, development only)
 
 The seed creates the pharmacy **Demo Pharmacy** with the code `demo`. Sign in at `/p/demo/login` (or `/login`, then enter the code `demo`).
 
@@ -111,17 +109,18 @@ Currency label and the expiry-warning period are configured in *Settings* (defau
 
 Every API route checks a named permission (`src/modules/identity/permissions.ts`); the UI hides what a role cannot use, but the server is the authority.
 
-| | Admin | Pharmacist | Cashier |
+| | Pharmacy Admin | Pharmacist | Cashier |
 |---|:-:|:-:|:-:|
-| POS, invoices (view/print), customers, take customer payments | ✔ | ✔ | ✔ |
-| View medicines & inventory | ✔ | ✔ | ✔ |
-| Add/edit medicines, stock adjustments | ✔ | ✔ | – |
-| Delete/archive medicines | ✔ | – | – |
-| Cancel invoices | ✔ | ✔ | – |
-| Sell above a customer's credit limit | ✔ | ✔ | – |
-| Suppliers (view), purchases, reports | ✔ | ✔ | – |
-| Manage suppliers & pay them | ✔ | – | – |
-| Users, settings | ✔ | – | – |
+| POS, own invoices, customers, take customer payments | Yes | Yes | Yes |
+| View medicines and inventory | Yes | Yes | Yes |
+| All invoices, cancel invoices, returns, sell above a credit limit | Yes | Yes | No |
+| Medicines, stock adjustments, stock entry, purchases, supply orders | Yes | Yes | No |
+| Cost prices, gross profit and reports | Yes | Yes | No |
+| Expenses and net profit | Yes | No | No |
+| Manage suppliers and pay them | Yes | No | No |
+| Users, roles, branding, settings, setup, data export | Yes | No | No |
+
+Custom roles can combine any of these permissions.
 
 ## Business rules (enforced in code **and** by database constraints)
 
@@ -130,7 +129,7 @@ Every API route checks a named permission (`src/modules/identity/permissions.ts`
 3. **Expired batches are never sold.** An item expiring today is still sellable; from tomorrow it is not.
 4. **Stock can't go negative** (application check + `CHECK` constraint). Concurrent sales lock batch rows so you cannot oversell.
 5. **Every stock change writes a stock movement** (opening, purchase, sale, sale cancel, adjustment, damage, expiry).
-6. **Sales, purchases, cancellations, payments and adjustments run in a single database transaction** – any failure rolls everything back.
+6. **Sales, purchases, cancellations, payments and adjustments run in a single database transaction**: any failure rolls everything back.
 7. **Money is `DECIMAL(12,2)`**, never floating point.
 8. **Credit (udhaar):** ledger `debit` = customer owes, `credit` = customer paid. A sale leaving a balance requires a customer and respects the credit limit (`0` = no credit). Pharmacists/admins can override the limit. Payments can't exceed the outstanding balance.
 9. **Supplier ledger:** `debit` = purchase invoiced (we owe), `credit` = payment made.
@@ -161,14 +160,22 @@ psql -U postgres -c "CREATE DATABASE pharmacy_crm_test OWNER pharmacy;"
 cp .env.test.example .env.test   # edit it to point at the test database, then:
 DATABASE_URL="postgresql://pharmacy:change_me@localhost:5432/pharmacy_crm_test" npx prisma migrate deploy
 
-npm test             # 18 integration tests (FEFO, expiry, rollback, concurrency, credit, cancel, purchases...)
+npm test             # 206 integration tests against the test database
 npm run typecheck
 npm run lint
+npm run lint:deps    # module boundaries
 ```
 
-With the app running and seeded: `npm run test:isolation` signs in to two pharmacies and calls every pharmacy API that takes a record id with the other pharmacy's ids (all must answer 404), and checks lists never show the other pharmacy. It fails if a new API route with an id is not listed in `scripts/isolation-check.mjs`.
+After `npm run build`, these use their own throwaway databases next to the test database:
 
-With the app running and seeded: `npm run test:smoke` (105 HTTP checks: login, permissions, validation, sale → cancel flow, reports, page loads).
+| Command | What it checks |
+|---|---|
+| `node scripts/smoke-local.mjs` | 399 HTTP smoke and tenant isolation checks. The isolation suite calls every API that takes a record id with another pharmacy's ids (all must answer 404), and fails if a new id route is not listed in `scripts/isolation-check.mjs` |
+| `npm run e2e` | The Playwright journeys, from creating a pharmacy to receiving an order, then axe on every screen in the light and dark themes |
+| `npm run perf` | Performance with 20 pharmacies of data, against the targets in the architecture document |
+| `npm run restore:drill` | Backs up, restores into a new database and runs the smoke suite on the restored data |
+
+The desktop app has its own selftest: `npm run build:desktop`, then `node scripts/selftest.mjs` in `desktop/`.
 
 > `npm test` truncates the tables of the database in `.env.test`. Never point it at real data.
 

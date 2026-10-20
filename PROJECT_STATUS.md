@@ -1,7 +1,20 @@
 # Project status
 
 ## Current phase
-Phases 3 to 8 are complete. Tags `phase-3`, `phase-4` and `phase-5` mark those phases, `v1.6.0` is the release with Phases 3 to 6, and Phases 7 and 8 follow it on the branch. Next: Phase 9, hardening and go-live (see `docs/plan/05-roadmap.md`).
+All roadmap phases (0 to 9) are complete. Tags `phase-3`, `phase-4` and `phase-5` mark those phases, `v1.6.0` is the release with Phases 3 to 6, and Phases 7 to 9 follow it on the branch. What comes next is the backlog after go-live in `docs/plan/05-roadmap.md`, section 5, and the real-pharmacy pilot.
+
+## Phase 9 delivered (hardening and go-live)
+- Production setup: Caddy with automatic HTTPS in front; the app and worker in a non-root image on read-only file systems, with resource limits and rotated logs. Tested end to end on this machine, restore included
+- Nightly encrypted server backups, verified by decrypting them fully, with an offsite copy and retention (14 days, 12 months). Health and the console show the last good one; `deploy/restore.sh` restores into a new database and swaps it in only once complete. `npm run restore:drill` proves a restored backup passes the full smoke suite
+- Subscriptions: ended ones move to grace, then to suspended after `SUBSCRIPTION_GRACE_DAYS`. Statuses set by the check return to active on renewal; a status the Developer set by hand is left alone
+- Data export: a pharmacy's records as a ZIP of CSV files with an Excel summary, from the console (with an authenticator code) or by the Pharmacy Admin. No passwords or secrets are included
+- Installable staff app (manifest, icons, a service worker that never stores pharmacy data, and an offline page)
+- First-run setup in six steps, including opening balances of customers and suppliers. Only the Pharmacy Admin may enter balances from before the app
+- Playwright journeys from creating a pharmacy to receiving an order, and axe on every screen in both themes with no serious or critical problems. The audit led to fixes in contrast, labels and lists, and in dialogs taking the cursor back while someone was typing
+- Performance with 20 pharmacies (58,000 medicines, 72,000 sales): every target met. A 10-line sale is now a fixed number of database round trips (p95 51 ms, 82 ms with 20 busy pharmacies), and the pool holds 20 connections
+- User guides per role, a printable shortcut card, and the Developer runbook
+- Demo accounts never reach production: the seed refuses to run there
+- 206 integration tests, 399 smoke and HTTP isolation checks, 9 browser tests
 
 ## Phase 8 delivered (finance and reports)
 - Expenses with categories (the usual ones created on first use), an optional receipt photo, and an option to pay from the open cash drawer, which lowers its expected cash; never deleted, cancelled with a reason, and cancelled ones count nowhere
@@ -107,13 +120,22 @@ Phases 3 to 8 are complete. Tags `phase-3`, `phase-4` and `phase-5` mark those p
 - Users & settings pages; dark/light mode; responsive layout
 - Database: 14 tables, UUID keys, DECIMAL money, FKs, indexes, CHECK constraints (no negative stock, positive quantities, valid amounts)
 
-## Verification performed
-- `npm run typecheck`, `npm run lint`, `npm run build`: clean
-- `npm test`: 18 integration tests against real PostgreSQL (FEFO, expiry, rollback, concurrency, credit, cancel, purchases, adjustments, invariants)
-- `npm run test:smoke`: 47 HTTP checks against the running app (auth, RBAC, validation, sale/cancel flow, reports, all pages return 200)
+## Verification performed (20 October 2026, end of Phase 9)
+- `npm run typecheck`, `npm run lint`, `npm run lint:deps`, `npm run build`, `npm audit --omit=dev`: clean
+- `npm test`: 206 integration tests against PostgreSQL 16
+- `node scripts/smoke-local.mjs`: 399 smoke and HTTP tenant isolation checks
+- `npm run e2e`: 9 browser tests (8 journeys, plus axe on 52 screens in both themes)
+- `npm run perf`: every architecture target met with 20 pharmacies of data
+- `npm run restore:drill`: a restored backup passes all 399 smoke and isolation checks
+- `docker-compose.prod.yml` run on this machine: HTTPS through Caddy, non-root read-only containers, startup backup with offsite copy, and a restore with `deploy/restore.sh`
+- Desktop selftest (`desktop/scripts/selftest.mjs`)
 
 ## Known limitations / not built
-- Not built yet (later phases): supplier returns with credit notes, supplier orders, expenses, offsite backups
+- The repository has no remote yet, so the GitHub Actions workflow (including the browser tests) has not run there; every suite passes locally
+- Invites and password resets are shared as links (copy or WhatsApp); there is no email sending adapter yet (`MAIL_*` in the plan)
+- Files (logos, bill photos, receipts) are stored in PostgreSQL. S3-compatible storage for large hosted installs (`STORAGE_DRIVER`, `S3_*` in the plan) is not built
+- On a server, restore runs from the shell (`deploy/restore.sh`) rather than from the console, so the app is stopped while the data is replaced; the desktop app restores from its console page
+- "From New pharmacy to the first sale in under 30 minutes" is shown by the browser journey (under a minute, automated); it has not been timed with a real pharmacy
 - Local photo reading on 15 real bill photos (11 distributors, 98 lines): lines found 74%, quantity 59%, expiry 57%, rate 45%, batch 27%, invoice number 53%, bill total 69%. Every line still goes through the review grid. Not readable locally: a handwritten Urdu bill, a sideways photo, a dot-matrix print and a thermal slip; these need the cloud reader, which has not yet been scored on the real bills (needs an API key)
 - The installer is unsigned until a code-signing certificate is added to the release secrets. SmartScreen then warns on first run, and on Windows 11 PCs with Smart App Control on (as on the development PC) Windows can block the program outright: signing is required before installing at pharmacies
 - Updates have not been tried end to end against a real release feed (no public releases location yet); the feed settings, latest.yml and app-update.yml are built and checked
@@ -121,7 +143,7 @@ Phases 3 to 8 are complete. Tags `phase-3`, `phase-4` and `phase-5` mark those p
 - Sale prices come from the batch being sold; a sale spanning batches with different prices is priced per batch
 
 ## Next tasks (suggested)
-1. Click-through QA of every screen in a browser
-2. Customer/supplier returns, expenses
-3. Audit log, notifications
-4. Prescriptions (needs file storage design)
+1. Pilot with one real pharmacy: onboarding time, counter speed, and OCR on its own supplier bills
+2. Score the cloud photo reader on the real bills in `Supplier Bills/` once an API key is available
+3. Code-sign the installer, and test it and an update on clean Windows 10 and 11 machines
+4. Push to a remote so CI runs, then the backlog after go-live (roadmap, section 5)
