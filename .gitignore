@@ -5,3 +5,6 @@ node_modules
 next-env.d.ts
 .env.test
 dist
+
+# real supplier bills (business data, CNIC and NTN numbers): never commit
+Supplier Bills/

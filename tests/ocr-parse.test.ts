@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { parseBill, parseDate, parseDocument, parseExpiry, parseExpiryCell, parseListLine, parseNumber, reconcileAmounts, type OcrLine } from "@/modules/stockentry";
+import { cleanItemName, parseBill, parseDate, parseDocument, parseExpiry, parseExpiryAny, parseExpiryCell, parseListLine, parseNumber, reconcileAmounts, solveRow, type OcrLine } from "@/modules/stockentry";
 
 /** A line of OCR words: [text, x] pairs at row y (fractions of the page). */
 function line(y: number, cells: [string, number][], conf = 0.95): OcrLine {
@@ -81,5 +81,48 @@ describe("engine slips", () => {
     expect(reconcileAmounts({ ...base, quantity: null, rate: 5.78, amount: 578 })).toMatchObject({ quantity: 100 });
     // a discount or tax makes the check unreliable, so nothing changes
     expect(reconcileAmounts({ quantity: 10, rate: 2062, amount: 206.2, discountPercent: 5, taxAmount: null })).toMatchObject({ rate: 2062 });
+  });
+});
+
+describe("real distributor invoices", () => {
+  // word positions as on the photographed bills; values made up
+  const words = (y: number, items: [string, number][]) => line(y, items);
+
+  it("finds quantity, rate and amount by arithmetic, wherever the columns are", () => {
+    expect(solveRow([2, 2, 330.2, 660, 0, 664])).toMatchObject({ quantity: 2, rate: 330.2, amount: 660 }); // Qty, T.Qty, TP, Gross ... Net
+    expect(solveRow([149.6, 10, 0, 1496, 7.48, 1496])).toMatchObject({ quantity: 10, rate: 149.6, amount: 1496 }); // TP before Qty
+    expect(solveRow([0, 230.84, 0, 231])).toMatchObject({ quantity: 1, rate: 230.84, amount: 231 }); // the quantity unreadable
+    expect(solveRow([228.02, 1, 114010, 3])).toMatchObject({ quantity: 5, rate: 228.02, amount: 1140.1 }); // a lost decimal point
+    expect(solveRow([62295, 2, 1.246])).toMatchObject({ quantity: 2, rate: 622.95, amount: 1246 }); // point lost, comma read as a point
+    expect(solveRow([4, 0, 12])).toBeNull();
+  });
+
+  it("strips distributor codes from names and reads every expiry form", () => {
+    expect(cleanItemName("MONITOR 5MG TAB / 808")).toEqual({ name: "MONITOR 5MG TAB", code: "808" });
+    expect(cleanItemName("055/ESSO 40MG CAPSULE 14'S")).toEqual({ name: "ESSO 40MG CAPSULE 14'S", code: "055" });
+    expect(cleanItemName("1 11149 * AVSAR PLUS TAB").name).toBe("AVSAR PLUS TAB");
+    expect(parseExpiryAny("30/06/2028")).toBe("2028-06-30");
+    expect(parseExpiryAny("DEC/2028")).toBe("2028-12-31");
+    expect(parseExpiryAny("02-28")).toBe("2028-02-29");
+    expect(parseExpiryAny("/5-28")).toBe("2028-05-31");
+  });
+
+  it("reads a Saif-style table with a two-word heading and an unreadable Exp. heading", () => {
+    const head = words(0.30, [["Description", 0.06], ["Batch", 0.30], ["N.Qty", 0.36], ["BNS", 0.40], ["T.Qty", 0.44], ["xx.", 0.49], ["TP", 0.54], ["Gross", 0.59], ["Amt", 0.62], ["Net", 0.92], ["Amt", 0.95]]);
+    const row = words(0.33, [["MONITOR 5MG TAB / 808", 0.04], ["UT274", 0.30], ["1", 0.36], ["1", 0.44], ["03-28", 0.49], ["186.63", 0.54], ["187", 0.61], ["0.50%", 0.85], ["188", 0.94]]);
+    const total = plain(0.4, "INVOICE TOTAL 10 0 10 2,594 13 2,607");
+    const r = parseBill([plain(0.05, "Saif Enterprises Mardan"), plain(0.1, "Invoice No.: 784679"), head, row, total])!;
+    expect(r.header).toMatchObject({ supplierName: "Saif Enterprises Mardan", invoiceNo: "784679" });
+    expect(r.lines).toHaveLength(1);
+    expect(r.lines[0]).toMatchObject({ name: "MONITOR 5MG TAB", batchNumber: "UT274", expiryDate: "2028-03-31", quantity: 1, rate: 186.63 });
+  });
+
+  it("reads a Premier-style table: batch and expiry in one cell, manufacturer headings between groups", () => {
+    const head = words(0.20, [["Description", 0.10], ["M.R.P", 0.30], ["TP", 0.36], ["Qty.", 0.42], ["Bon", 0.47], ["Batch/", 0.53], ["Amount", 0.62], ["Net", 0.92]]);
+    const group = words(0.24, [["PHARMEVO (PVT) LIMITED", 0.10]]);
+    const row = words(0.27, [["1 11149 * BYVAS 2.5MG TABLET", 0.04], ["0.00", 0.30], ["230.84", 0.36], ["I", 0.42], ["0", 0.47], ["6H231 /6-28", 0.52], ["231", 0.62], ["231", 0.93]]);
+    const r = parseBill([head, group, row])!;
+    expect(r.lines).toHaveLength(1);
+    expect(r.lines[0]).toMatchObject({ name: "BYVAS 2.5MG TABLET", batchNumber: "6H231", expiryDate: "2028-06-30", quantity: 1, rate: 230.84 });
   });
 });

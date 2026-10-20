@@ -57,7 +57,7 @@ export function parseExpiryCell(text: string): string | null {
 }
 
 /** Words that are only table rules, stamps or specks: no letter or digit, or no confidence at all. */
-const isNoise = (w: OcrWord) => w.conf < 0.05 || !/[A-Za-z0-9]/.test(w.text);
+const isNoise = (w: OcrWord) => w.conf < 0.05 || (!/[A-Za-z0-9]/.test(w.text) && w.text !== "/"); // "/" separates a name from its code
 
 /**
  * Engines drop decimal points ("160.50" read as 16050). When quantity x rate does not give the amount,
@@ -81,19 +81,54 @@ export function reconcileAmounts(l: Pick<ParsedLine, "quantity" | "rate" | "amou
 
 // ---------------------------------------------------------------- supplier bills
 
-type Col = "name" | "batch" | "expiry" | "qty" | "bonus" | "rate" | "disc" | "tax" | "amount";
-const HEADINGS: [Col, RegExp][] = [
-  ["name", /^(description|item|items|product|particulars|medicine|name)$/i],
-  ["batch", /^(batch|b\.?no\.?|lot|batch#|batchno)$/i],
-  ["expiry", /^(exp|exp\.|expiry|exp\.date|expdate)$/i],
-  ["qty", /^([qoag]t[yv]|qty\.|quantity|pcs|units)$/i], // engines often read "Qty" as "aty" or "Oty"
-  ["bonus", /^(bonus|free|bns|sch|scheme|f\.?qty)$/i],
-  ["rate", /^(rate|price|t\.?p\.?|tp|unit\s*price)$/i],
-  ["disc", /^(disc|disc\.|disc%|discount|d%|dis)$/i],
-  ["tax", /^(gst|tax|s\.?tax|sales\s*tax)$/i],
-  ["amount", /^(amount|amt|amt\.|value|net|total)$/i],
+/**
+ * Column kinds on Pakistani distributor invoices. "qty" is the billed quantity (N.Qty), "tqty" the total
+ * with bonus (T.Qty); "gross" is quantity x rate before discount and tax, "amount" the line's net value.
+ */
+type Col = "code" | "name" | "batch" | "expiry" | "batchExpiry" | "qty" | "tqty" | "bonus" | "rate" | "gross" | "disc" | "discAmt" | "tax" | "amount" | "skip";
+const PHRASES: [Col, string[]][] = [
+  ["code", ["code", "sr", "s no", "sno", "sno code", "sr no", "product code", "s"]],
+  ["name", ["description", "item", "items", "item name", "product", "product name", "product description", "particulars", "medicine", "name", "item description", "medicine name"]],
+  ["batchExpiry", ["batch expiry", "batch exp"]],
+  ["batch", ["batch", "batch no", "b no", "bno", "lot", "batch number", "batch#", "batchno"]],
+  ["expiry", ["exp", "expiry", "exp date", "expiry date", "expdate"]],
+  ["qty", ["qty", "n qty", "nqty", "quantity", "units", "unit", "pcs"]],
+  ["tqty", ["t qty", "tqty", "total qty"]],
+  ["bonus", ["bonus", "bns", "bon", "free", "f qty", "fqty", "bonus qty", "scheme"]],
+  ["rate", ["rate", "tp", "t p", "price", "trade price", "rate unit", "unit price", "tp rate", "unit rate"]],
+  ["gross", ["gross", "gross amt", "gross amount", "pack value", "value of goods", "values of goods"]],
+  ["disc", ["disc", "dis", "disc %", "dis %", "discount", "disc%", "dis%", "d%", "disc %"]],
+  ["discAmt", ["dis amt", "disc amount", "discount amount", "disc amt", "disc value"]],
+  ["tax", ["s tax", "gst", "sales tax", "f tax", "further tax", "adv tax", "awht", "add gst", "add tax", "tax", "sale tax", "taxamt", "tax amt"]],
+  ["amount", ["amount", "amt", "net amt", "net amount", "net", "net total", "value including", "netamount", "total", "value", "net value"]],
+  ["skip", ["retail", "mrp", "m r p", "sch", "ctn", "u c", "ctns", "t o", "comp disc", "dist disc", "extra disc", "pack size", "2"]],
 ];
-const headingOf = (w: string) => HEADINGS.find(([, re]) => re.test(w.replace(/[:]/g, "").trim()))?.[0] ?? null;
+const PHRASE_OF = new Map<string, Col>(PHRASES.flatMap(([c, ps]) => ps.map((p) => [p, c] as [string, Col])));
+const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9%#]+/g, " ").trim();
+function lev(a: string, b: string) {
+  if (Math.abs(a.length - b.length) > 1) return 2;
+  const d = Array.from({ length: a.length + 1 }, (_, i) => [i, ...Array(b.length).fill(0)]);
+  for (let j = 1; j <= b.length; j++) d[0][j] = j;
+  for (let i = 1; i <= a.length; i++) for (let j = 1; j <= b.length; j++) d[i][j] = Math.min(d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+  return d[a.length][b.length];
+}
+/** A heading phrase, allowing one wrong letter per word of four or more letters ("Exp1ry", "Gros"). */
+function headingOf(text: string): Col | null {
+  const n = norm(text);
+  if (!n) return null;
+  const exact = PHRASE_OF.get(n);
+  if (exact) return exact;
+  const words = n.split(" ");
+  for (const [p, c] of PHRASE_OF) {
+    const pw = p.split(" ");
+    if (pw.length !== words.length) continue;
+    // one wrong letter only in longer words, and never the first ("Gros" yes, "TATE" for "rate" no)
+    if (pw.every((x, i) => x === words[i] || (x.length >= 5 && x[0] === words[i][0] && lev(x, words[i]) <= 1) || (x.length >= 7 && x.endsWith(words[i]) && words[i].length >= 5))) return c;
+  }
+  return null;
+}
+const QUALIFIERS = new Set(["amt", "amount", "no", "name", "date", "value", "tax", "%", "unit", "price", "qty", "disc", "expiry", "exp", "including", "of", "goods", "total", "description", "code", "size", "number"]);
+
 const center = (b: Box) => b.x + b.w / 2;
 const unionBox = (boxes: Box[]): Box | null => {
   if (!boxes.length) return null;
@@ -102,76 +137,346 @@ const unionBox = (boxes: Box[]): Box | null => {
   return { page: boxes[0].page, x, y, w: Math.max(...boxes.map((b) => b.x + b.w)) - x, h: Math.max(...boxes.map((b) => b.y + b.h)) - y };
 };
 
-/** The heading row: the line naming at least three known columns. */
-function findHeading(lines: OcrLine[]) {
-  for (let i = 0; i < lines.length; i++) {
-    const cols = new Map<Col, number>();
-    for (const w of lines[i].words) {
-      const c = headingOf(w.text);
-      if (c && !cols.has(c)) cols.set(c, center(w.box));
-    }
-    if (cols.size >= 3 && (cols.has("qty") || cols.has("amount"))) return { index: i, cols };
+type Phrase = { text: string; x0: number; x1: number };
+/** Words on a heading line grouped into phrases: neighbours close together, or a qualifier after a word ("Gross Amt"). */
+function phrases(words: OcrWord[]): Phrase[] {
+  const out: Phrase[] = [];
+  for (const w of [...words].sort((a, b) => a.box.x - b.box.x)) {
+    const last = out.at(-1);
+    const gap = last ? w.box.x - last.x1 : 1;
+    const joined = last ? `${last.text} ${w.text}` : "";
+    if (last && ((gap < 0.006 && (!headingOf(w.text) || headingOf(joined))) || (gap < 0.03 && QUALIFIERS.has(norm(w.text)) && headingOf(joined)) || (gap < 0.02 && headingOf(joined) && !headingOf(w.text)))) {
+      last.text = joined;
+      last.x1 = w.box.x + w.box.w;
+    } else out.push({ text: w.text, x0: w.box.x, x1: w.box.x + w.box.w });
   }
-  return null;
+  return out;
 }
 
-const TOTAL_LINE = /\b(net\s*total|grand\s*total|net\s*amount|total\s*amount|net\s*payable|payable|bill\s*total|total)\b/i;
+type Heading = { index: number; cols: { col: Col; x: number }[] };
+
+/** The heading row: a line (or two stacked lines) naming at least three known columns, among them a quantity or money column. */
+function findHeading(lines: OcrLine[]): Heading | null {
+  let best: (Heading & { score: number }) | null = null;
+  for (let i = 0; i < lines.length; i++) {
+    const below = lines[i + 1] && lines[i + 1].box.y - lines[i].box.y < 0.03 ? lines[i + 1] : null;
+    const top = phrases(lines[i].words.filter((w) => w.conf > 0.02));
+    const bottom = below ? phrases(below.words.filter((w) => w.conf > 0.02)) : [];
+    const cols: { col: Col; x: number }[] = [];
+    const usedBottom = new Set<number>();
+    for (const p of top) {
+      // a heading split over two rows ("Expiry" above "Date")
+      const k = bottom.findIndex((q, j) => !usedBottom.has(j) && q.x0 < p.x1 + 0.01 && q.x1 > p.x0 - 0.01 && headingOf(`${p.text} ${q.text}`));
+      const both = k >= 0 ? headingOf(`${p.text} ${bottom[k].text}`) : null;
+      const col = both ?? headingOf(p.text);
+      if (k >= 0 && both) usedBottom.add(k);
+      if (col) cols.push({ col, x: (p.x0 + p.x1) / 2 });
+    }
+    bottom.forEach((q, j) => { const c = !usedBottom.has(j) && headingOf(q.text); if (c && !cols.some((x) => Math.abs(x.x - (q.x0 + q.x1) / 2) < 0.02)) cols.push({ col: c, x: (q.x0 + q.x1) / 2 }); });
+    const kinds = new Set<Col>(cols.map((c) => c.col).filter((c) => c !== "skip"));
+    const money = ["qty", "tqty", "amount", "gross", "rate"].filter((c) => kinds.has(c as Col)).length;
+    // a real heading names what is bought (the item, its batch or quantity) and leaves room for the numbers
+    const item = ["name", "batch", "batchExpiry", "qty", "tqty"].some((c) => kinds.has(c as Col));
+    const firstMoney = Math.min(...cols.filter((c) => ["qty", "tqty", "rate", "gross", "amount", "batch", "batchExpiry", "expiry"].includes(c.col)).map((c) => c.x));
+    if (kinds.size >= 3 && money >= 1 && item && firstMoney < 0.55) {
+      const score = kinds.size + money;
+      if (!best || score > best.score) best = { index: below && cols.length > top.length ? i + 1 : i, cols: cols.sort((a, b) => a.x - b.x), score };
+    }
+  }
+  if (!best) return null;
+  // the same kind twice ("Amt" under Gross and under Net): keep the first for gross-like, the last for amount
+  const seen = new Map<Col, number>();
+  best.cols.forEach((c, i) => { if (c.col === "amount" || !seen.has(c.col)) seen.set(c.col, i); });
+  return { index: best.index, cols: best.cols.filter((c, i) => seen.get(c.col) === i || c.col === "skip" || c.col === "tax") };
+}
+
+/** Rows that end the table, and subtotal rows inside it. */
+const END_LINE = /\b(net\s*total|grand\s*total|net\s*payable|invoice\s*total|amount\s*summary|gross\s*amount|this\s*page\s*total|no\.?\s*of\s*items?|warranty|value\s*of\s*goods\s*excluding)\b/i;
+const SUBTOTAL_LINE = /\b(total\s*for|sub\s*total|advance\s*(wh)?\s*tax|carried\s*forward|page\s*total)\b/i;
+const TOTAL_LINE = /\b(net\s*total|grand\s*total|net\s*amount|total\s*amount|net\s*payable|payable|bill\s*total|total\s*value\s*of\s*invoice|total)\b/i;
+
+/** Item names carry the distributor's codes: "055/ESSO 40MG" and "MONITOR 5MG TAB / 808". */
+export function cleanItemName(raw: string): { name: string; code: string | null } {
+  let s = raw.replace(/\s+/g, " ").trim();
+  let code: string | null = null;
+  const tail = s.match(/\s*\/\s*(\d{2,6})\s*$/);
+  if (tail) { code = tail[1]; s = s.slice(0, tail.index).trim(); }
+  const head = s.match(/^(?:\d{1,3}[.)]?\s+)?(?:\d{3,6}\s+)?\*?\s*(\d{2,4})\s*\/\s*(?=[A-Za-z])/);
+  if (head) { code ??= head[1]; s = s.slice(head[0].length); }
+  s = s.replace(/^(?:\d{1,3}[.)]?\s+)?(?:\d{3,6}\s+)?\*\s*/, "").replace(/^\d{1,3}[.)]?\s+\d{3,6}\s+(?=[A-Za-z])/, "").replace(/^\d{1,3}[.)]\s+/, "").replace(/^\|\s*/, "").trim();
+  return { name: s, code };
+}
+
+/** Expiry in any of the printed forms, including full dates (30/06/2028) and month names (DEC/2028). */
+export function parseExpiryAny(text: string | null): string | null {
+  if (!text) return null;
+  const full = text.match(/\b(\d{1,2})[/.-](\d{1,2})[/.-](\d{4}|\d{2})\b/);
+  if (full && Number(full[2]) >= 1 && Number(full[2]) <= 12) return monthEnd(year(full[3]), Number(full[2]));
+  return parseExpiryCell(text.replace(/^[/\s]+/, ""));
+}
+
+/**
+ * Fills and checks the numbers of a line. A faint quantity column is common: the quantity then follows
+ * from gross / rate, total quantity minus bonus, or the net amount / rate when that is a whole number
+ * within the small taxes these bills add.
+ */
+export function settleLine(n: { quantity: number | null; tqty: number | null; bonusQty: number | null; rate: number | null; gross: number | null; amount: number | null; discountPercent: number | null; taxAmount: number | null }) {
+  let { quantity, rate, gross, amount } = n;
+  const whole = (v: number, tol: number) => v >= 0.9 && v <= 100_000 && Math.abs(v - Math.round(v)) <= tol * Math.max(1, Math.round(v));
+  // readings an engine slip allows: a lost decimal point (62295 for 622.95) or a thousands comma read as a point (1.246 for 1,246)
+  const variants = (v: number | null) => (v === null ? [null] : [v, v / 100, ...(Math.abs(v * 1000 - Math.round(v * 1000)) < 1e-6 && v < 100 && v % 1 !== 0 ? [Math.round(v * 1000)] : [])]);
+  if (quantity === null && n.tqty !== null) quantity = Math.max(0, n.tqty - (n.bonusQty ?? 0));
+  const quantities = [...new Set([quantity, n.tqty !== null ? n.tqty - (n.bonusQty ?? 0) : null].filter((q): q is number => q !== null && q > 0))];
+  // the combination where quantity x rate gives the gross (or the net, which adds a little tax)
+  let settled = false;
+  for (const target of [gross, amount]) {
+    if (settled || target === null || !rate) continue;
+    for (const r of variants(rate)) {
+      for (const t of variants(target)) {
+        if (settled || !r || !t) continue;
+        // the net amount is after the printed discount
+        const base = target === amount && n.discountPercent ? t / (1 - Math.min(n.discountPercent, 99) / 100) : t;
+        const tol = base * 0.015 + (base >= 50 ? 0.51 : 0); // gross is often printed rounded to the rupee
+        const q = base / r;
+        const okQ = quantities.length ? quantities.find((x) => Math.abs(x * r - base) <= tol) : whole(q, 0.012) ? Math.round(q) : undefined;
+        if (okQ !== undefined) {
+          rate = r;
+          quantity = okQ;
+          if (target === gross) gross = t; else amount = t;
+          settled = true;
+        }
+      }
+    }
+  }
+  // a quantity misread (a tick mark, a stray digit) that gross / rate contradicts
+  if (!settled && rate && gross && whole(gross / rate, 0.012)) quantity = Math.round(gross / rate);
+  if (quantity === null && rate && amount && !n.discountPercent && whole(amount / rate, 0.012)) quantity = Math.round(amount / rate);
+  if (gross === null && quantity && rate) gross = Math.round(quantity * rate * 100) / 100;
+  if (amount === null) amount = gross;
+  return { quantity, rate, amount, bonusQty: n.bonusQty, discountPercent: n.discountPercent, taxAmount: n.taxAmount };
+}
+
+/**
+ * Finds quantity, rate and line amount among a row's numbers by arithmetic: quantity x rate gives the
+ * gross, or the net amount within a small tax or the printed discount. Works wherever the columns are, which
+ * matters because the heading row is often the least readable part of a photo. Numbers are in reading order.
+ */
+export function solveRow(nums: number[], hint: { discountPercent?: number | null; quantity?: number | null } = {}) {
+  const variants = (v: number) => [v, ...(v >= 100 && Number.isInteger(v) ? [v / 100] : []), ...(v < 100 && v % 1 !== 0 && Math.abs(v * 1000 - Math.round(v * 1000)) < 1e-6 ? [Math.round(v * 1000)] : [])];
+  const disc = hint.discountPercent && hint.discountPercent < 99 ? hint.discountPercent : 0;
+  let best: { quantity: number; rate: number; amount: number; score: number } | null = null;
+  for (let i = 0; i < nums.length; i++) {
+    const q = nums[i];
+    if (!Number.isInteger(q) || q < 1 || q > 10_000) continue;
+    for (let j = 0; j < nums.length; j++) {
+      if (j === i) continue;
+      for (const r of variants(nums[j])) {
+        if (r <= 1 || r > 1_000_000) continue; // a rate of one is a quantity or a bonus, never a price
+        for (let k = Math.max(i, j) + 1; k < nums.length; k++) {
+          for (const t of variants(nums[k])) {
+            for (const target of disc ? [t, t / (1 - disc / 100)] : [t]) {
+              const err = Math.abs(q * r - target);
+              const tol = target * 0.012 + (target >= 50 ? 0.51 : 0.011);
+              if (err > tol) continue;
+              // prefer the exact product, the quantity under the Qty heading, and the nearest amount (gross before a taxed net)
+              const score = (err / Math.max(1, target)) * 50 + (k - Math.max(i, j)) * 0.1 + (hint.quantity != null && q !== hint.quantity ? 0.5 : 0) + (q === 1 && r === t ? 0.05 : 0) + (r !== nums[j] || t !== nums[k] ? 0.3 : 0) + (Number.isInteger(r) ? 0.2 : 0);
+              if (!best || score < best.score) best = { quantity: q, rate: r, amount: t, score };
+            }
+          }
+        }
+      }
+    }
+  }
+  if (best) return best;
+  // no quantity readable: a rate that gives the amount on its own is one unit, or a whole multiple of it
+  // (the smallest such quantity: 228.02 x 500 = 114010 is a lost decimal point, not 500 units)
+  let implied: { quantity: number; rate: number; amount: number; score: number } | null = null;
+  for (let j = 0; j < nums.length; j++) {
+    for (const r of variants(nums[j])) {
+      if (r <= 1 || r % 1 === 0) continue; // rates are printed with paisa
+      for (let k = j + 1; k < nums.length; k++) {
+        for (const t of variants(nums[k])) {
+          const q = Math.round(t / r);
+          if (q < 1 || q > 1000 || (hint.quantity != null && hint.quantity !== q && hint.quantity > 0)) continue;
+          if (Math.abs(q * r - t) <= t * 0.006 + (t >= 50 ? 0.51 : 0.011) && (!implied || q < implied.quantity)) implied = { quantity: q, rate: r, amount: t, score: 9 };
+        }
+      }
+    }
+  }
+  return implied;
+}
 
 function header(lines: OcrLine[]): ParsedHeader {
   const text = lines.map((l) => l.text);
-  const invoice = text.map((t) => t.match(/\b(?:inv(?:oice)?|bill)\s*(?:no|#|number)?\.?\s*[:#-]?\s*([A-Z0-9][A-Z0-9/-]{1,})/i)?.[1]).find(Boolean) ?? null;
-  const dateLine = text.find((t) => /\bdate\b/i.test(t) && parseDate(t)) ?? text.find((t) => parseDate(t));
-  const totalLine = [...text].reverse().find((t) => TOTAL_LINE.test(t) && parseNumber(t.replace(TOTAL_LINE, "")) !== null);
-  const totalNums = totalLine ? totalLine.replace(TOTAL_LINE, "").match(/\d[\d,]*(?:\.\d+)?/g) : null;
-  // the supplier is usually the first prominent line of the page
-  const supplier = lines.find((l) => /[A-Za-z]{3}/.test(l.text) && !/invoice|bill|date|ntn|strn|phone|tel/i.test(l.text))?.text.trim() ?? null;
+  const invoice = text
+    .map((t) => t.match(/\b(?:inv(?:oice)?|bill|memo)\.?\s*(?:no|#|number|num)\b\.?\s*[:#.-]*\s*([A-Z0-9][A-Z0-9/-]{1,})/i)?.[1] ?? t.match(/\binvoice\s*#\s*([A-Z0-9][A-Z0-9/-]{2,})/i)?.[1])
+    .find((v) => v && /\d/.test(v)) ?? null;
+  const dateLine = text.find((t) => /\b(invoice\s*date|inv\.?\s*date|date)\b/i.test(t) && parseDate(t)) ?? text.find((t) => parseDate(t));
+  const totalOf = (re: RegExp) => [...text].reverse().map((t) => {
+    if (!re.test(t) || /balance|previous|rupees|only\b|page/i.test(t)) return null;
+    const nums = t.replace(re, " ").match(/\d[\d,]*(?:\.\d+)?/g);
+    return nums ? parseNumber(nums[nums.length - 1]) : null;
+  }).find((v) => v !== null && v !== undefined && v > 0) ?? null;
+  const billTotal = totalOf(/\b(net\s*total|grand\s*total|net\s*payable|net\s*amount|total\s*value\s*of\s*invoice)\b/i) ?? totalOf(TOTAL_LINE);
+  // the supplier: a line near the top naming a business, else the first plain line of the page
+  const top = lines.filter((l) => l.box.y < 0.3 && /[A-Za-z]{3}/.test(l.text) && l.conf > 0.5 && !/customer|invoice|ntn|strn|phone|tel|address|date|cash memo|estimate|proforma|pharmacy|medicose/i.test(l.text));
+  const business = top.find((l) => /\b(enterprises?|traders?|company|co\.|medicine|pharma\w*|sales|distributors?|limited|ltd|pvt|agenc(y|ies)|stores?|medicos|solutions|point)\b/i.test(l.text));
+  const supplier = (business ?? top[0])?.text.replace(/\s+/g, " ").trim() ?? null;
   return {
     supplierName: supplier,
     invoiceNo: invoice,
     billDate: dateLine ? parseDate(dateLine) : null,
-    billTotal: totalNums ? parseNumber(totalNums[totalNums.length - 1]) : null,
+    billTotal,
     confidence: lines.length ? Math.min(...lines.slice(0, 8).map((l) => l.conf)) : 0,
   };
 }
 
-/** Lines of a bill table, cell by cell, from the heading row down to the total. */
+/** Words of a line grouped into cells: a gap wider than a column gutter starts a new cell. */
+function cellsOf(words: OcrWord[], gutter = 0.012): OcrWord[][] {
+  const sorted = [...words].sort((a, b) => a.box.x - b.box.x);
+  const out: OcrWord[][] = [];
+  for (const w of sorted) {
+    const last = out.at(-1);
+    const prev = last?.at(-1);
+    if (prev && w.box.x - (prev.box.x + prev.box.w) < gutter) last!.push(w);
+    else out.push([w]);
+  }
+  return out;
+}
+
+const EXPIRY_TOKEN = /^(0?[1-9]|1[0-2])[-/.](\d{2}|\d{4})$|^\d{1,2}[/.-]\d{1,2}[/.-]\d{2,4}$|^[A-Za-z]{3}[-/]\d{2,4}$|^(0[1-9]|1[0-2])\d{2}$/;
+const BATCH_TOKEN = /^(?=.*\d)[A-Z0-9][A-Z0-9-]{2,11}$/i;
+const textOf = (ws: OcrWord[]) => ws.map((w) => w.text).join(" ").trim();
+
+/**
+ * Lines of a bill table. The heading row, when it can be read, says where the name, batch, expiry and
+ * bonus columns are; quantity, rate and amount are found by arithmetic (solveRow), so a row still parses
+ * when the heading is unreadable. Without a heading, a row counts when its numbers solve.
+ */
 export function parseBill(lines: OcrLine[]): ParsedIntake | null {
   const head = findHeading(lines);
-  if (!head) return null;
-  const columns = [...head.cols.entries()].sort((a, b) => a[1] - b[1]);
-  const firstNumeric = columns.find(([c]) => c !== "name")?.[1] ?? 1;
+  const debug = process.env.PCRM_OCR_DEBUG === "1";
+  const cols = head?.cols ?? [];
+  const bounds = cols.map((c, i) => ({ col: c.col, from: i ? (cols[i - 1].x + c.x) / 2 : -1, to: i < cols.length - 1 ? (c.x + cols[i + 1].x) / 2 : 2 }));
+  const nameCol = cols.find((c) => c.col === "name");
+  const firstData = cols.find((c) => c.col !== "name" && c.col !== "code" && (!nameCol || c.x > nameCol.x));
+  // names are left-aligned and run long: they end just before the first data column, not halfway to it
+  const headNameEnd = head && firstData ? firstData.x - 0.03 : null;
+  const colAt = (x: number) => bounds.find((b) => x >= b.from && x < b.to)?.col ?? null;
+  if (debug && head) console.log("HEADING", lines[head.index].text, JSON.stringify(cols.map((c) => `${c.col}@${c.x.toFixed(2)}`)), "nameEnd", headNameEnd?.toFixed(2));
+
   const parsed: ParsedLine[] = [];
-  for (const line of lines.slice(head.index + 1)) {
-    if (TOTAL_LINE.test(line.text) && !/[a-z]{4,}\s+\d+\s*mg/i.test(line.text)) break;
+  let pendingName: OcrWord[] = [];
+  let lastRowY = -1;
+  let rowHeight = 0.02;
+  const start = head ? head.index + 1 : 0;
+  for (const line of lines.slice(start)) {
+    if (END_LINE.test(line.text) && parsed.length) break;
+    if (SUBTOTAL_LINE.test(line.text) || (TOTAL_LINE.test(line.text) && !/[a-z]{3,}\s+\d+\s*(mg|ml)/i.test(line.text))) { pendingName = []; lastRowY = -1; continue; }
     const words = line.words.filter((w) => !isNoise(w));
-    const cells = new Map<Col, OcrWord[]>();
-    for (const w of words) {
-      const x = center(w.box);
-      // words left of the first numeric column belong to the name
-      let col: Col = "name";
-      if (x >= firstNumeric - 0.04 || head.cols.has("name") === false) {
-        col = columns.reduce((best, c) => (Math.abs(c[1] - x) < Math.abs(best[1] - x) ? c : best))[0];
-      }
-      if (!cells.has(col)) cells.set(col, []);
-      cells.get(col)!.push(w);
+    if (!words.length) continue;
+    const cells = cellsOf(words);
+
+    // the name: left of the first data column, or else the leading cells with words in them
+    let nameWords: OcrWord[] = [];
+    let rest: OcrWord[][] = [];
+    if (headNameEnd !== null) {
+      nameWords = words.filter((w) => center(w.box) < headNameEnd);
+      rest = cellsOf(words.filter((w) => center(w.box) >= headNameEnd));
+    } else {
+      let i = 0;
+      // serial numbers and codes before the name (often misread as a letter or two)
+      while (i < cells.length - 1 && (textOf(cells[i]).match(/[A-Za-z]/g) ?? []).length < 3) i++;
+      if (i < cells.length && /[A-Za-z]{3}/.test(textOf(cells[i]))) {
+        nameWords = cells.slice(0, i + 1).flat();
+        rest = cells.slice(i + 1);
+      } else rest = cells;
     }
-    const cell = (c: Col) => (cells.get(c) ?? []).map((w) => w.text).join(" ").trim() || null;
-    const name = cell("name");
-    const qty = parseNumber(cell("qty"));
-    const amount = parseNumber(cell("amount"));
-    if (!name || !/[A-Za-z]{2}/.test(name) || (qty === null && amount === null)) continue;
-    const numbers = reconcileAmounts({
-      quantity: qty !== null ? Math.round(qty) : null, rate: parseNumber(cell("rate")), amount,
-      discountPercent: parseNumber(cell("disc")), taxAmount: parseNumber(cell("tax")),
-    });
+    const dataWords = rest.flat();
+    const byCol = (c: Col) => dataWords.filter((w) => colAt(center(w.box)) === c);
+
+    // batch and expiry: by heading when there is one, else by their shape
+    let batch: string | null = null;
+    let expiryText: string | null = null;
+    const both = textOf(byCol("batchExpiry"));
+    const combined = (both || dataWords.map((w) => w.text).join(" ")).match(/\b([A-Z0-9][A-Z0-9-]{2,11})\s*\/\s*((?:0?[1-9]|1[0-2])-\d{2})\b/i);
+    if (combined) { batch = combined[1]; expiryText = combined[2]; }
+    if (!batch && byCol("batch").length) batch = textOf(byCol("batch")).replace(/\s+/g, "");
+    if (!expiryText && byCol("expiry").length) expiryText = textOf(byCol("expiry"));
+    if (!expiryText) expiryText = dataWords.map((w) => w.text.replace(/^[[(|]+|[\])|]+$/g, "")).find((t) => EXPIRY_TOKEN.test(t)) ?? null;
+    if (!batch && !cols.some((c) => c.col === "batch" || c.col === "batchExpiry")) {
+      // the first cell after the name, when it looks like a batch code and not a price
+      const first = rest[0] ? textOf(rest[0]).replace(/\s+/g, "") : "";
+      if (BATCH_TOKEN.test(first) && !/^\d+\.\d+$/.test(first) && first !== expiryText) batch = first;
+    }
+    batch = batch ? batch.replace(/[^A-Za-z0-9-]/g, "").toUpperCase() || null : null;
+
+    // numbers in reading order; a decimal point read as a space is joined back ("365 50")
+    const sorted = [...dataWords].sort((a, b) => a.box.x - b.box.x);
+    const nums: number[] = [];
+    for (let i = 0; i < sorted.length; i++) {
+      // in a number column a lone I, l or | is a 1 and an O is a 0
+      const t = sorted[i].text.replace(/^[[(]+|[\]),]+$/g, "").replace(/^[Il|!]$/, "1").replace(/^[Oo]$/, "0");
+      if (/%/.test(t) || (expiryText && t === expiryText) || (batch && t.toUpperCase() === batch)) continue;
+      const next = sorted[i + 1];
+      // "149 600" is 149.600 with the point missed (rates print with two or three decimals)
+      if (/^\d{2,6}$/.test(t) && next && /^\d{2,3}$/.test(next.text) && next.box.x - (sorted[i].box.x + sorted[i].box.w) < 0.01) {
+        nums.push(Number(`${t}.${next.text}`));
+        i++;
+      } else if (/^\d[\d,]*(\.\d+)?$/.test(t)) {
+        const v = parseNumber(t);
+        if (v !== null) nums.push(v);
+      }
+    }
+    const colNum = (c: Col) => parseNumber(textOf(byCol(c)).replace(/[|\][]/g, "").replace(/^(\d{1,6}) (\d{2})$/, "$1.$2") || null);
+    const discountPercent = colNum("disc");
+    const solved = solveRow(nums, { discountPercent, quantity: colNum("qty") });
+    const nameText = textOf(nameWords);
+    if (debug) console.log("ROW", JSON.stringify({ name: nameText, batch, expiryText, nums, solved }));
+
+    if (!solved) {
+      const colQty = colNum("qty");
+      const colAmount = colNum("amount") ?? colNum("gross");
+      const usable = head && (colQty !== null || colAmount !== null) && /[A-Za-z]{2}/.test(nameText);
+      if (!usable) {
+        if (/[A-Za-z]{3}/.test(nameText) && !nums.length) {
+          // a name that wraps onto the next line, or a name printed above its numbers (thermal slips)
+          const prev = parsed.at(-1);
+          if (prev && lastRowY >= 0 && line.box.y - lastRowY < rowHeight * 1.6 && !pendingName.length) {
+            prev.name = cleanItemName(`${prev.name} ${nameText}`).name;
+            prev.rawText += ` ${nameText}`;
+            lastRowY = line.box.y;
+          } else pendingName.push(...nameWords);
+        }
+        continue;
+      }
+    }
+
+    // a held-over name belongs to a row printed without one (thermal slips), not before a named row
+    const allName = /[A-Za-z]{3}/.test(textOf(nameWords)) ? nameWords : [...pendingName, ...nameWords];
+    pendingName = [];
+    const trimmed = [...allName];
+    const speck = (w: OcrWord) => w.text.replace(/[^A-Za-z0-9]/g, "").length <= 2 && !/\d/.test(w.text) && w.conf < 0.7;
+    while (trimmed.length > 1 && speck(trimmed[0])) trimmed.shift();
+    while (trimmed.length > 1 && speck(trimmed[trimmed.length - 1])) trimmed.pop();
+    const { name } = cleanItemName(textOf(trimmed));
+    if (!name || !/[A-Za-z]{2}/.test(name)) continue;
+
+    const bonus = colNum("bonus");
+    const settled = solved
+      ? { quantity: solved.quantity, rate: solved.rate, amount: colNum("amount") !== null && Math.abs(colNum("amount")! - solved.amount) <= solved.amount * 0.2 ? colNum("amount")! : solved.amount }
+      : settleLine({ quantity: colNum("qty"), tqty: colNum("tqty"), bonusQty: bonus, rate: colNum("rate"), gross: colNum("gross"), amount: colNum("amount"), discountPercent, taxAmount: null });
+    if (lastRowY >= 0) rowHeight = Math.min(0.05, Math.max(0.008, line.box.y - lastRowY));
+    lastRowY = line.box.y;
     parsed.push({
-      rawText: words.map((w) => w.text).join(" "), name: name.replace(/^\d+[.)]?\s+/, ""), batchNumber: cell("batch")?.replace(/\s+/g, "").toUpperCase() ?? null,
-      expiryDate: cell("expiry") ? parseExpiryCell(cell("expiry")!) : null, ...numbers,
-      bonusQty: parseNumber(cell("bonus")) !== null ? Math.round(parseNumber(cell("bonus"))!) : null,
-      confidence: Math.min(...words.map((w) => w.conf), 1), box: unionBox(words.map((w) => w.box)),
+      rawText: words.map((w) => w.text).join(" "), name, batchNumber: batch,
+      expiryDate: parseExpiryAny(expiryText),
+      quantity: settled.quantity, bonusQty: bonus !== null && bonus < 10_000 ? Math.round(bonus) : null, rate: settled.rate,
+      discountPercent, taxAmount: null, amount: settled.amount,
+      confidence: Math.min(...words.map((w) => w.conf), 1), box: unionBox([...allName, ...words].map((w) => w.box)),
     });
   }
-  return { header: header(lines), lines: parsed };
+  return parsed.length || head ? { header: header(lines), lines: parsed } : null;
 }
 
 // ---------------------------------------------------------------- stock lists
