@@ -6,6 +6,7 @@ export type DomainEvents = {
   SaleCompleted: { saleId: string; invoiceNo: string; medicineIds: string[]; customerId: string | null };
   SaleCancelled: { saleId: string; invoiceNo: string; medicineIds: string[] };
   SaleReturned: { saleId: string; returnId: string; number: string; medicineIds: string[] };
+  SupplierReturned: { returnId: string; number: string; supplierId: string; medicineIds: string[] };
   PurchasePosted: { purchaseId: string; number: string; supplierId: string; medicineIds: string[] };
   StockEntryPosted: { intakeId: string; number: string; reference: string; medicineIds: string[] };
   StockAdjusted: { batchId: string; medicineId: string; quantity: number; type: string };

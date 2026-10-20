@@ -10,6 +10,7 @@ import { purgeRateLimitHits } from "@/lib/rate-limit";
 import { dispatchOutbox, type OutboxHandlers } from "@/modules/platform";
 import { claimNextIntake, cleanupDiscardedPhotos, processIntake } from "@/modules/stockentry";
 import { scanExpiry, scanStock } from "@/modules/inventory";
+import { scanOverdueOrders, scanReorder } from "@/modules/procurement";
 
 const workerLog = logger.child({ svc: "worker" });
 const log = (msg: string, extra: Record<string, unknown> = {}) => workerLog.info(extra, msg);
@@ -59,6 +60,9 @@ const schedules: { name: string; cron: string; run: () => Promise<unknown> }[] =
   // stock intelligence (roadmap 6.2): expiry stages once a day, stock levels every half hour
   { name: "expiry.scan", cron: "0 6 * * *", run: () => forEachPharmacy("expiry.scan", (id) => scanExpiry(id)) },
   { name: "stock.scan", cron: "*/30 * * * *", run: () => forEachPharmacy("stock.scan", (id) => scanStock(id)) },
+  // orders (roadmap 7.5, 7.10): what needs reordering, and orders past their expected date
+  { name: "reorder.scan", cron: "15 6 * * *", run: () => forEachPharmacy("reorder.scan", (id) => scanReorder(id)) },
+  { name: "po.overdue", cron: "30 6 * * *", run: () => forEachPharmacy("po.overdue", (id) => scanOverdueOrders(id)) },
 ];
 
 const IDLE_MS = 2000;

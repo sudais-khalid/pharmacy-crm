@@ -7,7 +7,7 @@ import { platformDb } from "@/lib/platform-db";
 import { prisma } from "@/lib/prisma";
 import { tenantTransaction, runInTx } from "@/lib/db";
 import { createSale, cancelSale, createReturn, openSession, addCashMovement } from "@/modules/sales";
-import { createPurchase } from "@/modules/procurement";
+import { createOrder, createPurchase, createSupplierReturn, saveCatalogItem } from "@/modules/procurement";
 import { adjustStock } from "@/modules/inventory";
 import { receiveCustomerPayment } from "@/modules/customers";
 import { updateSettings, getSettings, setLogo, notify, markNotificationsRead } from "@/modules/platform";
@@ -46,6 +46,10 @@ async function populate(pharmacyId: string) {
     items: [{ medicineId: m.id, batchNumber: "P1", expiryDate: inDays(300), quantity: 5, purchasePrice: 30, salePrice: 50 }],
   });
   await adjustStock(ctx, { batchId: b.id, kind: "DAMAGE", quantity: 1, note: "broken" });
+  // supplier catalog, an order and a return to the supplier
+  await saveCatalogItem(ctx, s.id, { medicineId: m.id, supplierCode: "808" });
+  await createOrder(ctx, { supplierId: s.id, items: [{ medicineId: m.id, orderedQty: 5 }] });
+  await createSupplierReturn(ctx, { supplierId: s.id, reason: "fixture", items: [{ batchId: b.id, quantity: 1 }] });
   await createRole(ctx, { name: "Senior Cashier", permissions: [...SYSTEM_ROLES.CASHIER.permissions, "sales.cancel"], landingPath: "/pos" });
   const settings = await tenantTransaction(pharmacyId, (tx) => getSettings(tx, pharmacyId));
   await updateSettings(ctx, { expiryWarningDays: settings.expiryWarningDays + 1, currency: settings.currency });

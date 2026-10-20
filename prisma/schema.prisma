@@ -31,6 +31,15 @@ enum MovementType {
   SUPPLIER_RETURN
 }
 
+enum PurchaseOrderStatus {
+  DRAFT
+  SENT
+  PARTIALLY_RECEIVED
+  RECEIVED
+  CLOSED
+  CANCELLED
+}
+
 enum CashSessionStatus {
   OPEN
   CLOSED
@@ -76,6 +85,9 @@ model User {
   closedSessions  CashSession[]    @relation("CashSessionCloser")
   cashMovements   CashMovement[]
   saleReturns     SaleReturn[]
+  ordersCreated   PurchaseOrder[]  @relation("OrderCreatedBy")
+  ordersApproved  PurchaseOrder[]  @relation("OrderApprovedBy")
+  supplierReturns SupplierReturn[]
   customerLedgers CustomerLedger[]
   supplierLedgers SupplierLedger[]
 
@@ -140,13 +152,16 @@ model Medicine {
   createdAt            DateTime @default(now())
   updatedAt            DateTime @updatedAt
 
-  category      Category?           @relation(fields: [categoryId], references: [id])
-  batches       Batch[]
-  saleItems     SaleItem[]
-  purchaseItems PurchaseItem[]
-  intakeLines   StockIntakeLine[]
-  aliases       SupplierItemAlias[]
-  movements     StockMovement[]
+  category            Category?            @relation(fields: [categoryId], references: [id])
+  batches             Batch[]
+  saleItems           SaleItem[]
+  purchaseItems       PurchaseItem[]
+  intakeLines         StockIntakeLine[]
+  aliases             SupplierItemAlias[]
+  movements           StockMovement[]
+  supplierProducts    SupplierProduct[]
+  orderItems          PurchaseOrderItem[]
+  supplierReturnItems SupplierReturnItem[]
 
   pharmacy Pharmacy @relation(fields: [pharmacyId], references: [id])
 
@@ -176,11 +191,12 @@ model Batch {
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
-  medicine      Medicine         @relation(fields: [medicineId], references: [id])
-  saleItems     SaleItem[]
-  purchaseItems PurchaseItem[]
-  movements     StockMovement[]
-  returnItems   SaleReturnItem[]
+  medicine            Medicine             @relation(fields: [medicineId], references: [id])
+  saleItems           SaleItem[]
+  purchaseItems       PurchaseItem[]
+  movements           StockMovement[]
+  returnItems         SaleReturnItem[]
+  supplierReturnItems SupplierReturnItem[]
 
   pharmacy Pharmacy @relation(fields: [pharmacyId], references: [id])
 
@@ -282,6 +298,9 @@ model Supplier {
   purchases Purchase[]
   ledger    SupplierLedger[]
   intakes   StockIntake[]
+  catalog   SupplierProduct[]
+  orders    PurchaseOrder[]
+  returns   SupplierReturn[]
 
   pharmacy Pharmacy @relation(fields: [pharmacyId], references: [id])
 
@@ -303,9 +322,12 @@ model SupplierLedger {
   userId      String?
   createdAt   DateTime       @default(now())
 
-  supplier Supplier  @relation(fields: [supplierId], references: [id])
-  purchase Purchase? @relation(fields: [purchaseId], references: [id])
-  user     User?     @relation(fields: [userId], references: [id])
+  supplierReturnId String?
+
+  supplier       Supplier        @relation(fields: [supplierId], references: [id])
+  purchase       Purchase?       @relation(fields: [purchaseId], references: [id])
+  supplierReturn SupplierReturn? @relation(fields: [supplierReturnId], references: [id])
+  user           User?           @relation(fields: [userId], references: [id])
 
   pharmacy Pharmacy @relation(fields: [pharmacyId], references: [id])
 
@@ -326,6 +348,7 @@ model Purchase {
   taxTotal        Decimal        @default(0) @db.Decimal(12, 2)
   total           Decimal        @db.Decimal(12, 2)
   intakeId        String?        @unique // the stock entry it was posted from
+  purchaseOrderId String? // the order it fulfils
   paid            Decimal        @default(0) @db.Decimal(12, 2)
   paymentMethod   PaymentMethod?
   note            String?
@@ -338,10 +361,12 @@ model Purchase {
 
   pharmacy Pharmacy @relation(fields: [pharmacyId], references: [id])
 
-  intake StockIntake? @relation(fields: [intakeId], references: [id])
+  intake StockIntake?   @relation(fields: [intakeId], references: [id])
+  order  PurchaseOrder? @relation(fields: [purchaseOrderId], references: [id])
 
   @@unique([pharmacyId, number])
   @@unique([pharmacyId, supplierId, supplierInvoice]) // the same bill cannot be entered twice
+  @@index([purchaseOrderId])
   @@index([supplierId])
   @@index([pharmacyId, purchaseDate])
 }
@@ -436,6 +461,121 @@ model SaleItem {
   @@index([saleId])
   @@index([medicineId])
   @@index([pharmacyId])
+}
+
+// A supplier's medicine list as the pharmacy buys it (data model, section 4.1). lastPrice follows each posted purchase.
+model SupplierProduct {
+  id            String   @id @default(uuid())
+  pharmacyId    String   @default(dbgenerated("current_setting('app.pharmacy_id'::text, true)"))
+  supplierId    String
+  medicineId    String
+  supplierCode  String? // the supplier's own item code, printed on its bills
+  packSize      String?
+  lastPrice     Decimal? @db.Decimal(12, 2)
+  lastBonusRule String? // e.g. "10+1"
+  leadTimeDays  Int      @default(2)
+  preferred     Boolean  @default(false)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  supplier Supplier @relation(fields: [supplierId], references: [id])
+  medicine Medicine @relation(fields: [medicineId], references: [id])
+
+  pharmacy Pharmacy @relation(fields: [pharmacyId], references: [id])
+
+  @@unique([pharmacyId, supplierId, medicineId])
+  @@index([medicineId])
+}
+
+// An order to a supplier (data model, section 4.2). It never moves stock or the ledger; receiving does.
+model PurchaseOrder {
+  id             String              @id @default(uuid())
+  pharmacyId     String              @default(dbgenerated("current_setting('app.pharmacy_id'::text, true)"))
+  number         String // PO-YYYYMMDD-00001
+  supplierId     String
+  status         PurchaseOrderStatus @default(DRAFT)
+  source         String              @default("MANUAL") // MANUAL or SUGGESTED
+  expectedDate   DateTime?           @db.Date
+  note           String?
+  estimatedTotal Decimal             @default(0) @db.Decimal(12, 2)
+  createdById    String
+  approvedById   String?
+  sentAt         DateTime?
+  closedAt       DateTime?
+  closeReason    String?
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @updatedAt
+
+  supplier   Supplier            @relation(fields: [supplierId], references: [id])
+  createdBy  User                @relation("OrderCreatedBy", fields: [createdById], references: [id])
+  approvedBy User?               @relation("OrderApprovedBy", fields: [approvedById], references: [id])
+  items      PurchaseOrderItem[]
+  purchases  Purchase[]
+  intakes    StockIntake[]
+
+  pharmacy Pharmacy @relation(fields: [pharmacyId], references: [id])
+
+  @@unique([pharmacyId, number])
+  @@index([supplierId, status])
+  @@index([pharmacyId, status, createdAt])
+}
+
+model PurchaseOrderItem {
+  id            String   @id @default(uuid())
+  pharmacyId    String   @default(dbgenerated("current_setting('app.pharmacy_id'::text, true)"))
+  orderId       String
+  medicineId    String
+  orderedQty    Int
+  receivedQty   Int      @default(0) // paid units received; bonus units do not count against the order
+  expectedPrice Decimal? @db.Decimal(12, 2)
+
+  order    PurchaseOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  medicine Medicine      @relation(fields: [medicineId], references: [id])
+
+  pharmacy Pharmacy @relation(fields: [pharmacyId], references: [id])
+
+  @@unique([orderId, medicineId])
+}
+
+// Stock sent back to a supplier (data model, section 4.4): out of the batch, credited to the supplier.
+model SupplierReturn {
+  id         String   @id @default(uuid())
+  pharmacyId String   @default(dbgenerated("current_setting('app.pharmacy_id'::text, true)"))
+  number     String // RTS-YYYYMMDD-00001
+  supplierId String
+  userId     String
+  total      Decimal  @db.Decimal(12, 2)
+  reason     String
+  createdAt  DateTime @default(now())
+
+  supplier Supplier             @relation(fields: [supplierId], references: [id])
+  user     User                 @relation(fields: [userId], references: [id])
+  items    SupplierReturnItem[]
+  ledger   SupplierLedger[]
+
+  pharmacy Pharmacy @relation(fields: [pharmacyId], references: [id])
+
+  @@unique([pharmacyId, number])
+  @@index([supplierId])
+}
+
+model SupplierReturnItem {
+  id         String  @id @default(uuid())
+  pharmacyId String  @default(dbgenerated("current_setting('app.pharmacy_id'::text, true)"))
+  returnId   String
+  batchId    String
+  medicineId String
+  quantity   Int
+  unitCost   Decimal @db.Decimal(12, 4)
+  lineTotal  Decimal @db.Decimal(12, 2)
+
+  supplierReturn SupplierReturn @relation(fields: [returnId], references: [id], onDelete: Cascade)
+  batch          Batch          @relation(fields: [batchId], references: [id])
+  medicine       Medicine       @relation(fields: [medicineId], references: [id])
+
+  pharmacy Pharmacy @relation(fields: [pharmacyId], references: [id])
+
+  @@index([returnId])
 }
 
 // A cashier's drawer from opening float to counted cash (data model, section 3.2). One open session per user.
@@ -672,39 +812,44 @@ model Pharmacy {
   createdAt          DateTime       @default(now())
   updatedAt          DateTime       @updatedAt
 
-  settings        PharmacySettings?
-  logo            StoredFile?         @relation("PharmacyLogo", fields: [logoFileId], references: [id], onDelete: SetNull)
-  logoIcon        StoredFile?         @relation("PharmacyLogoIcon", fields: [logoIconFileId], references: [id], onDelete: SetNull)
-  files           StoredFile[]        @relation("PharmacyFiles")
-  notifications   Notification[]
-  intakes         StockIntake[]
-  intakePages     StockIntakePage[]
-  intakeLines     StockIntakeLine[]
-  itemAliases     SupplierItemAlias[]
-  counters        TenantCounter[]
-  featureFlags    FeatureFlag[]
-  supportSessions SupportSession[]
-  authTokens      AuthToken[]
-  users           User[]
-  roles           Role[]
-  categories      Category[]
-  medicines       Medicine[]
-  batches         Batch[]
-  stockMovements  StockMovement[]
-  customers       Customer[]
-  customerLedgers CustomerLedger[]
-  suppliers       Supplier[]
-  supplierLedgers SupplierLedger[]
-  purchases       Purchase[]
-  purchaseItems   PurchaseItem[]
-  sales           Sale[]
-  saleItems       SaleItem[]
-  cashSessions    CashSession[]
-  cashMovements   CashMovement[]
-  saleReturns     SaleReturn[]
-  saleReturnItems SaleReturnItem[]
-  auditLogs       AuditLog[]
-  outboxEvents    OutboxEvent[]
+  settings            PharmacySettings?
+  logo                StoredFile?          @relation("PharmacyLogo", fields: [logoFileId], references: [id], onDelete: SetNull)
+  logoIcon            StoredFile?          @relation("PharmacyLogoIcon", fields: [logoIconFileId], references: [id], onDelete: SetNull)
+  files               StoredFile[]         @relation("PharmacyFiles")
+  notifications       Notification[]
+  intakes             StockIntake[]
+  intakePages         StockIntakePage[]
+  intakeLines         StockIntakeLine[]
+  itemAliases         SupplierItemAlias[]
+  counters            TenantCounter[]
+  featureFlags        FeatureFlag[]
+  supportSessions     SupportSession[]
+  authTokens          AuthToken[]
+  users               User[]
+  roles               Role[]
+  categories          Category[]
+  medicines           Medicine[]
+  batches             Batch[]
+  stockMovements      StockMovement[]
+  customers           Customer[]
+  customerLedgers     CustomerLedger[]
+  suppliers           Supplier[]
+  supplierLedgers     SupplierLedger[]
+  purchases           Purchase[]
+  purchaseItems       PurchaseItem[]
+  sales               Sale[]
+  saleItems           SaleItem[]
+  cashSessions        CashSession[]
+  cashMovements       CashMovement[]
+  saleReturns         SaleReturn[]
+  saleReturnItems     SaleReturnItem[]
+  supplierProducts    SupplierProduct[]
+  purchaseOrders      PurchaseOrder[]
+  purchaseOrderItems  PurchaseOrderItem[]
+  supplierReturns     SupplierReturn[]
+  supplierReturnItems SupplierReturnItem[]
+  auditLogs           AuditLog[]
+  outboxEvents        OutboxEvent[]
 
   @@index([status])
 }
@@ -723,6 +868,7 @@ model PharmacySettings {
   cashDiffThreshold  Decimal  @default(100) @db.Decimal(12, 2) // a closing difference above this needs a note
   expiryWarningDays  Int      @default(90)
   expiryAlertDays    Int      @default(30)
+  reorderCoverDays   Int      @default(7) // reorder suggestions keep this many days of sales beyond the lead time
   updatedAt          DateTime @updatedAt
 
   pharmacy Pharmacy @relation(fields: [pharmacyId], references: [id], onDelete: Cascade)
@@ -875,6 +1021,7 @@ model StockIntake {
   paid            Decimal      @default(0) @db.Decimal(12, 2)
   paymentMethod   String?
   note            String?
+  purchaseOrderId String? // received against this order
   provider        String? // OCR adapter used
   rawResult       Json? // normalised provider output, kept for re-parsing and accuracy checks
   header          Json? // header fields read by OCR, with confidence
@@ -891,6 +1038,7 @@ model StockIntake {
   pages    StockIntakePage[]
   lines    StockIntakeLine[]
   purchase Purchase?
+  order    PurchaseOrder?    @relation(fields: [purchaseOrderId], references: [id])
 
   @@unique([pharmacyId, number])
   @@index([pharmacyId, status, createdAt])

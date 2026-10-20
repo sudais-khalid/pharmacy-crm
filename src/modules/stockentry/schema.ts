@@ -30,6 +30,7 @@ export type IntakeLineInput = z.infer<typeof intakeLineSchema>;
 
 export const intakeDraftSchema = z.object({
   supplierId: z.string().uuid().optional().nullable().transform((v) => v ?? null),
+  purchaseOrderId: z.string().uuid().optional().nullable().transform((v) => v ?? null),
   supplierInvoice: optText(60),
   billDate: dateStr.optional().nullable().transform((v) => v ?? null),
   billTotal: optNum(z.number().min(0).max(100_000_000)),

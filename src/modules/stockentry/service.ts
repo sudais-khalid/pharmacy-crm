@@ -6,8 +6,8 @@ import { D, ZERO } from "@/lib/money";
 import type { Tx } from "@/lib/prisma";
 import type { ServiceContext } from "@/modules/identity";
 import { audit, emit, nextNumber } from "@/modules/platform";
-import { createPurchase, purchaseLine } from "@/modules/procurement";
-import { learnAlias, matchMedicine } from "./matching";
+import { createPurchase, getOrder, purchaseLine } from "@/modules/procurement";
+import { learnAlias, learnSupplierCode, matchMedicine } from "./matching";
 import type { IntakeDraftInput, IntakeLineInput } from "./schema";
 
 /**
@@ -21,6 +21,7 @@ const date = (d: Date | null) => (d ? d.toISOString().slice(0, 10) : null);
 
 export const intakeInclude = {
   supplier: { select: { id: true, name: true } },
+  order: { select: { id: true, number: true, status: true, items: { select: { medicineId: true, orderedQty: true, receivedQty: true } } } },
   pages: { orderBy: { pageNo: "asc" as const }, select: { pageNo: true, fileId: true } },
   lines: { orderBy: { lineNo: "asc" as const }, include: { medicine: { select: { id: true, name: true, unit: true, salePrice: true, purchasePrice: true } } } },
   purchase: { select: { id: true, number: true } },
@@ -71,6 +72,12 @@ export async function saveDraft(ctx: ServiceContext, id: string, input: IntakeDr
       const s = await tx.supplier.findUnique({ where: { id: input.supplierId }, select: { id: true } });
       if (!s) throw new AppError(404, "Supplier not found.");
     }
+    if (input.purchaseOrderId) {
+      const o = await tx.purchaseOrder.findUnique({ where: { id: input.purchaseOrderId }, select: { supplierId: true, status: true, number: true } });
+      if (!o) throw new AppError(404, "Order not found.");
+      if (intake.kind !== "PURCHASE_BILL" || (input.supplierId && o.supplierId !== input.supplierId)) throw new AppError(400, `Order ${o.number} is for another supplier.`);
+      if (!["SENT", "PARTIALLY_RECEIVED"].includes(o.status)) throw new AppError(409, `Order ${o.number} cannot receive stock now.`);
+    }
     await tx.stockIntakeLine.deleteMany({ where: { intakeId: id } });
     if (input.lines.length) {
       await tx.stockIntakeLine.createMany({
@@ -86,6 +93,7 @@ export async function saveDraft(ctx: ServiceContext, id: string, input: IntakeDr
       where: { id },
       data: {
         supplierId: intake.kind === "PURCHASE_BILL" ? input.supplierId : null, supplierInvoice: input.supplierInvoice,
+        purchaseOrderId: intake.kind === "PURCHASE_BILL" ? input.purchaseOrderId : null,
         billDate: input.billDate ? dateOnly(input.billDate) : null, billTotal: input.billTotal, billDiscount: input.billDiscount,
         paid: input.paid, paymentMethod: input.paymentMethod, note: input.note, updatedById: ctx.actor.id,
       },
@@ -160,7 +168,7 @@ export async function checkIntake(tx: Tx, intake: FullIntake) {
 export async function autoMatch(tx: Tx, intakeId: string, supplierId: string | null) {
   const lines = await tx.stockIntakeLine.findMany({ where: { intakeId, medicineId: null, ignored: false }, select: { id: true, name: true, rawText: true } });
   for (const l of lines) {
-    const m = await matchMedicine(tx, l.name ?? l.rawText ?? "", supplierId);
+    const m = await matchMedicine(tx, l.name ?? l.rawText ?? "", supplierId, l.rawText);
     if (m) await tx.stockIntakeLine.update({ where: { id: l.id }, data: { medicineId: m.medicineId, matchMethod: m.method } });
   }
 }
@@ -184,7 +192,7 @@ export async function postIntake(ctx: ServiceContext, id: string) {
       const purchase = await createPurchase(svc, {
         supplierId: intake.supplierId!, supplierInvoice: intake.supplierInvoice, purchaseDate: date(intake.billDate) ?? todayStr(),
         discount: Number(intake.billDiscount), paid: Number(intake.paid), paymentMethod: (intake.paymentMethod as "CASH" | "CARD" | null) ?? "CASH",
-        note: intake.note ?? `Stock entry ${intake.number}`, intakeId: intake.id,
+        note: intake.note ?? `Stock entry ${intake.number}`, intakeId: intake.id, purchaseOrderId: intake.purchaseOrderId,
         items: lines.map((l) => ({
           medicineId: l.medicineId!, batchNumber: l.batchNumber!, expiryDate: date(l.expiryDate)!, quantity: l.quantity!, bonusQty: l.bonusQty ?? 0,
           purchasePrice: Number(l.rate), discountPercent: Number(l.discountPercent ?? 0), taxAmount: Number(l.taxAmount ?? 0),
@@ -196,6 +204,8 @@ export async function postIntake(ctx: ServiceContext, id: string) {
       for (const l of lines) await openingStock(tx, ctx.actor.id, intake.number, l);
     }
     for (const l of lines) if (l.medicineId && (l.name || l.rawText) && l.matchMethod !== "BARCODE") await learnAlias(tx, ctx.pharmacyId, l.name ?? l.rawText!, intake.supplierId, l.medicineId);
+    // the codes the supplier printed join its catalog, so the next bill matches by code
+    if (intake.kind === "PURCHASE_BILL" && intake.supplierId) for (const l of lines) if (l.medicineId && l.rawText) await learnSupplierCode(tx, intake.supplierId, l.medicineId, l.rawText);
     await tx.stockIntake.update({ where: { id }, data: { status: "POSTED", postedAt: new Date(), updatedById: ctx.actor.id } });
     await audit(tx, ctx, { action: "stockEntry.post", entity: "StockIntake", entityId: id, after: { number: intake.number, kind: intake.kind, reference, lines: lines.length } });
     await emit(tx, "StockEntryPosted", { intakeId: id, number: intake.number, reference, medicineIds: [...new Set(lines.map((l) => l.medicineId!))] });
@@ -215,6 +225,29 @@ async function openingStock(tx: Tx, userId: string, reference: string, l: FullIn
     ? await tx.batch.update({ where: { id: batch.id }, data: { quantity: { increment: units }, salePrice: sale } })
     : await tx.batch.create({ data: { medicineId: l.medicineId!, batchNumber: l.batchNumber!, expiryDate: dateOnly(expiry), quantity: units, purchasePrice: cost, salePrice: sale } });
   await tx.stockMovement.create({ data: { medicineId: l.medicineId!, batchId: batch.id, type: "OPENING", quantity: units, balanceAfter: batch.quantity, reference, note: "Opening stock", userId } });
+}
+
+/**
+ * Receiving against an order (roadmap 7.8): a supplier-bill draft for the order's supplier, with a line
+ * per medicine still pending at the expected price. The open draft is reused if there is one.
+ */
+export async function intakeFromOrder(ctx: ServiceContext, orderId: string) {
+  const order = await getOrder(ctx, orderId);
+  if (!["SENT", "PARTIALLY_RECEIVED"].includes(order.status)) throw new AppError(409, order.status === "DRAFT" ? "Send the order before receiving against it." : `Order ${order.number} is ${order.status.toLowerCase().replace("_", " ")}.`);
+  return runInTx(ctx, async (tx) => {
+    const open = await tx.stockIntake.findFirst({ where: { purchaseOrderId: orderId, status: { in: [...EDITABLE] } }, select: { id: true, number: true } });
+    if (open) return { id: open.id, number: open.number, reused: true };
+    const intake = await createIntake({ ...ctx, tx }, { kind: "PURCHASE_BILL", source: "MANUAL" });
+    const pending = order.items.filter((i) => i.pendingQty > 0);
+    await tx.stockIntake.update({ where: { id: intake.id }, data: { supplierId: order.supplierId, purchaseOrderId: orderId, note: `Receiving order ${order.number}` } });
+    await tx.stockIntakeLine.createMany({
+      data: pending.map((i, n) => ({
+        intakeId: intake.id, lineNo: n + 1, name: i.medicine.name, medicineId: i.medicineId, quantity: i.pendingQty,
+        rate: i.expectedPrice, matchMethod: "MANUAL",
+      })),
+    });
+    return { id: intake.id, number: intake.number, reused: false };
+  });
 }
 
 export async function discardIntake(ctx: ServiceContext, id: string) {

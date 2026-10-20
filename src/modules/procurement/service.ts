@@ -6,6 +6,8 @@ import { todayStr, dateOnly } from "@/lib/dates";
 import { D, ZERO } from "@/lib/money";
 import type { PaymentInput } from "@/lib/validation";
 import { supplierBalance } from "./queries";
+import { refreshCatalogFromPurchase } from "./catalog";
+import { applyReceipt } from "./orders";
 
 export type PurchaseInput = {
   supplierId: string;
@@ -22,6 +24,8 @@ export type PurchaseInput = {
   note?: string | null;
   /** The stock entry this purchase is posted from. */
   intakeId?: string | null;
+  /** The order it receives against: its received quantities and status move on. */
+  purchaseOrderId?: string | null;
 };
 
 /**
@@ -67,6 +71,7 @@ export async function createPurchase(ctx: ServiceContext, input: PurchaseInput) 
       data: {
         number, supplierInvoice: input.supplierInvoice ?? null, supplierId: supplier.id, userId, purchaseDate: dateOnly(input.purchaseDate),
         subtotal, discount, taxTotal, total, paid, paymentMethod: paid.gt(0) ? input.paymentMethod : null, note: input.note ?? null, intakeId: input.intakeId ?? null,
+        purchaseOrderId: input.purchaseOrderId ?? null,
       },
     });
 
@@ -100,6 +105,10 @@ export async function createPurchase(ctx: ServiceContext, input: PurchaseInput) 
       await tx.medicine.update({ where: { id: l.medicineId }, data: { purchasePrice: l.purchasePrice, salePrice: l.salePrice } });
     }
 
+    // the supplier's catalog keeps the last price and bonus; an order counts what arrived
+    await refreshCatalogFromPurchase(tx, ctx.pharmacyId, supplier.id, lines.map((l) => ({ medicineId: l.medicineId, purchasePrice: l.purchasePrice, quantity: l.quantity, bonus: l.bonus })));
+    const orderStatus = input.purchaseOrderId ? await applyReceipt(tx, input.purchaseOrderId, supplier.id, lines.map((l) => ({ medicineId: l.medicineId, quantity: l.quantity }))) : null;
+
     if (total.gt(0)) {
       await tx.supplierLedger.create({ data: { supplierId: supplier.id, kind: "INVOICE", debit: total, description: `Purchase ${number}${input.supplierInvoice ? ` (supplier inv. ${input.supplierInvoice})` : ""}`, purchaseId: purchase.id, userId } });
     }
@@ -108,7 +117,7 @@ export async function createPurchase(ctx: ServiceContext, input: PurchaseInput) 
     }
     await audit(tx, ctx, {
       action: "purchase.create", entity: "Purchase", entityId: purchase.id,
-      after: { number, supplierId: supplier.id, supplierInvoice: input.supplierInvoice ?? null, total, taxTotal, paid, lines: lines.length, intakeId: input.intakeId ?? null },
+      after: { number, supplierId: supplier.id, supplierInvoice: input.supplierInvoice ?? null, total, taxTotal, paid, lines: lines.length, intakeId: input.intakeId ?? null, purchaseOrderId: input.purchaseOrderId ?? null, orderStatus },
     });
     await emit(tx, "PurchasePosted", { purchaseId: purchase.id, number, supplierId: supplier.id, medicineIds: [...new Set(lines.map((l) => l.medicineId))] });
     return purchase;

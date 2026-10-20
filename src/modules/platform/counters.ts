@@ -1,6 +1,6 @@
 import type { Tx } from "@/lib/prisma";
 
-export type CounterKey = "INVOICE" | "PURCHASE" | "STOCK_ENTRY" | "RETURN";
+export type CounterKey = "INVOICE" | "PURCHASE" | "STOCK_ENTRY" | "RETURN" | "PURCHASE_ORDER" | "SUPPLIER_RETURN";
 
 /**
  * Next number in a per-pharmacy series, inside the caller's tenant transaction.
