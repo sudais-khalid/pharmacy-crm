@@ -4,7 +4,9 @@
  *   npm run developer:password
  *
  * It checks the current password (PLATFORM_OWNER_PASSWORD in .env) against desktop/build/owner.json, then
- * uses PCRM_NEW_OWNER_PASSWORD when set and strong enough, or makes a strong one. It writes:
+ * uses PCRM_NEW_OWNER_PASSWORD when set and strong enough, or makes a strong one. To keep a password typed
+ * into PLATFORM_OWNER_PASSWORD by hand, put the previous one in PCRM_CURRENT_OWNER_PASSWORD for one run;
+ * that line is removed from .env afterwards. It writes:
  *   .env                                        PLATFORM_OWNER_PASSWORD becomes the new password
  *   desktop/build/owner.json                    the new hash, when it was set, and the shared authenticator
  *                                               sealed again with the new password (nothing to scan)
@@ -40,13 +42,19 @@ async function main() {
   process.loadEnvFile(envFile);
   if (!existsSync(ownerFile)) throw new Error("No desktop/build/owner.json yet: run `npm run owner` in desktop/ first.");
   const owner = JSON.parse(readFileSync(ownerFile, "utf8"));
-  const current = process.env.PLATFORM_OWNER_PASSWORD ?? "";
-  if (!current || !bcrypt.compareSync(current, owner.passwordHash)) throw new Error("PLATFORM_OWNER_PASSWORD in .env is not the current Developer password in owner.json.");
+  // the previous password may be given separately when the new one was already typed into .env
+  const previousGiven = process.env.PCRM_CURRENT_OWNER_PASSWORD;
+  const current = previousGiven ?? process.env.PLATFORM_OWNER_PASSWORD ?? "";
+  if (!current || !bcrypt.compareSync(current, owner.passwordHash)) {
+    throw new Error(previousGiven
+      ? "PCRM_CURRENT_OWNER_PASSWORD is not the current Developer password in owner.json."
+      : "PLATFORM_OWNER_PASSWORD in .env is not the current Developer password in owner.json. If you typed a new one there, add the previous one as PCRM_CURRENT_OWNER_PASSWORD and run this again.");
+  }
 
-  const chosen = process.env.PCRM_NEW_OWNER_PASSWORD;
+  const chosen = process.env.PCRM_NEW_OWNER_PASSWORD ?? (previousGiven ? process.env.PLATFORM_OWNER_PASSWORD : undefined);
   const next = chosen || strongPassword();
   const problem = developerPasswordProblem(next, owner.email);
-  if (problem) throw new Error(`PCRM_NEW_OWNER_PASSWORD is too weak: ${problem}. Leave it unset to get a strong one made for you.`);
+  if (problem) throw new Error(`The new Developer password is too weak: ${problem}. Nothing was changed.`);
   if (next === current) throw new Error("The new password is the same as the current one.");
 
   let totp: string | undefined;
@@ -62,7 +70,8 @@ async function main() {
   writeFileSync(path.join(build, "PCRM_OWNER_PASSWORD_HASH.txt"), `${passwordHash}|${passwordSetAt}\n`);
   if (totp) writeFileSync(path.join(build, "PCRM_OWNER_TOTP.txt"), totp + "\n");
   // the new password goes where the old one was; quotes stop the shell or dotenv reading # or $ in it
-  const lines = readFileSync(envFile, "utf8").split(/\r?\n/);
+  // and the one-run helper lines leave the file
+  const lines = readFileSync(envFile, "utf8").split(/\r?\n/).filter((l) => !/^\s*PCRM_(CURRENT|NEW)_OWNER_PASSWORD\s*=/.test(l));
   const at = lines.findIndex((l) => /^\s*PLATFORM_OWNER_PASSWORD\s*=/.test(l));
   const line = `PLATFORM_OWNER_PASSWORD="${next}"`;
   if (at >= 0) lines[at] = line;
