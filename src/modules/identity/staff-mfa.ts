@@ -3,7 +3,7 @@ import { platformDb } from "@/lib/platform-db";
 import { runInTx } from "@/lib/db";
 import { AppError } from "@/lib/errors";
 import { isLimited, recordHit, clearBucket } from "@/lib/rate-limit";
-import { open, seal } from "@/lib/secret-box";
+import { open, openOrNull, seal } from "@/lib/secret-box";
 import { newTotpSecret, otpauthUri, verifyTotp } from "@/lib/totp";
 import { audit } from "@/modules/platform";
 import type { ServiceContext } from "./context";
@@ -37,7 +37,8 @@ export function pendingSecondFactor(user: { totpEnabledAt: Date | null }, requir
 export async function startStaffEnrolment(userId: string) {
   const user = await account(userId);
   if (user.totpEnabledAt) throw new AppError(409, "Two-factor sign-in is already set up.");
-  let secret = user.totpSecret ? open(user.totpSecret) : null;
+  // an unreadable leftover (restored from another computer) is simply replaced
+  let secret = user.totpSecret ? openOrNull(user.totpSecret) : null;
   if (!secret) {
     secret = newTotpSecret();
     await platformDb.user.update({ where: { id: userId }, data: { totpSecret: seal(secret) } });
@@ -67,7 +68,9 @@ export async function verifyStaffSecondFactor(userId: string, input: { code?: st
   const user = await account(userId);
   if (!user.totpEnabledAt || !user.totpSecret) throw new AppError(409, "Two-factor sign-in is not set up.");
   if (input.code) {
-    const step = verifyTotp(open(user.totpSecret), input.code, { notAfterStep: user.totpLastStep === null ? null : Number(user.totpLastStep) });
+    const secret = openOrNull(user.totpSecret);
+    if (secret === null) throw new AppError(409, "Two-factor sign-in was set up on another computer and cannot be read here. Sign in with one of your recovery codes, or ask your Pharmacy Admin to reset your two-factor sign-in (Users), then set it up again.");
+    const step = verifyTotp(secret, input.code, { notAfterStep: user.totpLastStep === null ? null : Number(user.totpLastStep) });
     if (step !== null) {
       await platformDb.user.update({ where: { id: userId }, data: { totpLastStep: BigInt(step), lastLoginAt: new Date() } });
       await clearBucket(bucket);

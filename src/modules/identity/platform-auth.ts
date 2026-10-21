@@ -3,7 +3,7 @@ import { randomBytes } from "node:crypto";
 import QRCode from "qrcode";
 import { platformDb } from "@/lib/platform-db";
 import { AppError } from "@/lib/errors";
-import { seal, open } from "@/lib/secret-box";
+import { seal, open, openOrNull } from "@/lib/secret-box";
 import { newTotpSecret, otpauthUri, verifyTotp } from "@/lib/totp";
 import { isLimited, recordHit, clearBucket } from "@/lib/rate-limit";
 import { audit } from "@/modules/platform";
@@ -65,11 +65,25 @@ export async function platformPasswordLogin(email: string, password: string, met
   return { id: dev.id, sessionVersion: dev.sessionVersion, totpEnabled: !!dev.totpEnabledAt };
 }
 
+/**
+ * The Developer's authenticator secret, or a clear way out when it cannot be read: the data was restored
+ * from another computer with a backup that did not carry that computer's two-factor key.
+ */
+function readableSecret(sealed: string) {
+  const secret = openOrNull(sealed);
+  if (secret !== null) return secret;
+  const recover = process.env.DEPLOY_MODE === "desktop"
+    ? 'open "Recover Pharmacy CRM Developer account" from the Windows Start menu (it asks for a Windows administrator)'
+    : "run the recover-owner command on the server (see the runbook)";
+  throw new AppError(409, `Two-factor sign-in was set up on another computer and cannot be read here. Sign in with one of your recovery codes, or ${recover} to set a new password and set up two-factor sign-in again.`);
+}
+
 /** Starts (or resumes) TOTP enrolment: returns the secret as text, link and QR code. */
 export async function startTotpEnrolment(devId: string) {
   const dev = await platformDb.platformUser.findUniqueOrThrow({ where: { id: devId } });
   if (dev.totpEnabledAt) throw new AppError(409, "Two-factor sign-in is already set up.");
-  let secret = dev.totpSecret ? open(dev.totpSecret) : null;
+  // an unreadable leftover (restored from another computer) is simply replaced
+  let secret = dev.totpSecret ? openOrNull(dev.totpSecret) : null;
   if (!secret) {
     secret = newTotpSecret();
     await platformDb.platformUser.update({ where: { id: devId }, data: { totpSecret: seal(secret) } });
@@ -105,7 +119,7 @@ export async function verifySecondFactor(devId: string, input: { code?: string; 
   if (!dev.totpEnabledAt || !dev.totpSecret) throw new AppError(409, "Two-factor sign-in is not set up yet.");
 
   if (input.code) {
-    const step = verifyTotp(open(dev.totpSecret), input.code, { notAfterStep: dev.totpLastStep === null ? null : Number(dev.totpLastStep) });
+    const step = verifyTotp(readableSecret(dev.totpSecret), input.code, { notAfterStep: dev.totpLastStep === null ? null : Number(dev.totpLastStep) });
     if (step !== null) {
       await platformDb.platformUser.update({ where: { id: devId }, data: { totpLastStep: BigInt(step), lastLoginAt: new Date() } });
       await clearBucket(bucket);
@@ -153,7 +167,7 @@ export async function reauthenticateDeveloper(devId: string, code: string | unde
   if (await isLimited(bucket, 6, WINDOW_MS)) throw new AppError(429, "Too many attempts. Try again in a few minutes.");
   const dev = await platformDb.platformUser.findUniqueOrThrow({ where: { id: devId } });
   if (!dev.totpSecret || !dev.totpEnabledAt) throw new AppError(409, "Two-factor sign-in is not set up.");
-  const step = verifyTotp(open(dev.totpSecret), code, { notAfterStep: dev.totpLastStep === null ? null : Number(dev.totpLastStep) });
+  const step = verifyTotp(readableSecret(dev.totpSecret), code, { notAfterStep: dev.totpLastStep === null ? null : Number(dev.totpLastStep) });
   if (step === null) {
     await recordHit(bucket);
     throw new AppError(401, "That code is not valid.", { fields: { code: "Not valid" } });

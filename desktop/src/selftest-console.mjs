@@ -50,6 +50,8 @@ export async function consoleScenario({ win, baseUrl, supervisor }) {
   const enrolment = await request("GET", "/api/platform/auth/enrol");
   if (!enrolment.body?.secret) return { ...r, loginBody: login.body, enrolment };
   const secret = base32Decode(enrolment.body.secret);
+  // a throwaway test folder only: lets a later run sign in with the same authenticator on a "new computer"
+  r.totpSecret = enrolment.body.secret;
   const step = Math.floor(Date.now() / 30_000);
   r.enrol = (await request("POST", "/api/platform/auth/enrol", { code: totp(secret, step) })).status;
 
@@ -154,4 +156,20 @@ async function shortcutScenario({ win, baseUrl, page, request }) {
   s.altV = at();
   await shot("shortcuts-inventory.png");
   return s;
+}
+
+/**
+ * Signs the Developer in with a code from the authenticator set up earlier (base32 secret), through the
+ * same two steps as the console page: password, then code. Returns the status of the code step.
+ */
+export async function developerSignIn(baseUrl, secretText) {
+  const login = await fetch(`${baseUrl}/api/platform/auth/login`, {
+    method: "POST", headers: { "content-type": "application/json" },
+    body: JSON.stringify({ email: process.env.PLATFORM_OWNER_EMAIL, password: process.env.PLATFORM_OWNER_PASSWORD }),
+  });
+  const cookie = login.headers.getSetCookie().map((c) => c.split(";")[0]).join("; ");
+  // one step ahead: the codes of the earlier run are used up, and the server takes one step of drift
+  const code = totp(base32Decode(secretText), Math.floor(Date.now() / 30_000) + 1);
+  const verify = await fetch(`${baseUrl}/api/platform/auth/verify`, { method: "POST", headers: { "content-type": "application/json", cookie }, body: JSON.stringify({ code }) });
+  return { login: login.status, verify: verify.status, error: verify.ok ? undefined : (await verify.json().catch(() => ({}))).error };
 }

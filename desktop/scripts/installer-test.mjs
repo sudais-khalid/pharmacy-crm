@@ -16,6 +16,7 @@ const installer = path.join(desktop, "dist", setup);
 const root = mkdtempSync(path.join(tmpdir(), "pcrm-install-"));
 const dataDir = path.join(root, "PharmacyCRM");
 const instDir = path.join(process.env.LOCALAPPDATA, "Programs", "PharmacyCRM");
+const recoverLink = path.join(process.env.APPDATA, "Microsoft", "Windows", "Start Menu", "Programs", "Recover Pharmacy CRM Developer account.lnk");
 const exe = path.join(instDir, "PharmacyCRM.exe");
 const uninstaller = path.join(instDir, "Uninstall PharmacyCRM.exe");
 const env = { ...process.env, PCRM_DATA_DIR: dataDir, PLATFORM_OWNER_EMAIL: "owner@selftest.example", PLATFORM_OWNER_PASSWORD: "Selftest-Owner-2026" };
@@ -65,11 +66,13 @@ function runOnce(extra) {
 
 try {
   check("the installer runs silently", install() === 0 && existsSync(exe), instDir);
+  check("the Start menu has the Developer account recovery", existsSync(recoverLink), recoverLink);
   const first = await runApp();
   check("the installed app starts and makes its database", first.code === 0 && first.report?.ok && first.report.events.includes("database-created"), first.out.slice(-1500));
 
   check("uninstalling keeps the pharmacy data", uninstall() === 0 && existsSync(path.join(dataDir, "data", "PG_VERSION")) && existsSync(path.join(dataDir, "keys.json")));
   check("the program is removed", !existsSync(exe));
+  check("the recovery shortcut is removed with it", !existsSync(recoverLink));
   install();
   const second = await runApp();
   check("after reinstalling every record is still there", second.code === 0 && second.report?.auditMarkers === first.report.auditMarkers + 1 && !second.report.events.includes("database-created"), second.out.slice(-1500));

@@ -181,6 +181,15 @@ try {
   // 8. the Developer console's desktop controls, through the app window
   const eighth = await runApp({ ...withMigrations(), PCRM_SELFTEST_CONSOLE: "1" });
   const c = eighth.report?.console ?? {};
+
+  // 8b. moving to a new computer after two-factor sign-in was set up: only the backups and the recovery key.
+  // The Developer's authenticator must keep working there (the backup carries the two-factor key).
+  {
+    rmSync(path.join(dataDir, "data"), { recursive: true, force: true });
+    rmSync(path.join(dataDir, "keys.json"), { force: true });
+    const moved = await runApp({ ...withMigrations(), PCRM_SELFTEST_FIRST_START: "latest", PCRM_SELFTEST_RECOVERY_KEY: eighth.report?.recoveryKey, PCRM_SELFTEST_TOTP_SECRET: c.totpSecret });
+    check("on a new computer the Developer signs in with the same authenticator", moved.code === 0 && moved.report?.events.includes("restored") && moved.report?.developerTotp?.verify === 200, JSON.stringify(moved.report?.developerTotp ?? moved.out.slice(-800)));
+  }
   check("console: the controls refuse staff pages and signed-out visitors", c.refusedOnStaffPage === true && c.refusedBeforeSignIn === true, JSON.stringify(c));
   check("console: the Developer signs in and enrols", c.login === 200 && c.enrol === 200, JSON.stringify(c));
   check("console: the desktop page is in the console menu", c.navShowsThisComputer === true);

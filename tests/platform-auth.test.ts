@@ -100,6 +100,23 @@ describe("Developer account", () => {
     expect(JSON.stringify(stored.recoveryCodes)).not.toContain(recoveryCodes[1]); // only hashes are stored
   });
 
+  it("restored on a computer with another two-factor key: explains the way out, and recovery codes still work", async () => {
+    const dev = await owner();
+    await startTotpEnrolment(dev.id);
+    const { recoveryCodes } = await confirmTotpEnrolment(dev.id, await currentCode(dev.id));
+    const code = await currentCode(dev.id, 1);
+    // the same data, now on a computer whose key the backup did not carry
+    const before = process.env.TOTP_ENCRYPTION_KEY;
+    process.env.TOTP_ENCRYPTION_KEY = "another-computer-two-factor-key-0123456789abcdef";
+    try {
+      await expect(verifySecondFactor(dev.id, { code })).rejects.toThrow(/set up on another computer.*recovery codes/);
+      await expect(verifySecondFactor(dev.id, { recoveryCode: recoveryCodes[0] })).resolves.toMatchObject({ method: "recovery" });
+    } finally {
+      if (before === undefined) delete process.env.TOTP_ENCRYPTION_KEY;
+      else process.env.TOTP_ENCRYPTION_KEY = before;
+    }
+  });
+
   it("is recovered from the server: new password, 2FA removed, sessions ended", async () => {
     const dev = await owner();
     await startTotpEnrolment(dev.id);

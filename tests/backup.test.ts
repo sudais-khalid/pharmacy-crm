@@ -93,6 +93,15 @@ describe("encrypted backups", () => {
     expect(ins.rows[0].id).toBeGreaterThan(maxId);
   }, 120_000);
 
+  it("carries installation secrets inside the encrypted part, for a restore on another computer", async () => {
+    const carried = join(dir, "carried.pcrmbak");
+    await createBackup(source, carried, key, { appVersion: "test", secrets: { totpKey: "a-two-factor-key-of-this-computer-1234567890" } });
+    expect(readFileSync(carried).includes(Buffer.from("a-two-factor-key"))).toBe(false); // never in the clear
+    expect((await verifyBackup(carried, key)).secrets).toEqual({ totpKey: "a-two-factor-key-of-this-computer-1234567890" });
+    const r = await restoreBackup(await freshDb("pcrm_restore_secrets"), carried, key, MIGRATIONS);
+    expect(r.manifest.secrets?.totpKey).toBe("a-two-factor-key-of-this-computer-1234567890");
+  }, 120_000);
+
   it("refuses a wrong key before touching the database", async () => {
     const target = await freshDb("pcrm_restore_b");
     await expect(restoreBackup(target, file, newBackupKey(), MIGRATIONS)).rejects.toThrow(/different key/);

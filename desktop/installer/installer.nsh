@@ -85,6 +85,14 @@ FunctionEnd
 
 !endif
 
+; Start menu: recovering the Developer account (new password, two-factor sign-in set up again). The app
+; asks Windows for an administrator first (desktop/src/recover-owner.mjs).
+!define PCRM_RECOVER_LINK "$SMPROGRAMS\Recover Pharmacy CRM Developer account.lnk"
+
+!macro customInstall
+  CreateShortCut "${PCRM_RECOVER_LINK}" "$INSTDIR\${APP_EXECUTABLE_FILENAME}" "--recover-owner" "$INSTDIR\${APP_EXECUTABLE_FILENAME}" 0
+!macroend
+
 !macro customUnInstall
   ; The app may have been closed by force, which leaves PostgreSQL running and its files in use. Stop it
   ; cleanly before anything is removed.
@@ -92,6 +100,7 @@ FunctionEnd
     nsExec::Exec '"$INSTDIR\resources\postgres\bin\pg_ctl.exe" stop -D "$pcrmDataRoot\data" -m fast -w -t 60'
 
   ${ifNot} ${isUpdated}
+    Delete "${PCRM_RECOVER_LINK}"
     ${If} $pcrmDeleteData == ${BST_CHECKED}
       RMDir /r "$pcrmDataRoot\data"
       RMDir /r "$pcrmDataRoot\logs"

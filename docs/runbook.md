@@ -83,3 +83,15 @@ The project also runs the same drill automatically: `npm run restore:drill`. It 
 1. Take a backup now (section 3).
 2. Get the new version, then `C up -d --build`. The app applies new migrations before it starts serving.
 3. Check `/api/health` and sign in once.
+
+## 9. The Windows desktop app: a new computer
+
+- **A new pharmacy on a new computer** starts with an empty database. Choose "Run Pharmacy CRM on this computer", then "Start fresh". Sign in to the Developer console with the Developer account built into the installer, and set up two-factor sign-in. Add it to your authenticator app as a new entry, because each installation is its own account.
+- **Moving a pharmacy to a new computer:**
+  1. Copy its backups folder (`C:\ProgramData\PharmacyCRM\backups`, or the mirror folder) to the new computer.
+  2. On the new computer, choose "Run Pharmacy CRM on this computer", then restore the newest backup with the recovery key.
+  3. Everything comes back: pharmacies, staff, and the Developer account with its two-factor sign-in. The same authenticator entry and recovery codes keep working, because backups from version 2.0.3 on carry the two-factor key.
+- **Backups made before 2.0.3** do not carry that key, so on the new computer:
+  - Sign in with one of your recovery codes, or open **Recover Pharmacy CRM Developer account** from the Start menu. It asks for a Windows administrator, sets a new password, and lets you set up two-factor sign-in again.
+  - Staff with two-factor sign-in ask their Pharmacy Admin to reset it in **Users**.
+- **The Developer console** opens from the tray icon next to the clock: right-click it and choose **Open Developer console**.

@@ -33,6 +33,11 @@ export type BackupManifest = {
   tables: { name: string; columns: string[]; rows: number }[];
   /** Positions of every sequence (for example a global invoice counter in older versions). */
   sequences: { name: string; lastValue: string | null }[];
+  /**
+   * Installation secrets the data cannot be used without, carried inside the encrypted part (the desktop
+   * app's two-factor key: without it a restored Developer or staff authenticator could not be read).
+   */
+  secrets?: Record<string, string>;
 };
 
 const q = (ident: string) => `"${ident.replace(/"/g, '""')}"`;
@@ -42,7 +47,7 @@ async function writeChunk(stream: Writable, chunk: Buffer | string) {
 }
 
 /** Writes a consistent, encrypted snapshot of every application table to `outFile`. */
-export async function createBackup(connectionString: string, outFile: string, key: Buffer, opts: { appVersion?: string } = {}) {
+export async function createBackup(connectionString: string, outFile: string, key: Buffer, opts: { appVersion?: string; secrets?: Record<string, string> } = {}) {
   const iv = randomBytes(12);
   const header: BackupHeader = { format: FORMAT, createdAt: new Date().toISOString(), keyId: keyId(key), iv: iv.toString("base64") };
   const headerBytes = Buffer.from(JSON.stringify(header));
@@ -77,7 +82,7 @@ export async function createBackup(connectionString: string, outFile: string, ke
     const sequences = (await client.query<{ name: string; last_value: string | null }>(
       `SELECT sequencename AS name, last_value::text FROM pg_sequences WHERE schemaname = 'public' ORDER BY sequencename`,
     )).rows.map((r) => ({ name: r.name, lastValue: r.last_value }));
-    const manifest: BackupManifest = { format: FORMAT, createdAt: header.createdAt, appVersion: opts.appVersion ?? "dev", migrations, tables: [], sequences };
+    const manifest: BackupManifest = { format: FORMAT, createdAt: header.createdAt, appVersion: opts.appVersion ?? "dev", migrations, tables: [], sequences, ...(opts.secrets ? { secrets: opts.secrets } : {}) };
     for (const t of tables) {
       const columns = (await client.query<{ column_name: string }>(
         `SELECT column_name FROM information_schema.columns WHERE table_schema = 'public' AND table_name = $1 ORDER BY ordinal_position`, [t],

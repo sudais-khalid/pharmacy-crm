@@ -19,7 +19,7 @@ import { fileURLToPath } from "node:url";
 import { chooseMode, isPharmacyServer, normalizeServerUrl, readClientConfig, saveClientConfig, showLanAddresses } from "./client.mjs";
 import { installConsoleBridge } from "./console-bridge.mjs";
 import { keyFor, runFirstStart } from "./first-start.mjs";
-import { consoleScenario } from "./selftest-console.mjs";
+import { consoleScenario, developerSignIn } from "./selftest-console.mjs";
 import { explainNotAdmin, isElevatedAdmin, recoverOwner, relaunchElevated, showRecovered } from "./recover-owner.mjs";
 import { showRecoveryKey } from "./recovery.mjs";
 import { lanAddresses } from "./network.mjs";
@@ -211,6 +211,8 @@ async function selftest(baseUrl) {
     health,
     loginStatus: login.status,
     windowTitle: win?.getTitle(),
+    // after moving to a new computer: the Developer signs in with the authenticator set up on the old one
+    developerTotp: TEST_FOLDER && process.env.PCRM_SELFTEST_TOTP_SECRET ? await developerSignIn(baseUrl, process.env.PCRM_SELFTEST_TOTP_SECRET) : undefined,
     // the setup screens answered on the way in, and whether the recovery key is now marked as written down
     screens: screensSeen,
     // on a new installation the app window must lead the Developer to the console (no pharmacy code exists yet)

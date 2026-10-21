@@ -26,3 +26,15 @@ export function open(sealed: string): string {
   decipher.setAuthTag(Buffer.from(tag, "base64url"));
   return Buffer.concat([decipher.update(Buffer.from(data, "base64url")), decipher.final()]).toString("utf8");
 }
+
+/**
+ * Like open, but null when the secret was sealed with another key: data restored from a computer whose
+ * key the backup did not carry. Callers explain how to set two-factor sign-in up again.
+ */
+export function openOrNull(sealed: string): string | null {
+  try {
+    return open(sealed);
+  } catch {
+    return null;
+  }
+}

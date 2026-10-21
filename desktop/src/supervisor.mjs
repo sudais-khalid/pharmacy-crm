@@ -155,7 +155,8 @@ export class Supervisor {
       dir: paths.backups,
       config,
       log,
-      create: (file) => ops.createBackup(superUrl, file, this.backupKey, { appVersion: app.getVersion() }),
+      // the two-factor key travels with the data, so a restore on another computer keeps the authenticators
+      create: (file) => ops.createBackup(superUrl, file, this.backupKey, { appVersion: app.getVersion(), secrets: this.carriedSecrets() }),
       verify: (file) => ops.verifyBackup(file, this.backupKey),
     });
 
@@ -331,6 +332,25 @@ export class Supervisor {
     return keys;
   }
 
+  /** Secrets a backup must carry for its data to be usable on another computer. */
+  carriedSecrets() {
+    const totpKey = this.secrets.get("totpKey");
+    return totpKey ? { totpKey } : undefined;
+  }
+
+  /**
+   * After a restore: the two-factor key of the computer the backup came from, so the Developer's and staff
+   * authenticators keep working here. Older backups do not carry it; their sign-in explains the recovery.
+   */
+  adoptCarriedSecrets(manifest) {
+    const carried = manifest?.secrets?.totpKey;
+    if (!carried || carried === this.secrets.get("totpKey")) return false;
+    this.secrets.set("totpKey", carried);
+    for (const svc of [this.web, this.worker]) if (svc) svc.env.TOTP_ENCRYPTION_KEY = carried;
+    this.log.info("two-factor key taken over from the restored backup");
+    return true;
+  }
+
   /** Keeps a replaced backup key, so backups made with it still open without the old recovery key. */
   rememberKey(key) {
     if (!key) return;
@@ -395,6 +415,7 @@ export class Supervisor {
       this.config.set({ recoveryKeyShown: true });
     }
     this.backupKey = key;
+    this.adoptCarriedSecrets(result.manifest);
     log.info("restore finished", { file, createdAt: result.manifest.createdAt, migratedAfter: result.migratedAfter });
     this.note("restored");
     return result;
