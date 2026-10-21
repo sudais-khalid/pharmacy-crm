@@ -4,6 +4,7 @@
 //   node scripts/selftest.mjs                                      the app from source
 //   node scripts/selftest.mjs --exe dist/win-unpacked/PharmacyCRM.exe   a packaged build (skips the checks
 //                                                                  that need a test migrations folder)
+import { createCipheriv, randomBytes, scryptSync } from "node:crypto";
 import { execFileSync, spawn } from "node:child_process";
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
@@ -41,7 +42,7 @@ function runApp(extraEnv = {}, args = []) {
     p.stdout.on("data", (d) => (out += d));
     p.stderr.on("data", (d) => (out += d));
     p.on("exit", (code) => {
-      const file = path.join(dataDir, "logs", "selftest.json");
+      const file = path.join(extraEnv.PCRM_DATA_DIR ?? dataDir, "logs", "selftest.json");
       const report = existsSync(file) ? JSON.parse(readFileSync(file, "utf8")) : null;
       rmSync(file, { force: true });
       resolve({ code, report, out, seconds: Math.round((Date.now() - started) / 100) / 10 });
@@ -181,6 +182,22 @@ try {
   // 8. the Developer console's desktop controls, through the app window
   const eighth = await runApp({ ...withMigrations(), PCRM_SELFTEST_CONSOLE: "1" });
   const c = eighth.report?.console ?? {};
+
+  // 8a. a fresh installation built with the Developer's one shared authenticator: the code works at once,
+  // with nothing to scan (the secret sealed here the way npm run developer:authenticator seals it)
+  {
+    const shared = "JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP";
+    const salt = randomBytes(16), iv = randomBytes(12);
+    const key = scryptSync(owner.PLATFORM_OWNER_PASSWORD.normalize("NFKC"), Buffer.concat([Buffer.from("pcrm-shared-totp:v1:"), salt]), 32, { N: 1 << 15, r: 8, p: 1, maxmem: 128 * 1024 * 1024 });
+    const cipher = createCipheriv("aes-256-gcm", key, iv);
+    const data = Buffer.concat([cipher.update(shared, "utf8"), cipher.final()]);
+    const sealed = ["v1", salt, iv, cipher.getAuthTag(), data].map((x) => (typeof x === "string" ? x : x.toString("base64url"))).join(".");
+    const otherDir = path.join(path.dirname(dataDir), `${path.basename(dataDir)}-shared`);
+    rmSync(otherDir, { recursive: true, force: true });
+    const fresh = await runApp({ PCRM_DATA_DIR: otherDir, PLATFORM_OWNER_TOTP: sealed, PCRM_SELFTEST_TOTP_SECRET: shared });
+    check("a fresh installation accepts the Developer's shared authenticator with nothing to scan", fresh.code === 0 && fresh.report?.developerTotp?.verify === 200, JSON.stringify(fresh.report?.developerTotp ?? fresh.out.slice(-800)));
+    rmSync(otherDir, { recursive: true, force: true });
+  }
 
   // 8b. moving to a new computer after two-factor sign-in was set up: only the backups and the recovery key.
   // The Developer's authenticator must keep working there (the backup carries the two-factor key).

@@ -95,3 +95,27 @@ The project also runs the same drill automatically: `npm run restore:drill`. It 
   - Sign in with one of your recovery codes, or open **Recover Pharmacy CRM Developer account** from the Start menu. It asks for a Windows administrator, sets a new password, and lets you set up two-factor sign-in again.
   - Staff with two-factor sign-in ask their Pharmacy Admin to reset it in **Users**.
 - **The Developer console** opens from the tray icon next to the clock: right-click it and choose **Open Developer console**.
+
+### One authenticator for every installation
+
+Instead of scanning a new code for each pharmacy, the Developer can use one authenticator entry everywhere:
+
+1. On your own computer, run `npm run developer:authenticator`.
+   - It reads the Developer password from `.env` and creates a new authenticator secret.
+   - It seals that secret with the password into `desktop/build/owner.json`.
+   - It writes the same sealed value to `desktop/build/PCRM_OWNER_TOTP.txt`.
+2. Scan the QR code in `desktop/build/developer-authenticator.svg` once, then delete that file.
+3. For installers built on GitHub, add the repository secret `PCRM_OWNER_TOTP` with the content of `PCRM_OWNER_TOTP.txt`.
+4. Pass the secret to the build step of `.github/workflows/release.yml`:
+
+   ```yaml
+   PCRM_OWNER_TOTP: ${{ secrets.PCRM_OWNER_TOTP }}
+   ```
+
+   It goes next to `PCRM_OWNER_PASSWORD_HASH`.
+
+Every installation built after that accepts the one authenticator entry, including new ones. Existing installations switch to it the next time you sign in after they update; their recovery codes stay valid.
+
+The secret is sealed with the Developer password, so the installer alone reveals nothing usable. But anyone who learns that password could also open the secret, so the code no longer protects a leaked password. Keep the password long and use it nowhere else.
+
+After a password change through recovery, the old sealed secret no longer opens. That installation then sets up two-factor sign-in on its own until you run the command again with the new password.

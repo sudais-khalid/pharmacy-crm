@@ -5,7 +5,10 @@
 // Sources, first found wins:
 //   PCRM_OWNER_EMAIL with PCRM_OWNER_PASSWORD_HASH or PCRM_OWNER_PASSWORD (release builds, from CI secrets)
 //   PLATFORM_OWNER_EMAIL with PLATFORM_OWNER_PASSWORD from the repository's .env (local builds)
-import { existsSync, mkdirSync, writeFileSync } from "node:fs";
+//
+// The Developer's one authenticator for every installation (npm run developer:authenticator) comes from
+// PCRM_OWNER_TOTP in release builds, and is kept from the existing owner.json in local ones.
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -44,5 +47,8 @@ if (!/^\$2[aby]\$\d{2}\$.{53}$/.test(hash)) {
 
 const out = path.join(here, "..", "build", "owner.json");
 mkdirSync(path.dirname(out), { recursive: true });
-writeFileSync(out, JSON.stringify({ email, name, passwordHash: hash }, null, 2) + "\n");
+const previous = existsSync(out) ? JSON.parse(readFileSync(out, "utf8")) : {};
+const totp = (env.PCRM_OWNER_TOTP || "").trim() || (previous.email === email ? previous.totp : undefined);
+writeFileSync(out, JSON.stringify({ email, name, passwordHash: hash, ...(totp ? { totp } : {}) }, null, 2) + "\n");
+if (totp) console.log("  with the Developer's shared authenticator");
 console.log(`wrote ${path.relative(repo, out)} for ${email}`);

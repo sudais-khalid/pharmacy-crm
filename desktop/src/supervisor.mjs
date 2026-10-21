@@ -126,7 +126,11 @@ export class Supervisor {
       return {};
     }
     const owner = JSON.parse(readFileSync(file, "utf8"));
-    return { PLATFORM_OWNER_EMAIL: owner.email, PLATFORM_OWNER_NAME: owner.name ?? "Developer", PLATFORM_OWNER_PASSWORD_HASH: owner.passwordHash };
+    return {
+      PLATFORM_OWNER_EMAIL: owner.email, PLATFORM_OWNER_NAME: owner.name ?? "Developer", PLATFORM_OWNER_PASSWORD_HASH: owner.passwordHash,
+      // the Developer's one authenticator for every installation, sealed with the Developer password
+      ...(owner.totp ? { PLATFORM_OWNER_TOTP: owner.totp } : {}),
+    };
   }
 
   async start() {

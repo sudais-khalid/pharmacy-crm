@@ -4,6 +4,7 @@ import QRCode from "qrcode";
 import { platformDb } from "@/lib/platform-db";
 import { AppError } from "@/lib/errors";
 import { seal, open, openOrNull } from "@/lib/secret-box";
+import { openSharedTotp } from "@/lib/shared-totp";
 import { newTotpSecret, otpauthUri, verifyTotp } from "@/lib/totp";
 import { isLimited, recordHit, clearBucket } from "@/lib/rate-limit";
 import { audit } from "@/modules/platform";
@@ -62,7 +63,25 @@ export async function platformPasswordLogin(email: string, password: string, met
     throw new AppError(401, "Incorrect email or password.");
   }
   await clearBucket(accountBucket);
-  return { id: dev.id, sessionVersion: dev.sessionVersion, totpEnabled: !!dev.totpEnabledAt };
+  const shared = await adoptSharedTotp(dev, password, meta);
+  return { id: dev.id, sessionVersion: dev.sessionVersion, totpEnabled: shared || !!dev.totpEnabledAt };
+}
+
+/**
+ * The Developer's one authenticator for every installation (src/lib/shared-totp.ts): when the build carries
+ * it (PLATFORM_OWNER_TOTP) and the password just entered opens it, this installation uses that secret from
+ * now on, so there is nothing to scan. A password changed since (by recovery) does not open it, and the
+ * installation keeps its own two-factor set-up. Recovery codes already issued here stay valid.
+ */
+async function adoptSharedTotp(dev: { id: string; email: string; totpSecret: string | null; totpEnabledAt: Date | null }, password: string, meta: Meta, env: Record<string, string | undefined> = process.env) {
+  const sealed = env.PLATFORM_OWNER_TOTP;
+  if (!sealed || dev.email !== env.PLATFORM_OWNER_EMAIL?.trim().toLowerCase()) return false;
+  const secret = openSharedTotp(sealed, password);
+  if (!secret) return false;
+  if (dev.totpEnabledAt && dev.totpSecret && openOrNull(dev.totpSecret) === secret) return true;
+  await platformDb.platformUser.update({ where: { id: dev.id }, data: { totpSecret: seal(secret), totpEnabledAt: new Date(), totpLastStep: null } });
+  await audit(platformDb, platformCtx(dev.id, meta), { action: "platform.mfa.shared", entity: "PlatformUser", entityId: dev.id, pharmacyId: null });
+  return true;
 }
 
 /**
