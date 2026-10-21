@@ -54,6 +54,7 @@ jobs:
         env:
           PCRM_OWNER_EMAIL: ${{ secrets.PCRM_OWNER_EMAIL }}
           PCRM_OWNER_PASSWORD_HASH: ${{ secrets.PCRM_OWNER_PASSWORD_HASH }}
+          PCRM_OWNER_TOTP: ${{ secrets.PCRM_OWNER_TOTP }}
           CSC_LINK: ${{ secrets.WINDOWS_CERT_P12_BASE64 }}
           CSC_KEY_PASSWORD: ${{ secrets.WINDOWS_CERT_PASSWORD }}
         run: |
