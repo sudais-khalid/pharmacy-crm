@@ -80,7 +80,12 @@ export function ShortcutProvider({ nav, palette = false, children }: { nav: NavI
       }
     };
     window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
+    // lets automated checks (the desktop selftest) wait until the keys work instead of guessing
+    document.documentElement.dataset.shortcuts = "ready";
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      delete document.documentElement.dataset.shortcuts;
+    };
   }, [router]);
 
   return (

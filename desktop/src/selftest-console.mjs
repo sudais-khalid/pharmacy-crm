@@ -96,6 +96,20 @@ async function shortcutScenario({ win, baseUrl, page, request }) {
     win.webContents.sendInputEvent({ type: "keyUp", keyCode, modifiers });
     await wait(1200);
   };
+  /** Polls until the condition holds or the time is up; slow CI machines need more than a fixed pause. */
+  const until = async (cond, ms = 20_000) => {
+    for (const end = Date.now() + ms; Date.now() < end; await wait(150)) if (await cond()) return true;
+    return false;
+  };
+  const ready = () => until(() => page(`document.documentElement.dataset.shortcuts === "ready"`));
+  /** Presses a key that opens another screen, then waits for the address to change. */
+  const go = async (keyCode, modifiers) => {
+    const before = at();
+    await press(keyCode, modifiers);
+    await until(() => at() !== before, 10_000);
+    await ready();
+    return at();
+  };
   const shot = async (name) => {
     if (process.env.PCRM_SELFTEST_SHOTS) writeFileSync(path.join(process.env.PCRM_SELFTEST_SHOTS, name), (await win.webContents.capturePage()).toPNG());
   };
@@ -103,11 +117,9 @@ async function shortcutScenario({ win, baseUrl, page, request }) {
 
   // console
   await win.loadURL(`${baseUrl}/platform/desktop`);
-  await wait(800);
-  await press("P", ["alt"]);
-  s.consoleAltP = at();
-  await press("N", ["alt"]);
-  s.consoleAltN = at();
+  await ready();
+  s.consoleAltP = await go("P", ["alt"]);
+  s.consoleAltN = await go("N", ["alt"]);
 
   // a pharmacy and its admin
   const made = await request("POST", "/api/platform/pharmacies", {
@@ -122,10 +134,9 @@ async function shortcutScenario({ win, baseUrl, page, request }) {
   // staff app
   win.setSize(1366, 860);
   await win.loadURL(`${baseUrl}/dashboard`);
-  await wait(1500);
+  await ready();
   s.underlined = await page(`[...document.querySelectorAll('nav[aria-label="Main"] a')].map((a) => a.querySelector("span.underline")?.textContent ?? "").join("")`);
-  await press("M", ["alt"]);
-  s.altM = at();
+  s.altM = await go("M", ["alt"]);
   await press("N", ["alt"]);
   s.altNOpensDialog = await page(`document.querySelector('[role="dialog"][aria-modal="true"]') !== null`);
   await press("V", ["alt"]);
