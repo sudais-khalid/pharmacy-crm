@@ -29,6 +29,9 @@ import { Supervisor } from "./supervisor.mjs";
 import { startUpdater } from "./updater.mjs";
 
 const SELFTEST = process.argv.includes("--selftest");
+// The self-test walks the screens of a first start on a new PC (run it here, start fresh, recovery key)
+// instead of skipping them, when PCRM_SELFTEST_CHOOSE=server.
+const DRIVE_SCREENS = SELFTEST && process.env.PCRM_SELFTEST_CHOOSE === "server";
 const RECOVER_OWNER = process.argv.includes("--recover-owner");
 // Only a throwaway data folder (PCRM_DATA_DIR) may have test markers written or the recovery key reported.
 const TEST_FOLDER = SELFTEST && Boolean(process.env.PCRM_DATA_DIR);
@@ -43,6 +46,9 @@ let quitting = false;
 let updateReady = null; // version downloaded and ready to install
 let installUpdate = null;
 let updating = false; // everything is stopped and backed up; the installer takes over
+// Until the app window is open, windows come and go (the mode choice closes before the splash opens), and
+// closing the last of them must not quit the app. Cancelling a step quits explicitly instead.
+let started = false;
 
 /** bridge: the desktop controls for the Developer console, only on the computer that runs the pharmacy. */
 function openWindow(baseUrl, { bridge = true } = {}) {
@@ -80,6 +86,7 @@ function openWindow(baseUrl, { bridge = true } = {}) {
     }
   });
   win.on("closed", () => (win = null));
+  started = true;
   return win.loadURL(baseUrl);
 }
 
@@ -201,9 +208,42 @@ async function selftest(baseUrl) {
     health,
     loginStatus: login.status,
     windowTitle: win?.getTitle(),
+    // the setup screens answered on the way in, and whether the recovery key is now marked as written down
+    screens: screensSeen,
+    recoveryKeyConfirmed: supervisor.config.get("recoveryKeyShown") === true,
   };
   writeFileSync(path.join(supervisor.paths.logs, "selftest.json"), JSON.stringify(report, null, 2));
   return report.ok;
+}
+
+/**
+ * Presses the buttons of the app's own setup screens (data: pages, never the pharmacy app) the way a
+ * person does: "Run Pharmacy CRM on this computer", "Start fresh", then ticks "I have written down the
+ * recovery key" and presses Continue. Each screen is answered once.
+ */
+function clickThroughScreens() {
+  const press = `(() => {
+    for (const id of ["server", "fresh"]) { const b = document.getElementById(id); if (b) { b.click(); return id; } }
+    const done = document.getElementById("done");
+    if (done) { done.click(); document.getElementById("close").click(); return "recovery-key"; }
+    return null;
+  })()`;
+  app.on("browser-window-created", (_event, w) => {
+    w.webContents.on("did-finish-load", () => {
+      if (!w.webContents.getURL().startsWith("data:")) return;
+      // a moment for the page script to wire its buttons, as a person would take
+      setTimeout(() => void w.webContents.executeJavaScript(press).then((what) => what && screensSeen.push(what)).catch(() => {}), 300);
+    });
+  });
+}
+const screensSeen = [];
+
+/** Shows the recovery key until it is confirmed (first start, or after the old key was lost). */
+async function confirmRecoveryKey() {
+  if (supervisor.config.get("recoveryKeyShown") !== false) return null;
+  const confirmed = await showRecoveryKey(win, supervisor.recoveryKey());
+  if (confirmed) supervisor.config.set({ recoveryKeyShown: true });
+  return confirmed;
 }
 
 /** Unattended first start for the self-test. */
@@ -296,7 +336,8 @@ async function selftestClient() {
 async function boot() {
   if (app.isPackaged) Menu.setApplicationMenu(null);
   if (SELFTEST && process.env.PCRM_SELFTEST_CLIENT_URL !== undefined) return selftestClient();
-  if (!SELFTEST && !existsSync(path.join(layout().pgdata, "PG_VERSION"))) {
+  if (DRIVE_SCREENS) clickThroughScreens();
+  if ((!SELFTEST || DRIVE_SCREENS) && !existsSync(path.join(layout().pgdata, "PG_VERSION"))) {
     const saved = readClientConfig();
     if (saved) return bootClient(saved.serverUrl);
     let choice;
@@ -313,7 +354,7 @@ async function boot() {
 
 async function bootServer() {
   const splash = await showSplash({ show: !SELFTEST });
-  supervisor = new Supervisor({ status: (t) => splash.status(t), echoLogs: !app.isPackaged, firstStart: SELFTEST ? selftestFirstStart : runFirstStart });
+  supervisor = new Supervisor({ status: (t) => splash.status(t), echoLogs: !app.isPackaged, firstStart: SELFTEST && !DRIVE_SCREENS ? selftestFirstStart : runFirstStart });
   supervisor.onFailure = (e) => {
     dialog.showErrorBox("Pharmacy CRM stopped working", `${e.message}\n\nClose and open the app again. If this keeps happening, send the logs folder to support.`);
     app.quit();
@@ -325,6 +366,7 @@ async function bootServer() {
     await openWindow(baseUrl);
     splash.close();
     if (SELFTEST) {
+      if (DRIVE_SCREENS) await confirmRecoveryKey();
       const ok = await selftest(baseUrl).catch((e) => {
         supervisor.log.error("selftest failed", { error: String(e?.stack ?? e) });
         return false;
@@ -343,10 +385,7 @@ async function bootServer() {
         notify("Update ready", `Pharmacy CRM ${version} is ready. Choose "Restart to install" in the tray menu when the counter is free; a backup is taken first.`);
       },
     });
-    if (supervisor.config.get("recoveryKeyShown") === false) {
-      const confirmed = await showRecoveryKey(win, supervisor.recoveryKey());
-      if (confirmed) supervisor.config.set({ recoveryKeyShown: true });
-    }
+    await confirmRecoveryKey();
   } catch (e) {
     splash.close();
     supervisor.log?.error("start failed", { error: String(e?.stack ?? e) });
@@ -369,7 +408,9 @@ if (!app.requestSingleInstanceLock()) {
 } else {
   app.on("second-instance", showWindow);
   app.whenReady().then(RECOVER_OWNER ? bootRecovery : boot);
-  app.on("window-all-closed", () => app.quit());
+  app.on("window-all-closed", () => {
+    if (started) app.quit();
+  });
   app.on("before-quit", (event) => {
     if (updating) return;
     // every quit request waits for the shutdown below, which ends with app.exit()

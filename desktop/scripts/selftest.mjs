@@ -100,9 +100,11 @@ try {
     check("the photo reader and its model are in the server folder", /ocr-ok/.test(out), out.slice(-800));
   }
 
-  // 1. first start on an empty PC
-  const first = await runApp();
-  check("first start succeeds", first.code === 0 && first.report?.ok, first.out.slice(-1500));
+  // 1. first start on an empty PC, through the same "run it here or connect" screen a person sees: the
+  // app must survive that screen closing before the next one opens
+  const first = await runApp({ PCRM_SELFTEST_CHOOSE: "server" });
+  check("choosing to run the pharmacy on this PC starts it (the app does not close with the choice screen)", first.code === 0 && first.report?.ok, first.out.slice(-1500));
+  check("a new PC walks through run it here, start fresh and the recovery key", JSON.stringify(first.report?.screens) === JSON.stringify(["server", "fresh", "recovery-key"]) && first.report?.recoveryKeyConfirmed === true, JSON.stringify({ screens: first.report?.screens, confirmed: first.report?.recoveryKeyConfirmed }));
   console.log(`      first start took ${first.seconds}s`);
   check("first start creates the database and the backup key", ["database-created", "backup-key-created"].every((e) => first.report?.events.includes(e)), JSON.stringify(first.report?.events));
   check("PostgreSQL listens on loopback only", first.report?.listenAddresses === "127.0.0.1", first.report?.listenAddresses);
@@ -116,7 +118,7 @@ try {
   const firstBackups = readdirSync(path.join(dataDir, "backups"));
   check("a first snapshot is taken at start and another on close", firstBackups.some((f) => f.endsWith("-scheduled.pcrmbak")) && firstBackups.some((f) => f.endsWith("-on-close.pcrmbak")), firstBackups.join(" "));
   check("the last backup is recorded", config.lastBackup?.reason === "on-close" && config.lastBackup.size > 0 && !config.lastBackupError, JSON.stringify(config.lastBackup));
-  check("the recovery key is still waiting to be shown", config.recoveryKeyShown === false);
+  check("the recovery key, once confirmed on the screen, is not shown again", config.recoveryKeyShown === true);
   const acl = execFileSync("icacls", [dataDir], { encoding: "utf8" });
   check("data folder is not open to other users", !/(Everyone|Users|Authenticated Users):/i.test(acl) && /S-1-5-18|SYSTEM/i.test(acl), acl);
 
