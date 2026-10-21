@@ -18,7 +18,11 @@ const fresh = async (browser: Browser) => (await browser.newContext()).newPage()
 
 test("the Developer signs in with two-factor and creates a pharmacy with an invite", async ({ browser }) => {
   dev = await fresh(browser);
-  await dev.goto("/platform/login");
+  // a new installation has no pharmacy: the sign-in page explains it and leads to the Developer console
+  await dev.goto("/login");
+  await expect(dev.getByRole("heading", { name: "Pharmacy CRM is installed" })).toBeVisible();
+  await dev.getByRole("link", { name: "Open the Developer console" }).click();
+  await expect(dev).toHaveURL(/\/platform\/login$/);
   await dev.getByLabel("Email").fill(OWNER.email);
   await dev.getByLabel("Password").fill(OWNER.password);
   await dev.getByRole("button", { name: "Continue" }).click();

@@ -104,6 +104,7 @@ try {
   // app must survive that screen closing before the next one opens
   const first = await runApp({ PCRM_SELFTEST_CHOOSE: "server" });
   check("choosing to run the pharmacy on this PC starts it (the app does not close with the choice screen)", first.code === 0 && first.report?.ok, first.out.slice(-1500));
+  check("a new installation's window leads to the Developer console, not a pharmacy code nobody has", /Pharmacy CRM is installed/.test(first.report?.firstScreen ?? "") && /Open the Developer console/.test(first.report?.firstScreen ?? ""), (first.report?.firstScreen ?? "").slice(0, 300));
   check("a new PC walks through run it here, start fresh and the recovery key", JSON.stringify(first.report?.screens) === JSON.stringify(["server", "fresh", "recovery-key"]) && first.report?.recoveryKeyConfirmed === true, JSON.stringify({ screens: first.report?.screens, confirmed: first.report?.recoveryKeyConfirmed }));
   console.log(`      first start took ${first.seconds}s`);
   check("first start creates the database and the backup key", ["database-created", "backup-key-created"].every((e) => first.report?.events.includes(e)), JSON.stringify(first.report?.events));

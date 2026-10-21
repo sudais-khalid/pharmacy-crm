@@ -49,6 +49,7 @@ let updating = false; // everything is stopped and backed up; the installer take
 // Until the app window is open, windows come and go (the mode choice closes before the splash opens), and
 // closing the last of them must not quit the app. Cancelling a step quits explicitly instead.
 let started = false;
+let appUrl = null; // the local server, once it runs
 
 /** bridge: the desktop controls for the Developer console, only on the computer that runs the pharmacy. */
 function openWindow(baseUrl, { bridge = true } = {}) {
@@ -133,6 +134,8 @@ function refreshTray() {
   tray.setContextMenu(
     Menu.buildFromTemplate([
       { label: "Open Pharmacy CRM", click: showWindow },
+      // the Developer console (pharmacies, accounts, this computer's backups); it asks for the Developer sign-in
+      { label: "Open Developer console", click: () => { showWindow(); void win?.loadURL(`${appUrl}/platform`); } },
       ...(updateReady ? [{ label: `Restart to install version ${updateReady}`, click: () => void installUpdate?.(() => (updating = true)) }] : []),
       { type: "separator" },
       { label: `Last backup: ${when(last?.at)}`, enabled: false },
@@ -210,6 +213,8 @@ async function selftest(baseUrl) {
     windowTitle: win?.getTitle(),
     // the setup screens answered on the way in, and whether the recovery key is now marked as written down
     screens: screensSeen,
+    // on a new installation the app window must lead the Developer to the console (no pharmacy code exists yet)
+    firstScreen: DRIVE_SCREENS ? await firstScreenText() : undefined,
     recoveryKeyConfirmed: supervisor.config.get("recoveryKeyShown") === true,
   };
   writeFileSync(path.join(supervisor.paths.logs, "selftest.json"), JSON.stringify(report, null, 2));
@@ -237,6 +242,16 @@ function clickThroughScreens() {
   });
 }
 const screensSeen = [];
+
+/** What the app window shows once its page has rendered (waits up to 20 s on a slow machine). */
+async function firstScreenText() {
+  for (let i = 0; i < 80; i++) {
+    const text = await win.webContents.executeJavaScript("document.body?.innerText ?? ''").catch(() => "");
+    if (/Developer console/.test(text)) return text.slice(0, 400);
+    await new Promise((ok) => setTimeout(ok, 250));
+  }
+  return await win.webContents.executeJavaScript("document.body?.innerText ?? ''").catch(() => "");
+}
 
 /** Shows the recovery key until it is confirmed (first start, or after the old key was lost). */
 async function confirmRecoveryKey() {
@@ -361,6 +376,7 @@ async function bootServer() {
   };
   try {
     const baseUrl = await supervisor.start();
+    appUrl = baseUrl;
     splash.status("Opening");
     installConsoleBridge({ supervisor, baseUrl, getWindow: () => win, onRestored: () => win?.loadURL(`${baseUrl}/platform/desktop`) });
     await openWindow(baseUrl);

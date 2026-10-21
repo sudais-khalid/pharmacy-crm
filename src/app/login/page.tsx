@@ -1,6 +1,7 @@
 "use client";
 import { Suspense, useEffect, useState } from "react";
-import { Pill } from "lucide-react";
+import Link from "next/link";
+import { Pill, ShieldCheck } from "lucide-react";
 import { Button, Card, Field, Input, Spinner } from "@/components/ui";
 import { StaffLoginForm, REMEMBERED_PHARMACY } from "@/components/staff-login-form";
 
@@ -12,11 +13,17 @@ function LoginInner() {
   const [checking, setChecking] = useState(true);
   const [code, setCode] = useState("");
   const [error, setError] = useState("");
+  // a new installation has no pharmacy yet: the Developer creates the first one in the console
+  const [empty, setEmpty] = useState(false);
 
   async function lookup(slug: string) {
     const r = await fetch(`/api/auth/pharmacy/${encodeURIComponent(slug.trim().toLowerCase())}`);
     return r.ok ? ((await r.json()) as Info) : null;
   }
+
+  useEffect(() => {
+    fetch("/api/auth/setup-state").then((r) => r.json()).then((s: { hasPharmacies?: boolean }) => setEmpty(s.hasPharmacies === false)).catch(() => {});
+  }, []);
 
   useEffect(() => {
     let remembered: string | null = null;
@@ -51,6 +58,27 @@ function LoginInner() {
 
   if (checking) return <Spinner />;
   if (pharmacy) return <StaffLoginForm pharmacy={pharmacy} onChangePharmacy={forget} />;
+  if (empty) {
+    return (
+      <main className="flex min-h-screen items-center justify-center bg-gradient-to-br from-brand-50 to-slate-100 p-4 dark:from-slate-950 dark:to-slate-900">
+        <Card className="w-full max-w-md p-6">
+          <div className="mb-5 flex flex-col items-center gap-2 text-center">
+            <span className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary text-on-primary"><Pill className="h-6 w-6" aria-hidden /></span>
+            <h1 className="text-xl font-semibold">Pharmacy CRM is installed</h1>
+            <p className="text-sm text-fg-muted">No pharmacy has been set up here yet, so there is no pharmacy code to sign in with.</p>
+          </div>
+          <ol className="mb-5 list-decimal space-y-1.5 pl-5 text-sm">
+            <li>Sign in to the Developer console with the Developer account of this installation.</li>
+            <li>Create the pharmacy. Its short name (for example <span className="font-mono">city-care</span>) is its pharmacy code.</li>
+            <li>Staff then sign in here with that code and the account you give them.</li>
+          </ol>
+          <Link href="/platform/login" className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-primary px-3.5 py-2 text-sm font-medium text-on-primary hover:bg-primary/90">
+            <ShieldCheck className="h-4 w-4" aria-hidden /> Open the Developer console
+          </Link>
+        </Card>
+      </main>
+    );
+  }
   return (
     <main className="flex min-h-screen items-center justify-center bg-gradient-to-br from-brand-50 to-slate-100 p-4 dark:from-slate-950 dark:to-slate-900">
       <Card className="w-full max-w-sm p-6">

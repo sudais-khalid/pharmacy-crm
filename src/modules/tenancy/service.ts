@@ -295,6 +295,14 @@ export async function setFeatureFlag(c: DevContext, id: string, key: FeatureKey,
 }
 
 /** What a sign-in page may show about a pharmacy before anyone signs in. */
+/**
+ * Public: whether any pharmacy exists yet. On a new installation the sign-in page then points the
+ * Developer to the console, where the first pharmacy is created; nothing else is revealed.
+ */
+export async function installationHasPharmacies() {
+  return (await platformDb.pharmacy.count({ where: { status: { not: "DEACTIVATED" } } })) > 0;
+}
+
 export async function publicPharmacyInfo(slug: string) {
   const p = await platformDb.pharmacy.findUnique({ where: { slug: slug.toLowerCase() }, select: { slug: true, name: true, city: true, status: true, brandColor: true, logoFileId: true } });
   if (!p || p.status === "DEACTIVATED") return null;

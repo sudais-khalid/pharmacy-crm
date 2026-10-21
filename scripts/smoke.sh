@@ -10,6 +10,7 @@ ok "Health endpoint is public" "$(code $B/api/health)" 200
 ok "The app manifest is public" "$(curl -s $B/manifest.webmanifest | js "d['start_url']")" /home
 ok "The service worker is public" "$(code $B/sw.js)" 200
 ok "The offline page is public" "$(code $B/offline.html)" 200
+ok "Sign-in knows a pharmacy exists (no first-run guidance)" "$(curl -s $B/api/auth/setup-state | js "d['hasPharmacies']")" True
 ok "Health reports database up" "$(curl -s $B/api/health | js "d['checks']['database']['ok']")" True
 ok "API requires login" "$(code $B/api/medicines)" 401
 ok "Page redirects to login" "$(code $B/dashboard)" 307
