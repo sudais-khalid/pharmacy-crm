@@ -128,6 +128,8 @@ export class Supervisor {
     const owner = JSON.parse(readFileSync(file, "utf8"));
     return {
       PLATFORM_OWNER_EMAIL: owner.email, PLATFORM_OWNER_NAME: owner.name ?? "Developer", PLATFORM_OWNER_PASSWORD_HASH: owner.passwordHash,
+      // when that password was set: a newer one replaces the installation's own with the next update
+      ...(owner.passwordSetAt ? { PLATFORM_OWNER_PASSWORD_SET_AT: owner.passwordSetAt } : {}),
       // the Developer's one authenticator for every installation, sealed with the Developer password
       ...(owner.totp ? { PLATFORM_OWNER_TOTP: owner.totp } : {}),
     };

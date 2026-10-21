@@ -12,6 +12,7 @@
     "ops": "node dist/ops.js",
     "e2e": "node scripts/e2e-local.mjs",
     "developer:authenticator": "tsx scripts/developer-authenticator.ts",
+    "developer:password": "tsx scripts/developer-password.ts",
     "perf": "node scripts/perf-check.mjs",
     "restore:drill": "node scripts/restore-drill.mjs",
     "lint": "next lint",

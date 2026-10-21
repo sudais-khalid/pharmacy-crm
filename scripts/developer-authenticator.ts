@@ -17,6 +17,7 @@ import bcrypt from "bcryptjs";
 import QRCode from "qrcode";
 import { newTotpSecret, otpauthUri } from "../src/lib/totp";
 import { openSharedTotp, sealSharedTotp } from "../src/lib/shared-totp";
+import { developerPasswordProblem } from "../src/lib/password-strength";
 
 const repo = path.resolve(__dirname, "..");
 const build = path.join(repo, "desktop", "build");
@@ -29,6 +30,9 @@ async function main() {
   const owner = JSON.parse(readFileSync(ownerFile, "utf8"));
   if (!password) throw new Error("Set PLATFORM_OWNER_PASSWORD in .env: the shared authenticator is sealed with it.");
   if (!bcrypt.compareSync(password, owner.passwordHash)) throw new Error("PLATFORM_OWNER_PASSWORD in .env is not the password of the Developer account in owner.json.");
+  // the shared secret is only as safe as this password: refuse a weak one
+  const problem = developerPasswordProblem(password, owner.email);
+  if (problem) throw new Error(`The Developer password is too weak to seal the shared authenticator (${problem}). Run npm run developer:password first.`);
 
   const secret = newTotpSecret();
   const sealed = sealSharedTotp(secret, password);

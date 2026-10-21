@@ -7,6 +7,8 @@ login(){ code -c /tmp/smoke_$1.jar -X POST $B/api/auth/login -H 'content-type: a
 js(){ python3 -c "import sys,json;d=json.load(sys.stdin);print($1)"; }
 
 ok "Health endpoint is public" "$(code $B/api/health)" 200
+ok "Pages refuse to be framed by other sites" "$(curl -sI $B/login | grep -ci "frame-ancestors 'self'")" 1
+ok "Pages forbid type sniffing" "$(curl -sI $B/login | grep -ci "x-content-type-options: nosniff")" 1
 ok "The app manifest is public" "$(curl -s $B/manifest.webmanifest | js "d['start_url']")" /home
 ok "The service worker is public" "$(code $B/sw.js)" 200
 ok "The offline page is public" "$(code $B/offline.html)" 200

@@ -948,6 +948,7 @@ model PlatformUser {
   name           String
   email          String    @unique
   passwordHash   String
+  passwordSetAt  DateTime? // when this password was set: a newer one in the build (owner.json) replaces it
   totpSecret     String? // AES-256-GCM encrypted
   totpEnabledAt  DateTime?
   totpLastStep   BigInt? // last accepted time step, so a code cannot be replayed

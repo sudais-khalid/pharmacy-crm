@@ -23,7 +23,8 @@ const env = process.env;
 const email = (env.PCRM_OWNER_EMAIL || env.PLATFORM_OWNER_EMAIL || "").trim().toLowerCase();
 const name = (env.PCRM_OWNER_NAME || env.PLATFORM_OWNER_NAME || "Developer").trim();
 const plain = env.PCRM_OWNER_PASSWORD || env.PLATFORM_OWNER_PASSWORD || "";
-let hash = env.PCRM_OWNER_PASSWORD_HASH || "";
+// a release secret may carry when the password was set after the hash: "<bcrypt hash>|<ISO time>"
+let [hash = "", setAt = ""] = (env.PCRM_OWNER_PASSWORD_HASH || "").trim().split("|");
 
 if (!email || (!hash && !plain)) {
   console.error("Set PCRM_OWNER_EMAIL and PCRM_OWNER_PASSWORD (or PCRM_OWNER_PASSWORD_HASH), or PLATFORM_OWNER_EMAIL and PLATFORM_OWNER_PASSWORD in .env.");
@@ -33,7 +34,15 @@ if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
   console.error(`"${email}" is not an email address.`);
   process.exit(1);
 }
+const out = path.join(here, "..", "build", "owner.json");
+const previous = existsSync(out) ? JSON.parse(readFileSync(out, "utf8")) : {};
+if (!hash && previous.email === email && previous.passwordHash && plain && bcrypt.compareSync(plain, previous.passwordHash)) {
+  // the same password as before: keep its hash and when it was set, so installations see no change
+  hash = previous.passwordHash;
+  setAt = previous.passwordSetAt ?? "";
+}
 if (!hash) {
+  setAt = new Date().toISOString();
   if (plain.length < 12) {
     console.error("The owner password must be at least 12 characters.");
     process.exit(1);
@@ -45,10 +54,12 @@ if (!/^\$2[aby]\$\d{2}\$.{53}$/.test(hash)) {
   process.exit(1);
 }
 
-const out = path.join(here, "..", "build", "owner.json");
+if (setAt && Number.isNaN(new Date(setAt).getTime())) {
+  console.error("The time after the hash in PCRM_OWNER_PASSWORD_HASH is not a date.");
+  process.exit(1);
+}
 mkdirSync(path.dirname(out), { recursive: true });
-const previous = existsSync(out) ? JSON.parse(readFileSync(out, "utf8")) : {};
 const totp = (env.PCRM_OWNER_TOTP || "").trim() || (previous.email === email ? previous.totp : undefined);
-writeFileSync(out, JSON.stringify({ email, name, passwordHash: hash, ...(totp ? { totp } : {}) }, null, 2) + "\n");
+writeFileSync(out, JSON.stringify({ email, name, passwordHash: hash, ...(setAt ? { passwordSetAt: setAt } : {}), ...(totp ? { totp } : {}) }, null, 2) + "\n");
 if (totp) console.log("  with the Developer's shared authenticator");
 console.log(`wrote ${path.relative(repo, out)} for ${email}`);

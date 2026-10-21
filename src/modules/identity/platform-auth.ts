@@ -27,16 +27,17 @@ const platformCtx = (id: string, meta?: Meta) => ({ actor: { id }, meta, realm: 
  * hashed here) or PLATFORM_OWNER_PASSWORD_HASH (bcrypt, for builds that bake it in). Does nothing once any
  * Developer account exists, so the variables cannot be used later to add or replace one.
  */
-export async function ensurePlatformOwner(env: Record<string, string | undefined> = process.env): Promise<"created" | "exists" | "not-configured"> {
-  if ((await platformDb.platformUser.count()) > 0) return "exists";
+export async function ensurePlatformOwner(env: Record<string, string | undefined> = process.env): Promise<"created" | "exists" | "updated" | "not-configured"> {
   const email = env.PLATFORM_OWNER_EMAIL?.trim().toLowerCase();
   const plain = env.PLATFORM_OWNER_PASSWORD;
   const hash = env.PLATFORM_OWNER_PASSWORD_HASH;
+  const setAt = env.PLATFORM_OWNER_PASSWORD_SET_AT ? new Date(env.PLATFORM_OWNER_PASSWORD_SET_AT) : null;
+  if ((await platformDb.platformUser.count()) > 0) return syncOwnerPassword(email, hash, setAt);
   if (!email || (!plain && !hash)) return "not-configured";
   if (plain && plain.length < 12) throw new Error("PLATFORM_OWNER_PASSWORD must be at least 12 characters");
   const passwordHash = hash || (await bcrypt.hash(plain!, BCRYPT_COST));
   try {
-    const dev = await platformDb.platformUser.create({ data: { name: env.PLATFORM_OWNER_NAME?.trim() || "Developer", email, passwordHash } });
+    const dev = await platformDb.platformUser.create({ data: { name: env.PLATFORM_OWNER_NAME?.trim() || "Developer", email, passwordHash, passwordSetAt: setAt ?? new Date() } });
     await audit(platformDb, platformCtx(dev.id), { action: "platform.owner.bootstrap", entity: "PlatformUser", entityId: dev.id, pharmacyId: null });
     return "created";
   } catch (e) {
@@ -44,6 +45,23 @@ export async function ensurePlatformOwner(env: Record<string, string | undefined
     if ((await platformDb.platformUser.count()) > 0) return "exists";
     throw e;
   }
+}
+
+/**
+ * A newer Developer password in the build (desktop owner.json: a hash and when it was set) replaces the one
+ * this installation holds, so changing it once reaches every installation with its next update. Older
+ * sessions end. A password set here later, by recovery, is kept until a still newer build arrives.
+ */
+async function syncOwnerPassword(email: string | undefined, hash: string | undefined, setAt: Date | null): Promise<"exists" | "updated"> {
+  if (!email || !hash || !setAt || Number.isNaN(setAt.getTime())) return "exists";
+  const dev = await platformDb.platformUser.findUnique({ where: { email }, select: { id: true, passwordHash: true, passwordSetAt: true } });
+  if (!dev || dev.passwordHash === hash || (dev.passwordSetAt && dev.passwordSetAt >= setAt)) return "exists";
+  const updated = await platformDb.platformUser.updateMany({
+    where: { id: dev.id, OR: [{ passwordSetAt: null }, { passwordSetAt: { lt: setAt } }] },
+    data: { passwordHash: hash, passwordSetAt: setAt, sessionVersion: { increment: 1 } },
+  });
+  if (updated.count) await audit(platformDb, platformCtx(dev.id), { action: "platform.owner.password-from-build", entity: "PlatformUser", entityId: dev.id, pharmacyId: null, after: { setAt: setAt.toISOString() } });
+  return updated.count ? "updated" : "exists";
 }
 
 /** Step one: email and password. Failures are rate limited per IP and email and per IP. */
@@ -170,7 +188,7 @@ export async function recoverPlatformOwner(email: string, newPassword?: string) 
   if (!dev) throw new Error(`No Developer account with email ${email}`);
   await platformDb.platformUser.update({
     where: { id: dev.id },
-    data: { passwordHash: await bcrypt.hash(password, BCRYPT_COST), totpSecret: null, totpEnabledAt: null, totpLastStep: null, recoveryCodes: [], sessionVersion: { increment: 1 } },
+    data: { passwordHash: await bcrypt.hash(password, BCRYPT_COST), passwordSetAt: new Date(), totpSecret: null, totpEnabledAt: null, totpLastStep: null, recoveryCodes: [], sessionVersion: { increment: 1 } },
   });
   await audit(platformDb, platformCtx(dev.id), { action: "platform.owner.recover", entity: "PlatformUser", entityId: dev.id, pharmacyId: null });
   return { email: dev.email, password };
