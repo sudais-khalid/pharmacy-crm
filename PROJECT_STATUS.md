@@ -129,9 +129,9 @@ All roadmap phases (0 to 9) are complete. Tags `phase-3`, `phase-4` and `phase-5
 - `npm run restore:drill`: a restored backup passes all 399 smoke and isolation checks
 - `docker-compose.prod.yml` run on this machine: HTTPS through Caddy, non-root read-only containers, startup backup with offsite copy, and a restore with `deploy/restore.sh`
 - Desktop selftest (`desktop/scripts/selftest.mjs`)
+- GitHub Actions on https://github.com/sudais-khalid/pharmacy-crm: CI (Linux on Node 22 and 24, browser tests, Windows desktop) passes; tagging `v2.0.0` builds, tests and publishes the Windows installer to the repository's releases, where installed apps find updates
 
 ## Known limitations / not built
-- The repository has no remote yet, so the GitHub Actions workflow (including the browser tests) has not run there; every suite passes locally
 - Invites and password resets are shared as links (copy or WhatsApp); there is no email sending adapter yet (`MAIL_*` in the plan)
 - Files (logos, bill photos, receipts) are stored in PostgreSQL. S3-compatible storage for large hosted installs (`STORAGE_DRIVER`, `S3_*` in the plan) is not built
 - On a server, restore runs from the shell (`deploy/restore.sh`) rather than from the console, so the app is stopped while the data is replaced; the desktop app restores from its console page
@@ -146,4 +146,4 @@ All roadmap phases (0 to 9) are complete. Tags `phase-3`, `phase-4` and `phase-5
 1. Pilot with one real pharmacy: onboarding time, counter speed, and OCR on its own supplier bills
 2. Score the cloud photo reader on the real bills in `Supplier Bills/` once an API key is available
 3. Code-sign the installer, and test it and an update on clean Windows 10 and 11 machines
-4. Push to a remote so CI runs, then the backlog after go-live (roadmap, section 5)
+4. The backlog after go-live (roadmap, section 5)
